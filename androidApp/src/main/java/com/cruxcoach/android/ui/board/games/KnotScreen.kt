@@ -50,6 +50,8 @@ import com.cruxcoach.android.ui.theme.rgb332ToComposeColor
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.KnotColour
+import com.cruxcoach.domain.board.games.KnotSpacing
+import kotlin.math.roundToInt
 import java.util.Locale
 
 /** A climber's name as the screen shows it: as typed, or "Player n". */
@@ -128,6 +130,7 @@ internal fun KnotSettings(state: WallGamesState, actions: WallGamesActions) {
             }
         }
     }
+    KnotSpacingPicker(knot, actions)
     KnotByTap(knot, actions)
     // The level is the time per call: by tap there is none.
     if (knot.byTap) return
@@ -182,6 +185,47 @@ private fun KnotSafetyCard(onGotIt: () -> Unit) {
         }
     }
 }
+
+/** How far apart the spots are; a spacing the wall can't keep playable for this many climbers is greyed out. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KnotSpacingPicker(knot: KnotState, actions: WallGamesActions) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(stringResource(R.string.knot_spacing), style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            KnotSpacing.entries.forEach { spacing ->
+                FilterChip(
+                    selected = spacing == knot.spacing,
+                    onClick = { actions.setKnotSpacing(spacing) },
+                    enabled = spacing in knot.spacings,
+                    label = { Text(stringResource(spacing.labelRes)) },
+                    colors = chipColors(),
+                    modifier = Modifier.testTag("knot_spacing_${spacing.name.lowercase()}"),
+                )
+            }
+        }
+        Text(
+            stringResource(R.string.knot_spacing_cm, (knot.spacing.handsM * 100).roundToInt()),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (KnotSpacing.entries.any { it !in knot.spacings }) {
+            Text(
+                stringResource(R.string.knot_spacing_unavailable),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("knot_spacing_unavailable"),
+            )
+        }
+    }
+}
+
+private val KnotSpacing.labelRes: Int
+    get() = when (this) {
+        KnotSpacing.CLOSE -> R.string.knot_spacing_close
+        KnotSpacing.MEDIUM -> R.string.knot_spacing_medium
+        KnotSpacing.WIDE -> R.string.knot_spacing_wide
+    }
 
 /** Without a timer, someone below the wall calls the next one when everyone is ready. */
 @Composable

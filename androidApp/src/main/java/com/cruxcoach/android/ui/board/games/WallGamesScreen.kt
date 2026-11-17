@@ -91,6 +91,7 @@ import com.cruxcoach.domain.board.games.GAME_LEVELS
 import com.cruxcoach.domain.board.games.HoldsThief
 import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.KnotColour
+import com.cruxcoach.domain.board.games.KnotSpacing
 import androidx.compose.ui.graphics.luminance
 import com.cruxcoach.domain.board.games.TraverseGame
 
@@ -110,6 +111,7 @@ interface WallGamesActions {
     fun setKnotClimbers(climbers: Int) {}
     fun setKnotName(climber: Int, name: String) {}
     fun setKnotByTap(byTap: Boolean) {}
+    fun setKnotSpacing(spacing: KnotSpacing) {}
     fun knotNextCall() {}
     fun knotSafetySeen() {}
     fun startKnotCalls() {}

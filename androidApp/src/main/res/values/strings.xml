@@ -3521,6 +3521,12 @@
     <string name="knot_call_number">Call %1$d</string>
     <string name="knot_wins">%1$s wins</string>
     <string name="knot_stopped">Stopped</string>
+    <string name="knot_spacing">Spacing</string>
+    <string name="knot_spacing_close">Close</string>
+    <string name="knot_spacing_medium">Medium</string>
+    <string name="knot_spacing_wide">Wide</string>
+    <string name="knot_spacing_cm">Spots about %1$d\u00A0cm apart</string>
+    <string name="knot_spacing_unavailable">Greyed out: this wall has too few holds for that spacing with this many climbers.</string>
     <string name="knot_by_tap">Tap for the next call</string>
     <string name="knot_next_call">Next call</string>
     <string name="knot_tap_name">Off the wall? Tap your name.</string>

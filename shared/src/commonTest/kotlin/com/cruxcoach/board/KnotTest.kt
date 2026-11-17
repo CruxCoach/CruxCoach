@@ -11,6 +11,7 @@ import com.cruxcoach.domain.board.games.KnotCaller
 import com.cruxcoach.domain.board.games.KnotColour
 import com.cruxcoach.domain.board.games.KnotLayout
 import com.cruxcoach.domain.board.games.KnotLimb
+import com.cruxcoach.domain.board.games.KnotSpacing
 import com.cruxcoach.domain.board.games.WallHold
 import com.cruxcoach.domain.board.games.WallRows
 import kotlin.math.hypot
@@ -229,6 +230,71 @@ class KnotTest {
         assertEquals(listOf(0..1, 1..2, 2..3), Knot.startStripes(three))
         val moonTwo = layout(moonBoard, 2)!!.field(moon)
         assertEquals(listOf(0..1, 1..2), Knot.startStripes(moonTwo))
+    }
+
+    // ── Spacing ───────────────────────────────────────────────────────
+
+    private fun layout(board: Board, climbers: Int, spacing: KnotSpacing): KnotLayout? =
+        Knot.layout(board.rows, climbers, board.colours, board.metresPerUnit, spacing = spacing)
+
+    private fun apartM(board: Board, a: Int, b: Int): Double {
+        val p = board.rows.holdOf(a)!!
+        val q = board.rows.holdOf(b)!!
+        return hypot(p.x - q.x, p.y - q.y) * board.metresPerUnit
+    }
+
+    @Test
+    fun closeIsTheFieldAsBefore() {
+        for ((board, climbers) in playable) {
+            assertEquals(layout(board, climbers), layout(board, climbers, KnotSpacing.CLOSE), "${board.name}, $climbers")
+        }
+    }
+
+    @Test
+    fun widerSpacingKeepsItsDistanceWithFewerSpotsInTheSameField() {
+        for ((board, climbers) in playable) {
+            val close = layout(board, climbers, KnotSpacing.CLOSE)!!
+            val closeXs = close.stripes.flatMap { it.first + it.second }.map { xM(board, it) }
+            var previous = close.stripes.sumOf { it.first.size + it.second.size }
+            for (spacing in listOf(KnotSpacing.MEDIUM, KnotSpacing.WIDE)) {
+                val name = "${board.name}, $climbers, $spacing"
+                val wider = assertNotNull(layout(board, climbers, spacing), name)
+                val hands = wider.stripes.flatMap { it.first }
+                val feet = wider.stripes.flatMap { it.second }
+                // Hands keep the spacing from every spot; feet keep at most 45 cm from every spot.
+                hands.forEachIndexed { i, a -> hands.drop(i + 1).forEach { b -> assertTrue(apartM(board, a, b) >= spacing.handsM - 0.03, "$name: hands") } }
+                feet.forEach { a -> (hands + feet).filter { it != a }.forEach { b -> assertTrue(apartM(board, a, b) >= spacing.feetM - 0.03, "$name: feet") } }
+                // At least 1.5 spots per hand and per foot, and every colour keeps a hand and a foot spot.
+                assertTrue(hands.size >= 3 * climbers, "$name: ${hands.size} hand spots")
+                assertTrue(feet.size >= 3 * climbers, "$name: ${feet.size} foot spots")
+                wider.stripes.forEach { (h, f) -> assertTrue(h.isNotEmpty() && f.isNotEmpty(), "$name: empty colour") }
+                // Never more spots than the closer spacing, in the same field and heights.
+                val count = hands.size + feet.size
+                assertTrue(count <= previous, "$name: $count spots after $previous")
+                previous = count
+                val xs = (hands + feet).map { xM(board, it) }
+                assertTrue(xs.min() >= closeXs.min() - Knot.fieldWidthM(climbers) / board.colours, "$name: wider field")
+                assertTrue(xs.max() <= closeXs.max() + Knot.fieldWidthM(climbers) / board.colours, "$name: wider field")
+                hands.forEach { assertTrue(heightM(board, it) in Knot.HANDS_FROM_M..Knot.HANDS_TO_M, "$name: hand height") }
+                feet.forEach { assertTrue(heightM(board, it) <= Knot.FEET_TO_M, "$name: foot height") }
+            }
+        }
+        // On the big Kilter the wide field is clearly sparser than the close one.
+        for (climbers in 1..3) {
+            val close = layout(kilter12x12, climbers, KnotSpacing.CLOSE)!!.stripes.sumOf { it.first.size + it.second.size }
+            val wide = layout(kilter12x12, climbers, KnotSpacing.WIDE)!!.stripes.sumOf { it.first.size + it.second.size }
+            assertTrue(wide < close, "$climbers: wide $wide, close $close")
+        }
+    }
+
+    @Test
+    fun aSpacingThatLeavesTooFewSpotsIsRefused() {
+        // Hands all over, but feet only along one low row 20 cm apart: close fits a foot spot per colour, wide not.
+        val holds = (0 until 18).flatMap { col -> (5 until 12).map { row -> WallHold(row * 100 + col, col * 8.0, row * 8.0) } } +
+            (0 until 18).map { col -> WallHold(col, col * 8.0, 0.0) }
+        val wall = WallRows.of(holds)
+        assertNotNull(Knot.layout(wall, 1, 4, INCH_M, spacing = KnotSpacing.CLOSE))
+        assertNull(Knot.layout(wall, 1, 4, INCH_M, spacing = KnotSpacing.WIDE))
     }
 
     // ── MoonBoard ─────────────────────────────────────────────────────

@@ -31,7 +31,7 @@ class Release025WhatsNewShinyWallTest {
             substring = true,
         ).assertIsDisplayed()
         compose.onNodeWithText(
-            "• Wall games\u00A0– Floor is lava, Endurance, Hold thief and Traverse, from the main menu or a climb’s menu (“Play as a game”).",
+            "• Wall games\u00A0– Floor is lava, Endurance, Hold thief, Traverse and the party game Knot, from the main menu or a climb’s menu (“Play as a game”).",
             substring = true,
         ).assertIsDisplayed()
     }
@@ -49,7 +49,7 @@ class Release025WhatsNewShinyWallTest {
         compose.onNodeWithText("Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten & Importe.", substring = true)
             .assertIsDisplayed()
         compose.onNodeWithText(
-            "• Wand-Spiele\u00A0– Der Boden ist Lava, Ausdauer, Griffdieb und Quergang, aus dem Hauptmenü oder dem Menü eines Boulders („Als Spiel spielen“).",
+            "• Wand-Spiele\u00A0– Der Boden ist Lava, Ausdauer, Griffdieb, Quergang und das Partyspiel Knoten, aus dem Hauptmenü oder dem Menü eines Boulders („Als Spiel spielen“).",
             substring = true,
         ).assertIsDisplayed()
     }

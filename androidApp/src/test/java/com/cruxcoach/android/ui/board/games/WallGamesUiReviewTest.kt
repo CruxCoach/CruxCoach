@@ -44,6 +44,7 @@ import com.cruxcoach.domain.board.games.KnotCall
 import com.cruxcoach.domain.board.games.KnotColour
 import com.cruxcoach.domain.board.games.KnotField
 import com.cruxcoach.domain.board.games.KnotLimb
+import com.cruxcoach.domain.board.games.KnotSpacing
 import com.cruxcoach.domain.board.games.WallRows
 import org.junit.Assume
 import org.junit.Before
@@ -349,6 +350,7 @@ class WallGamesUiReviewTest {
                 colours = colours,
                 maxClimbers = Knot.maxClimbers(kilter.rows, 0.0254),
                 layout = Knot.layout(kilter.rows, climbers, colours.size, 0.0254),
+                spacings = KnotSpacing.entries.toSet(),
                 safetySeen = safetySeen,
             ),
         )
@@ -371,6 +373,12 @@ class WallGamesUiReviewTest {
 
     @Test
     fun knotThreeByTap() = shoot("knot-three-by-tap") { Screen(knotIdle(3, byTap = true)) }
+
+    @Test
+    fun knotWideGreyedOut() = shoot("knot-spacing-greyed") {
+        val state = knotIdle(3)
+        Screen(state.copy(knot = state.knot.copy(spacing = KnotSpacing.MEDIUM, spacings = setOf(KnotSpacing.CLOSE, KnotSpacing.MEDIUM))))
+    }
 
     @Test
     fun knotShinyWall() = shoot("knot-shiny") { Screen(idle.copy(game = WallGame.KNOT)) }

@@ -21,6 +21,7 @@ import com.cruxcoach.domain.board.ShinyWallVariant
 import com.cruxcoach.domain.board.games.HoldsThief
 import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.KnotColour
+import com.cruxcoach.domain.board.games.KnotSpacing
 import com.cruxcoach.domain.board.games.WallHold
 import com.cruxcoach.domain.board.games.WallRows
 import com.cruxcoach.android.led.LedAnimationEngine
@@ -334,6 +335,22 @@ class WallGamesViewModelTest {
         assertTrue(vm.state.value.knot.byTap)
         vm.setSoundOn(false)
         verify { voice.stop() }
+    }
+
+    @Test
+    fun knotSpacingChangesTheFieldAndFallsBackWhenTheWallCannotKeepIt() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        val close = vm.state.value.knot
+        assertEquals(KnotSpacing.CLOSE, close.spacing)
+        assertEquals(KnotSpacing.entries.toSet(), close.spacings)
+        vm.setKnotSpacing(KnotSpacing.WIDE)
+        val wide = vm.state.value.knot
+        assertEquals(KnotSpacing.WIDE, wide.spacing)
+        assertTrue(wide.layout!!.stripes.sumOf { it.first.size + it.second.size } < close.layout!!.stripes.sumOf { it.first.size + it.second.size })
+        // The field that lights is the one of the chosen spacing.
+        vm.start()
+        assertEquals(wide.layout!!.stripes.flatMap { it.first + it.second }.toSet(), vm.state.value.knot.run.field!!.spots.keys)
     }
 
     @Test

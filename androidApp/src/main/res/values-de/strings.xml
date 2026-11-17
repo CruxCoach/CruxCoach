@@ -3520,6 +3520,12 @@
     <string name="knot_call_number">Ansage %1$d</string>
     <string name="knot_wins">%1$s gewinnt</string>
     <string name="knot_stopped">Abgebrochen</string>
+    <string name="knot_spacing">Abstand</string>
+    <string name="knot_spacing_close">Eng</string>
+    <string name="knot_spacing_medium">Mittel</string>
+    <string name="knot_spacing_wide">Weit</string>
+    <string name="knot_spacing_cm">Griffe etwa %1$d\u00A0cm auseinander</string>
+    <string name="knot_spacing_unavailable">Ausgegraut: Für diesen Abstand hat die Wand zu wenige Griffe bei so vielen Leuten.</string>
     <string name="knot_by_tap">Nächste Ansage per Tipp</string>
     <string name="knot_next_call">Nächste Ansage</string>
     <string name="knot_tap_name">Abgefallen? Tipp auf deinen Namen.</string>

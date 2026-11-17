@@ -28,6 +28,7 @@ import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.KnotCall
 import com.cruxcoach.domain.board.games.KnotColour
 import com.cruxcoach.domain.board.games.KnotLayout
+import com.cruxcoach.domain.board.games.KnotSpacing
 import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.android.data.UserPreferences
@@ -81,6 +82,9 @@ data class KnotState(
     val names: List<String> = List(Knot.MAX_CLIMBERS) { "" },
     /** The next call comes when someone below taps, without a timer. */
     val byTap: Boolean = false,
+    val spacing: KnotSpacing = KnotSpacing.CLOSE,
+    /** The spacings that keep the game playable on this wall for [climbers] ([Knot.layout] not null). */
+    val spacings: Set<KnotSpacing> = emptySet(),
     /** The colours the board lights for Knot; null when it can't name them. */
     val colours: List<KnotColour>? = null,
     /** Climbers this board fits at once; 0 without colours. */
@@ -386,19 +390,33 @@ class WallGamesViewModel @Inject constructor(
 
     // ── Knot ───────────────────────────────────────────────────────────
 
-    /** Knot's colours, width and field for [climbers] on [board]. */
-    private fun knotFor(board: WallGameBoard?, climbers: Int, knot: KnotState): KnotState {
+    /**
+     * Knot's colours, width and field for [climbers] at [spacing] on [board]. A spacing the wall can't keep playable
+     * for that many climbers is offered greyed out, and the field falls back to close.
+     */
+    private fun knotFor(board: WallGameBoard?, climbers: Int, knot: KnotState, spacing: KnotSpacing = knot.spacing): KnotState {
         val colours = board?.let { Knot.colours(it.brand) }
         val unit = board?.let { Knot.metresPerUnit(it.brand) }
-        if (board == null || colours == null || unit == null) return knot.copy(colours = null, maxClimbers = 0, layout = null)
+        if (board == null || colours == null || unit == null) {
+            return knot.copy(colours = null, maxClimbers = 0, layout = null, spacings = emptySet())
+        }
         val max = Knot.maxClimbers(board.rows, unit)
         val count = climbers.coerceIn(1, max.coerceAtLeast(1))
+        val layouts = KnotSpacing.entries.associateWith { Knot.layout(board.rows, count, colours.size, unit, knotBigHolds.orEmpty(), it) }
+        val chosen = spacing.takeIf { layouts[it] != null } ?: KnotSpacing.CLOSE
         return knot.copy(
             colours = colours,
             maxClimbers = max,
             climbers = count,
-            layout = Knot.layout(board.rows, count, colours.size, unit, knotBigHolds.orEmpty()),
+            spacing = chosen,
+            spacings = layouts.filterValues { it != null }.keys,
+            layout = layouts[chosen],
         )
+    }
+
+    override fun setKnotSpacing(spacing: KnotSpacing) {
+        if (mutableState.value.running) return
+        mutableState.update { it.copy(knot = knotFor(it.board, it.knot.climbers, it.knot, spacing)) }
     }
 
     /** Looks once for the board's big holds. */
