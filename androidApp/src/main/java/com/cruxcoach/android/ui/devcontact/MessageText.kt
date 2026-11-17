@@ -3,10 +3,14 @@ package com.cruxcoach.android.ui.devcontact
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,7 +48,9 @@ import com.cruxcoach.android.ui.common.openUriOrToast
  * link is opened. A tap anywhere else goes to what holds the text, so a card
  * still opens its thread or marks an announcement read, while the release of
  * a long press does not. Screen readers offer each link as an action.
- * [onLinkOpened] runs when a link is opened.
+ * [onLinkOpened] runs when a link is opened. Text on the orange of a sent
+ * bubble passes [onAccentSelectionColors], since the theme's own selection
+ * colours are that orange too.
  *
  * The links are drawn and hit-tested here instead of as `LinkAnnotation`s:
  * those take the press, so a long press on a link opened it instead of
@@ -60,6 +66,7 @@ internal fun MessageText(
     fontFamily: FontFamily? = null,
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
+    selectionColors: TextSelectionColors = LocalTextSelectionColors.current,
     onLinkOpened: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -73,29 +80,42 @@ internal fun MessageText(
         afterLink()
     }
     val actionLabels = links.map { stringResource(R.string.message_open_link, it.url) }
-    SelectionContainer(
-        modifier
-            .semantics {
-                if (links.isNotEmpty()) {
-                    customActions = links.mapIndexed { i, link ->
-                        CustomAccessibilityAction(actionLabels[i]) { open(link); true }
+    CompositionLocalProvider(LocalTextSelectionColors provides selectionColors) {
+        SelectionContainer(
+            modifier
+                .semantics {
+                    if (links.isNotEmpty()) {
+                        customActions = links.mapIndexed { i, link ->
+                            CustomAccessibilityAction(actionLabels[i]) { open(link); true }
+                        }
                     }
                 }
-            }
-            .pointerInput(links) { detectMessageTaps(linkAt = { layout?.linkAt(it, links) }, open = open) },
-    ) {
-        Text(
-            text = shown,
-            style = style,
-            color = color,
-            fontWeight = fontWeight,
-            fontFamily = fontFamily,
-            maxLines = maxLines,
-            overflow = overflow,
-            onTextLayout = { layout = it },
-        )
+                .pointerInput(links) { detectMessageTaps(linkAt = { layout?.linkAt(it, links) }, open = open) },
+        ) {
+            Text(
+                text = shown,
+                style = style,
+                color = color,
+                fontWeight = fontWeight,
+                fontFamily = fontFamily,
+                maxLines = maxLines,
+                overflow = overflow,
+                onTextLayout = { layout = it },
+            )
+        }
     }
 }
+
+/**
+ * Selection colours for [textColor] on the brand orange: the highlight is a veil of
+ * the text colour, the handles take the colour of text on the screen, because they
+ * hang out of the bubble onto the background.
+ */
+@Composable
+internal fun onAccentSelectionColors(textColor: Color) = TextSelectionColors(
+    handleColor = MaterialTheme.colorScheme.onSurface,
+    backgroundColor = textColor.copy(alpha = 0.3f),
+)
 
 /**
  * Taps on the text. This sits around the text, so the selection inside sees
