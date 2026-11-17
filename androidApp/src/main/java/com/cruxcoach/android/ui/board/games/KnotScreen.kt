@@ -183,7 +183,7 @@ private fun KnotSafetyCard(onGotIt: () -> Unit) {
     }
 }
 
-/** How far apart the spots are; a spacing the wall can't keep playable for this many climbers is greyed out. */
+/** How far the climbers reach for the colours; a spacing the wall can't keep playable for this many is greyed out. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun KnotSpacingPicker(knot: KnotState, actions: WallGamesActions) {
@@ -202,7 +202,7 @@ private fun KnotSpacingPicker(knot: KnotState, actions: WallGamesActions) {
             }
         }
         Text(
-            stringResource(R.string.knot_spacing_cm, (knot.spacing.handsM * 100).roundToInt()),
+            stringResource(R.string.knot_spacing_cm, (knot.spacing.reachM * 100).roundToInt()),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

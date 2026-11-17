@@ -15,6 +15,7 @@ import com.cruxcoach.domain.board.MoonBoardHoldSets
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.ShinyWallVariant
+import com.cruxcoach.domain.board.games.KnotHandGrades
 import com.cruxcoach.domain.board.games.WallHold
 import com.cruxcoach.domain.board.games.WallRows
 import com.cruxcoach.domain.holdtypes.HoldType
@@ -144,6 +145,17 @@ class WallGameBoardLoader @Inject constructor(
             .filter { it.holdType == HoldType.JUG || it.size == LARGE }
             .filter { board.brand != BoardBrand.MOONBOARD || it.layoutId.toLong() == board.layoutId }
             .mapTo(mutableSetOf()) { it.placement }
+    }
+
+    /**
+     * Knot's ratings of [board]'s hand holds from its catalogue at the board's angle ([KnotHandGrades]); empty
+     * without a catalogue or an angle. Reads every graded climb once: call on IO.
+     */
+    fun knotHandGrades(board: WallGameBoard): Map<Int, Double> {
+        val angle = board.angle ?: return emptyMap()
+        val grades = KnotHandGrades()
+        boardRepository.forEachGradedFrames(board.layoutId.toInt(), board.brand.wireValue, angle, minAscensionists = 1, grades::add)
+        return grades.grades()
     }
 
     private suspend fun loadMoonBoard(layoutId: Long): WallGameBoardLoad {

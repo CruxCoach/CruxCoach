@@ -139,13 +139,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   blue"), from recordings in English or German that come with the app, so no
   speech engine is needed; the called holds blink. The field grows with the
   number of climbers, so they get in each other's way, and stays low; as many
-  climb as the wall is wide (0.8 m each, 4 on a 12 ft board), and wide fields
-  repeat their colours. Whoever comes off taps their name: the last one on
-  the wall wins, solo you count the calls you hold. More players wait in line
-  and step in for whoever comes off; then the most calls held win. Five levels (10 to 3 seconds per call), or "Tap
-  for the next call" for someone below the wall, optional names, a safety
-  hint before the first game and a hint on steep walls. For Kilter, the
-  other Aurora boards and MoonBoard (not Shiny Wall or Quantum).
+  climb as the wall is wide (0.8 m each, 4 on a 12 ft board). Whoever comes
+  off taps their name: the last one on the wall wins, solo you count the
+  calls you hold. More players wait in line and step in for whoever comes
+  off; then the most calls held win. Two difficulties: five levels (10 to 3
+  seconds per call), or "Tap for the next call" for someone below the wall,
+  and the spacing (close, medium, wide), which sets how far each colour is
+  from a climber, about 50, 75 or 100 cm, with the colours repeating across
+  the field. With the board's catalogue, every game draws a fresh field away
+  from the last one's holds, leaves out the hardest hand holds and keeps the
+  colours and the climbers' parts about equally hard. Optional names, a
+  safety hint before the first game and a hint on steep walls. For Kilter,
+  the other Aurora boards and MoonBoard (not Shiny Wall or Quantum).
 - Community: Settings → Community explains the CruxCoach community on Buzz
   (talk to the developers, test new builds first, help shape what comes next)
   and "Join on Buzz" opens community.cruxcoach.org/join in the browser. After a

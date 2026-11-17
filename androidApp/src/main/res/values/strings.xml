@@ -3522,7 +3522,7 @@
     <string name="knot_spacing_close">Close</string>
     <string name="knot_spacing_medium">Medium</string>
     <string name="knot_spacing_wide">Wide</string>
-    <string name="knot_spacing_cm">Holds about %1$d\u00A0cm apart</string>
+    <string name="knot_spacing_cm">Each colour within about %1$d\u00A0cm</string>
     <plurals name="knot_spacing_unavailable">
         <item quantity="one">%1$s: too few holds here for %2$d player.</item>
         <item quantity="other">%1$s: too few holds here for %2$d players.</item>

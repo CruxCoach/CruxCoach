@@ -350,7 +350,7 @@ class WallGamesUiReviewTest {
                 byTap = byTap,
                 colours = colours,
                 maxClimbers = max,
-                layout = Knot.layout(kilter.rows, minOf(players, max), colours.size, 0.0254),
+                layout = Knot.layout(kilter.rows, minOf(players, max), colours, 0.0254),
                 spacings = KnotSpacing.entries.toSet(),
                 safetySeen = safetySeen,
             ),
@@ -362,7 +362,7 @@ class WallGamesUiReviewTest {
 
     private fun knotRun(climbers: Int, byTap: Boolean = false, run: (KnotField) -> KnotRun): WallGamesState {
         val idle = knotIdle(climbers, byTap = byTap)
-        val field = idle.knot.layout!!.field(Knot.colourOrder(idle.knot.colours!!, 3, idle.knot.layout!!.periods))
+        val field = idle.knot.layout!!.field(Knot.colourOrder(idle.knot.colours!!, 3))
         return idle.copy(knot = idle.knot.copy(run = run(field)))
     }
 

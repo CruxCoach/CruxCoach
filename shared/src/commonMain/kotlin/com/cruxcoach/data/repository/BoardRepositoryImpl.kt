@@ -617,6 +617,24 @@ class BoardRepositoryImpl(
         }
     }
 
+    override fun forEachGradedFrames(
+        layoutId: Int, boardBrand: String, angle: Int, minAscensionists: Int, onClimb: (frames: String, grade: Double) -> Unit,
+    ) {
+        val query = q.getGradedFramesForAngle(
+            layoutId = layoutId.toLong(),
+            boardBrand = boardBrand,
+            angle = angle.toLong(),
+            minAsc = minAscensionists.toLong(),
+        )
+        query.execute { cursor ->
+            while (cursor.next().value) {
+                val row = query.mapper(cursor)
+                row.difficulty_average?.let { onClimb(row.frames, it) }
+            }
+            QueryResult.Unit
+        }
+    }
+
     // ── Board Layout Queries ───────────────────────────────────
 
     override fun getAllPlacements(boardBrand: String): List<BoardPlacement> {

@@ -3521,7 +3521,7 @@
     <string name="knot_spacing_close">Eng</string>
     <string name="knot_spacing_medium">Mittel</string>
     <string name="knot_spacing_wide">Weit</string>
-    <string name="knot_spacing_cm">Griffe etwa %1$d\u00A0cm auseinander</string>
+    <string name="knot_spacing_cm">Jede Farbe in etwa %1$d\u00A0cm Reichweite</string>
     <plurals name="knot_spacing_unavailable">
         <item quantity="one">%1$s: zu wenige Griffe hier für %2$d Spieler.</item>
         <item quantity="other">%1$s: zu wenige Griffe hier für %2$d Spieler.</item>

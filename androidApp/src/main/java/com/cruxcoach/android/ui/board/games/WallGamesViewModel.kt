@@ -27,6 +27,7 @@ import com.cruxcoach.domain.board.games.TraverseGame
 import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.KnotCall
 import com.cruxcoach.domain.board.games.KnotColour
+import com.cruxcoach.domain.board.games.KnotDraw
 import com.cruxcoach.domain.board.games.KnotLayout
 import com.cruxcoach.domain.board.games.KnotSpacing
 import com.cruxcoach.domain.board.BoardPacketEncoder
@@ -193,7 +194,12 @@ class WallGamesViewModel @Inject constructor(
     /** What Knot last put on the wall, to put back after a reconnect. */
     private var knotWall: Map<Int, KnotColour> = emptyMap()
     private var knotBigHolds: Set<Int>? = null
+    /** Hand holds rated from the catalogue; with them each game draws a fresh field, without them it is always the same. */
+    private var knotHandGrades: Map<Int, Double> = emptyMap()
     private val knotSeeds = Random(Random.nextLong())
+    /** The draw of the next game's field, which the preview shows, and the spots of the last one, which it avoids. */
+    private var knotSeed = knotSeeds.nextLong()
+    private var knotLastSpots: Set<Int> = emptySet()
     private val runner = WallGameRunner(
         scope = viewModelScope,
         now = SystemClock::elapsedRealtime,
@@ -410,15 +416,18 @@ class WallGamesViewModel @Inject constructor(
         val max = Knot.maxClimbers(board.rows, unit)
         val count = players.coerceIn(Knot.PLAYERS)
         val atWall = minOf(count, max.coerceAtLeast(1))
-        val layouts = KnotSpacing.entries.associateWith { Knot.layout(board.rows, atWall, colours.size, unit, knotBigHolds.orEmpty(), it) }
-        val chosen = spacing.takeIf { layouts[it] != null } ?: KnotSpacing.CLOSE
+        val big = knotBigHolds.orEmpty()
+        // Whether a spacing fits doesn't depend on the draw: the plain field tells.
+        val playable = KnotSpacing.entries.filter { Knot.layout(board.rows, atWall, colours, unit, big, it) != null }.toSet()
+        val chosen = spacing.takeIf { it in playable } ?: KnotSpacing.CLOSE
+        val draw = knotHandGrades.takeIf { it.isNotEmpty() }?.let { KnotDraw(knotSeed, it, knotLastSpots) }
         return knot.copy(
             colours = colours,
             maxClimbers = max,
             players = count,
             spacing = chosen,
-            spacings = layouts.filterValues { it != null }.keys,
-            layout = layouts[chosen],
+            spacings = playable,
+            layout = Knot.layout(board.rows, atWall, colours, unit, big, chosen, draw),
         )
     }
 
@@ -433,9 +442,13 @@ class WallGamesViewModel @Inject constructor(
         if (knotBigHolds != null) return
         knotBigHolds = emptySet()
         viewModelScope.launch {
-            val big = withContext(Dispatchers.IO) { runCatching { loader.knotBigHolds(board) }.getOrDefault(emptySet()) }
-            if (big.isEmpty()) return@launch
+            val (big, grades) = withContext(Dispatchers.IO) {
+                runCatching { loader.knotBigHolds(board) }.getOrDefault(emptySet()) to
+                    runCatching { loader.knotHandGrades(board) }.getOrDefault(emptyMap())
+            }
+            if (big.isEmpty() && grades.isEmpty()) return@launch
             knotBigHolds = big
+            knotHandGrades = grades
             mutableState.update { it.copy(knot = knotFor(it.board, it.knot.players, it.knot)) }
         }
     }
@@ -480,7 +493,11 @@ class WallGamesViewModel @Inject constructor(
         val layout = s.knot.layout ?: return
         val colours = s.knot.colours ?: return
         sender.forget()
-        knotRunner.light(layout.field(Knot.colourOrder(colours, knotSeeds.nextLong(), layout.periods)), s.knot.players)
+        knotRunner.light(layout.field(Knot.colourOrder(colours, knotSeeds.nextLong())), s.knot.players)
+        // The next game gets a fresh field, away from this one's holds.
+        knotLastSpots = layout.spots
+        knotSeed = knotSeeds.nextLong()
+        mutableState.update { it.copy(knot = knotFor(it.board, it.knot.players, it.knot)) }
     }
 
     /** A short beep, so the climbers listen, then the call. The sound switch silences both. */

@@ -593,6 +593,10 @@ interface BoardClimbQueries {
         getAllFramesForHeatmapAllAngles(layoutId, boardBrand, minDifficulty, maxDifficulty, minAscensionists, climbType)
             .forEach { onFrames(it.frames) }
     }
+    /** Every listed climb of (layout, brand) with a grade at [angle] and at least [minAscensionists] ascents, as its
+     *  frames and grade (difficulty average), handed to [onClimb] row by row on the calling thread. For Knot's hold
+     *  ratings; none where a store has no catalogue. */
+    fun forEachGradedFrames(layoutId: Int, boardBrand: String, angle: Int, minAscensionists: Int, onClimb: (frames: String, grade: Double) -> Unit) {}
 }
 
 /** Board layout, placement, LED, and product-size queries. */

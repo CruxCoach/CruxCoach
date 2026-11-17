@@ -1454,6 +1454,19 @@ WHERE cs.layout_id = :layoutId
   AND (c.hsm & :hsmExcludedMask) = 0
   AND LENGTH(c.frames) > 0 AND c.is_listed = 1;
 
+-- Knot's hold ratings: every listed climb graded at one angle, frames and grade, so a hold can be rated by how hard
+-- the climbs are that use it. Brand-scoped like getAllFramesForFilter.
+getGradedFramesForAngle:
+SELECT c.frames, cs.difficulty_average
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE cs.layout_id = :layoutId
+  AND c.board_brand = :boardBrand
+  AND cs.angle = :angle
+  AND cs.difficulty_average > 0
+  AND COALESCE(cs.ascensionist_count, 0) >= :minAsc
+  AND LENGTH(c.frames) > 0 AND c.is_listed = 1;
+
 -- Any-angle variant of getAllFramesForFilter for the logbook stats heatmap:
 -- hold usage is angle-independent, and the previous hardcoded 40° pin hid
 -- every climb on layouts whose community logs sit at other angles. EXISTS

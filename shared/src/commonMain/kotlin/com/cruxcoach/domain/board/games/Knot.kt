@@ -1,8 +1,10 @@
 package com.cruxcoach.domain.board.games
 
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.HoldRole
 import kotlin.math.hypot
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.random.Random
 
@@ -61,26 +63,40 @@ data class KnotField(val climbers: Int, val stripes: List<KnotStripe>) {
 
 /**
  * Where a field's spots sit, before the round gives the stripes their
- * colours: stripes from left to right, each with hand and foot spots. A wide
- * field has its colours [periods] times side by side.
+ * colours: stripes from left to right, each with hand and foot spots.
+ * [pattern] says which colour of a round's order each stripe takes (0 for
+ * the first …): the colours repeat across the field.
  */
-data class KnotLayout(val climbers: Int, val stripes: List<Pair<List<Int>, List<Int>>>, val periods: Int = 1) {
-    /** This layout lit with [order], one colour per stripe from the left, repeated across a wide field. */
+data class KnotLayout(
+    val climbers: Int,
+    val stripes: List<Pair<List<Int>, List<Int>>>,
+    val pattern: List<Int> = stripes.indices.toList(),
+) {
+    /** This layout lit with [order]: each stripe in the colour its [pattern] picks. */
     fun field(order: List<KnotColour>): KnotField {
-        require(order.size * periods == stripes.size) { "${order.size} colours ×$periods for ${stripes.size} stripes" }
-        return KnotField(climbers, stripes.mapIndexed { i, (hands, feet) -> KnotStripe(order[i % order.size], hands, feet) })
+        require(pattern.all { it in order.indices }) { "${order.size} colours for the stripes $pattern" }
+        return KnotField(climbers, stripes.mapIndexed { i, (hands, feet) -> KnotStripe(order[pattern[i]], hands, feet) })
     }
+
+    /** Every spot, hand or foot. */
+    val spots: Set<Int> get() = stripes.flatMapTo(mutableSetOf()) { it.first + it.second }
 }
 
 /**
- * How far apart the spots are, and so how far the climbers reach: about 30, 45 or 60 cm. The field keeps its width,
- * so a wider spacing fits fewer spots. Foot spots stay at most 45 cm apart: the foot zone is only about 55 cm tall.
+ * How far the climbers reach for the colours: from the middle of a climber's part the farthest colour is about
+ * [reachM] away, and hands on the two farthest colours are at most about [spanM] apart. Every spacing lights the same
+ * number of spots; a wider one spreads them, in wider stripes that repeat less often.
  */
-enum class KnotSpacing(val handsM: Double) {
-    CLOSE(0.30), MEDIUM(0.45), WIDE(0.60);
-
-    val feetM: Double get() = minOf(handsM, MEDIUM.handsM)
+enum class KnotSpacing(val reachM: Double, val spanM: Double) {
+    CLOSE(0.5, 0.9), MEDIUM(0.75, 1.2), WIDE(1.0, 1.5),
 }
+
+/**
+ * A fresh field for one game: the spots are drawn from [seed] instead of taking the nearest holds, away from [avoid]
+ * (the last game's spots) where the wall allows. [handGrades] rates hand holds by how hard the catalogue's climbs are
+ * that use them as a hand hold (a grade number, higher is harder), for holds with enough such climbs.
+ */
+class KnotDraw(val seed: Long, val handGrades: Map<Int, Double>, val avoid: Set<Int> = emptySet())
 
 /** One call: [number] counts from 1; [climber] counts from 0 in the fixed order. */
 data class KnotCall(val number: Int, val climber: Int, val limb: KnotLimb, val colour: KnotColour)
@@ -93,14 +109,6 @@ object Knot {
     /** Field width per climber, plus [FIELD_EXTRA_M]: 1.2 m solo, 2.0 m for two, 2.8 m for three. */
     const val FIELD_PER_CLIMBER_M = 0.8
     const val FIELD_EXTRA_M = 0.4
-
-    /**
-     * A field from this wide on (four climbers and more) repeats its colours, with stripes at most [MAX_STRIPE_M]
-     * wide, so every climber has each colour within about a metre and only neighbours get in each other's way. Up
-     * to three climbers the colours come once.
-     */
-    const val REPEAT_FROM_M = 3.0
-    const val MAX_STRIPE_M = 0.45
 
     /**
      * Height above the floor of the board's lowest hold row. Heights are
@@ -128,24 +136,11 @@ object Knot {
     fun fieldWidthM(climbers: Int): Double = FIELD_PER_CLIMBER_M * climbers + FIELD_EXTRA_M
 
     /**
-     * How often a field [widthM] wide has its [colours] side by side: once up to 2.8 m (three climbers); on Aurora
-     * boards twice on 3.6 m (four), three times on 4.4 m (five).
-     */
-    fun periods(widthM: Double, colours: Int): Int =
-        if (widthM < REPEAT_FROM_M) 1 else maxOf(1, ceil(widthM / (colours * MAX_STRIPE_M) - ROUNDING).toInt())
-
-    private const val ROUNDING = 1e-9
-
-    /**
      * Spots per colour, over all its stripes: one more hand spot than climbers, one foot spot per climber (2 + 1,
      * 3 + 2, 4 + 3 …). A wide field shares them out among the colour's stripes.
      */
     fun handSpots(climbers: Int): Int = climbers + 1
     fun footSpots(climbers: Int): Int = climbers
-
-    /** [total] spots of a colour shared out among its [periods] stripes; the spare ones go to alternate stripes. */
-    private fun share(total: Int, periods: Int, colour: Int, period: Int): Int =
-        total / periods + if ((colour + period) % periods < total % periods) 1 else 0
 
     /**
      * The colours [brand] lights for Knot, or null when Knot can't name what
@@ -189,16 +184,12 @@ object Knot {
     /** Rounding in a board's grid: a 2.0 m span counts as room for two. */
     private const val SPAN_SLACK_M = 0.05
 
-    /**
-     * [colours] shuffled for one round, with the [APART] pairs never side by side; on a field that repeats them
-     * ([periods] > 1), not where the last meets the first either.
-     */
-    fun colourOrder(colours: List<KnotColour>, seed: Long, periods: Int = 1): List<KnotColour> {
+    /** [colours] shuffled for one round, with the [APART] pairs never side by side. */
+    fun colourOrder(colours: List<KnotColour>, seed: Long): List<KnotColour> {
         val random = Random(seed)
         repeat(SHUFFLE_TRIES) {
             val order = colours.shuffled(random)
-            val sides = if (periods > 1 && order.size > 1) order.zipWithNext() + (order.last() to order.first()) else order.zipWithNext()
-            if (sides.none { (a, b) -> setOf(a, b) in APART }) return order
+            if (order.zipWithNext().none { (a, b) -> setOf(a, b) in APART }) return order
         }
         // Only reachable when no order keeps them apart (two colours that must not touch).
         return colours
@@ -207,126 +198,212 @@ object Knot {
     private const val SHUFFLE_TRIES = 64
 
     /**
-     * The field for [climbers] on [rows]: one stripe per colour ([colours]
-     * of them) side by side, [periods] times over, centred on the wall and
-     * [fieldWidthM] wide in all (the whole wall when it is narrower). Each
-     * colour has up to [handSpots] hand spots from [HANDS_FROM_M] to
-     * [HANDS_TO_M] and up to [footSpots] foot spots up to [FEET_TO_M],
-     * shared out among its stripes.
+     * Which colour of a round's order (0 for the first …) each of [stripes] stripes takes: the colours from the left,
+     * again and again. Where two of [colours] must never touch ([APART]), the order runs there and back (0 1 2 1 0 1 2
+     * …), so the colours [colourOrder] keeps apart never meet where it repeats.
+     */
+    fun pattern(colours: List<KnotColour>, stripes: Int): List<Int> {
+        val count = colours.size
+        val apart = APART.any { pair -> pair.all { it in colours } }
+        val period = if (apart && count > 2 && stripes > count) (0 until count) + (count - 2 downTo 1) else (0 until count).toList()
+        return List(stripes) { period[it % period.size] }
+    }
+
+    /**
+     * How far the climbers reach on a field from [left] that is [widthM] wide, split into equal parts for
+     * [climbers]: from the middle of each part to the nearest of [spots] (position in metres → colour 0 until
+     * [colours]) in every colour. The farthest of those over all parts, and the largest distance between the nearest
+     * spots of a part's two farthest colours. Infinite when a colour has no spot.
+     */
+    fun reach(left: Double, widthM: Double, climbers: Int, spots: List<Pair<Double, Int>>, colours: Int): Pair<Double, Double> {
+        var farthest = 0.0
+        var span = 0.0
+        for (part in 0 until climbers) {
+            val middle = left + widthM / climbers * (part + 0.5)
+            val nearest = (0 until colours).map { colour ->
+                spots.filter { it.second == colour }.minByOrNull { abs(it.first - middle) }?.first ?: return INFINITE to INFINITE
+            }.sortedByDescending { abs(it - middle) }
+            farthest = maxOf(farthest, abs(nearest[0] - middle))
+            if (nearest.size > 1) span = maxOf(span, abs(nearest[0] - nearest[1]))
+        }
+        return farthest to span
+    }
+
+    private val INFINITE = Double.POSITIVE_INFINITY
+
+    /**
+     * How many stripes a field [widthM] wide gets for [climbers] at [spacing]: the fewest, so the widest, with which
+     * from the middle of every part the farthest colour is at most [KnotSpacing.reachM] away and the two farthest at
+     * most [KnotSpacing.spanM] apart, measured at the stripes' middles. At least one stripe per colour.
+     */
+    fun stripeCount(widthM: Double, climbers: Int, colours: List<KnotColour>, spacing: KnotSpacing): Int {
+        for (count in colours.size..MAX_STRIPES) {
+            val middles = pattern(colours, count).mapIndexed { i, colour -> widthM / count * (i + 0.5) to colour }
+            val (farthest, span) = reach(0.0, widthM, climbers, middles, colours.size)
+            if (farthest <= spacing.reachM + ROUNDING && span <= spacing.spanM + ROUNDING) return count
+        }
+        return MAX_STRIPES
+    }
+
+    private const val MAX_STRIPES = 64
+    private const val ROUNDING = 1e-9
+
+    /**
+     * The field for [climbers] on [rows] at [spacing]: stripes side by side in [colours], centred on the wall and
+     * [fieldWidthM] wide in all (the whole wall when it is narrower), as many as [stripeCount] says. Each colour has
+     * [handSpots] hand spots from [HANDS_FROM_M] to [HANDS_TO_M] and [footSpots] foot spots up to [FEET_TO_M], shared
+     * out among its stripes at evenly spread heights, in every spacing. Spots keep [SPOT_SPACING_M] from each other
+     * where the wall allows.
      *
-     * The spots zigzag up each stripe at evenly spread heights; each target
-     * takes the nearest free hold of its zone, a big hold ([bigHolds], from
-     * the hold types once a board's are confirmed) when one is about as near.
-     * [KnotSpacing.CLOSE] keeps [SPOT_SPACING_M] from every other spot where
-     * it can. A wider [spacing] keeps its distance between any two spots
-     * strictly, so fewer spots fit in the same field: the stripes take their
-     * spots in turn, each stripe its lowest first, and a spot that doesn't
-     * fit is left out. The same wall, climbers and spacing always give the
-     * same layout.
+     * Without a [draw], each spot takes the nearest free hold to its place in the stripe, a big hold ([bigHolds],
+     * from the hold types once a board's are confirmed) when one is about as near: the same wall, climbers and
+     * spacing always give the same field. With a [draw], each spot is drawn among the stripe's free holds at about its
+     * height, a big hold more often, never one of the hardest fifth of the rated hand holds and away from last game's
+     * spots where the wall allows; of [DRAWS] such fields the one whose colours and climbers' parts come closest to
+     * equally good wins.
      *
-     * Null when [climbers] don't fit ([maxClimbers]), a stripe gets no hand
-     * or no foot spot, or the field has fewer than [MIN_SPOTS_PER_LIMB] spots
-     * per hand or per foot on the wall.
+     * Null when [climbers] don't fit ([maxClimbers]), a colour gets no hand or no foot spot, or the field has fewer
+     * than [MIN_SPOTS_PER_LIMB] spots per hand or per foot on the wall.
      */
     fun layout(
         rows: WallRows,
         climbers: Int,
-        colours: Int,
+        colours: List<KnotColour>,
         metresPerUnit: Double,
         bigHolds: Set<Int> = emptySet(),
         spacing: KnotSpacing = KnotSpacing.CLOSE,
+        draw: KnotDraw? = null,
     ): KnotLayout? {
-        if (climbers !in PLAYERS || colours < 1 || climbers > maxClimbers(rows, metresPerUnit)) return null
+        if (climbers !in PLAYERS || colours.isEmpty() || climbers > maxClimbers(rows, metresPerUnit)) return null
         val holds = rows.holds
         val lowest = holds.minOf { it.y }
         fun heightM(hold: WallHold) = LOWEST_ROW_M + (hold.y - lowest) * metresPerUnit
+        fun xM(hold: WallHold) = hold.x * metresPerUnit
         val left = holds.minOf { it.x } * metresPerUnit
         val right = holds.maxOf { it.x } * metresPerUnit
-        val centre = (left + right) / 2
         // A field wider than the wall takes the whole wall; the outer holds sit half a grid inside its edges.
-        val half = minOf(fieldWidthM(climbers), right - left + EDGE_M) / 2
-        val periods = periods(2 * half, colours)
-        val stripes = colours * periods
-        val stripeWidth = 2 * half / stripes
-        val stripeOf = { hold: WallHold ->
-            ((hold.x * metresPerUnit - (centre - half)) / stripeWidth).toInt()
-                .takeIf { hold.x * metresPerUnit >= centre - half && hold.x * metresPerUnit <= centre + half }
-                ?.coerceAtMost(stripes - 1)
+        val width = minOf(fieldWidthM(climbers), right - left + EDGE_M)
+        val start = (left + right) / 2 - width / 2
+        val count = stripeCount(width, climbers, colours, spacing)
+        val pattern = pattern(colours, count)
+        val stripeWidth = width / count
+        val byStripe = holds.groupBy { hold ->
+            ((xM(hold) - start) / stripeWidth).toInt().takeIf { xM(hold) >= start && xM(hold) <= start + width }?.coerceAtMost(count - 1)
         }
-        val byStripe = holds.groupBy(stripeOf)
-        // Spacing counts across stripes too: neighbouring colours don't end up on adjacent holds.
+
+        /** Spot [index] of a colour's [hand] or foot spots, in [stripe], at [heightM] in a band [bandM] tall. */
+        class Target(val stripe: Int, val index: Int, val hand: Boolean, val heightM: Double, val bandM: Double)
+        fun targets(hand: Boolean): List<Target> {
+            val total = if (hand) handSpots(climbers) else footSpots(climbers)
+            val (from, to) = if (hand) HANDS_FROM_M to HANDS_TO_M else 0.0 to FEET_TO_M
+            return colours.indices.flatMap { colour ->
+                val own = pattern.indices.filter { pattern[it] == colour }
+                (0 until total).map { i -> Target(own[i % own.size], i, hand, from + (to - from) * (i + 0.5) / total, (to - from) / total) }
+            }.sortedWith(compareBy({ it.index }, { it.stripe }))
+        }
+        // The stripes take turns, so none takes the room its neighbours need; hands first, then feet.
+        val targets = targets(hand = true) + targets(hand = false)
+        val handZones = List(count) { stripe -> byStripe[stripe].orEmpty().filter { heightM(it) in HANDS_FROM_M..HANDS_TO_M } }
+        val footZones = List(count) { stripe -> byStripe[stripe].orEmpty().filter { heightM(it) <= FEET_TO_M } }
+        fun zone(target: Target) = (if (target.hand) handZones else footZones)[target.stripe]
+
         val taken = mutableListOf<WallHold>()
-        fun apart(hold: WallHold, distanceM: Double) = taken.all {
-            hypot((hold.x - it.x) * metresPerUnit, (hold.y - it.y) * metresPerUnit) >= distanceM - SPACING_SLACK_M
+        val takenIds = mutableSetOf<Int>()
+        fun apart(hold: WallHold) = taken.all {
+            hypot((hold.x - it.x) * metresPerUnit, (hold.y - it.y) * metresPerUnit) >= SPOT_SPACING_M - SPACING_SLACK_M
         }
 
-        /** Target [i] of [count] in stripe [index]: zigzag across the stripe, evenly up the zone. */
-        fun place(index: Int, i: Int, count: Int, from: Double, to: Double, firstLeft: Boolean, shift: Double, strictM: Double?): Int? {
-            val middle = centre - half + stripeWidth * (index + 0.5)
-            val targetX = middle + stripeWidth / 4 * if ((i % 2 == 0) == firstLeft) -1 else 1
-            val targetH = from + (to - from) * ((i + 0.5 + shift) / count).coerceIn(0.0, 1.0)
-            fun distance(hold: WallHold) = hypot(hold.x * metresPerUnit - targetX, heightM(hold) - targetH)
-            val free = byStripe[index].orEmpty().filter { heightM(it) in from..to && it !in taken }
-            val pool = if (strictM != null) free.filter { apart(it, strictM) }
-            else free.filter { apart(it, SPOT_SPACING_M) }.ifEmpty { free }
-            return pool.minWithOrNull(
-                compareBy<WallHold> { distance(it) - if (it.placementId in bigHolds) BIG_HOLD_BONUS_M else 0.0 }
+        /** The nearest free hold to the target's place: left or right in the stripe by turns, at its height. */
+        fun nearest(target: Target): WallHold? {
+            val x = start + stripeWidth * (target.stripe + if ((target.index + target.stripe) % 2 == 0) 0.25 else 0.75)
+            val free = zone(target).filter { it.placementId !in takenIds }
+            return free.filter(::apart).ifEmpty { free }.minWithOrNull(
+                compareBy<WallHold> { hypot(xM(it) - x, heightM(it) - target.heightM) - if (it.placementId in bigHolds) BIG_HOLD_BONUS_M else 0.0 }
                     .thenBy { it.placementId },
-            )?.also { taken += it }?.placementId
+            )
         }
 
-        val handCounts = List(stripes) { share(handSpots(climbers), periods, it % colours, it / colours) }
-        val footCounts = List(stripes) { share(footSpots(climbers), periods, it % colours, it / colours) }
-        fun close(): List<Pair<List<Int>, List<Int>>> = (0 until stripes).map { index ->
-            val hands = (0 until handCounts[index]).mapNotNull { place(index, it, handCounts[index], HANDS_FROM_M, HANDS_TO_M, true, 0.0, null) }
-            val feet = (0 until footCounts[index]).mapNotNull { place(index, it, footCounts[index], 0.0, FEET_TO_M, false, 0.0, null) }
-            hands to feet
+        // The hardest fifth of the rated hand holds in the field's reach stays dark.
+        val grades = draw?.handGrades.orEmpty()
+        val rated = holds.filter { it.placementId in grades && heightM(it) in HANDS_FROM_M..HANDS_TO_M && xM(it) in start..start + width }
+            .sortedByDescending { grades.getValue(it.placementId) }
+        val hardest = rated.take(ceil(rated.size * HARDEST_SHARE).toInt()).mapTo(mutableSetOf()) { it.placementId }
+        val usual = rated.map { grades.getValue(it.placementId) }.let { if (it.isEmpty()) 0.0 else it[it.size / 2] }
+
+        /** A free hold about at the target's height, drawn with [random]; each condition gives way when nothing meets it. */
+        fun drawn(target: Target, random: Random, avoid: Set<Int>): WallHold? {
+            val free = zone(target).filter { it.placementId !in takenIds }
+            val easy = free.filter { !target.hand || it.placementId !in hardest }
+            val good = easy.filter(::apart)
+            fun near(hold: WallHold) = abs(heightM(hold) - target.heightM) <= target.bandM / 2 + HEIGHT_SLACK_M
+            val pool = listOf(
+                good.filter { near(it) && it.placementId !in avoid },
+                good.filter { it.placementId !in avoid },
+                good.filter(::near),
+                good,
+                easy,
+                free,
+            ).firstOrNull { it.isNotEmpty() } ?: return null
+            // A big hold counts as several tickets.
+            val tickets = pool.flatMap { hold -> List(if (hold.placementId in bigHolds) BIG_HOLD_TICKETS else 1) { hold } }
+            return tickets[random.nextInt(tickets.size)]
         }
 
-        /**
-         * The stripes take their spots in turn, so none takes the room its neighbours need; neighbours sit half a step
-         * apart in height. [mirrored] zigzags neighbouring stripes the opposite way.
-         */
-        fun spaced(mirrored: Boolean): List<Pair<List<Int>, List<Int>>> {
+        fun build(choose: (Target) -> WallHold?): List<Pair<List<Int>, List<Int>>> {
             taken.clear()
-            val hands = List(stripes) { mutableListOf<Int>() }
-            val feet = List(stripes) { mutableListOf<Int>() }
-            fun shift(index: Int) = if (index % 2 == 0) -STRICT_SHIFT else STRICT_SHIFT
-            fun firstLeft(index: Int, hand: Boolean) = !mirrored || (index % 2 == 0) == hand
-            for (i in 0 until handCounts.max()) for (index in 0 until stripes) {
-                if (i >= handCounts[index]) continue
-                place(index, i, handCounts[index], HANDS_FROM_M, HANDS_TO_M, firstLeft(index, true), shift(index), spacing.handsM)
-                    ?.let { hands[index] += it }
-            }
-            for (i in 0 until footCounts.max()) for (index in 0 until stripes) {
-                if (i >= footCounts[index]) continue
-                place(index, i, footCounts[index], 0.0, FEET_TO_M, firstLeft(index, false), shift(index), spacing.feetM)
-                    ?.let { feet[index] += it }
+            takenIds.clear()
+            val hands = List(count) { mutableListOf<Int>() }
+            val feet = List(count) { mutableListOf<Int>() }
+            for (target in targets) {
+                val hold = choose(target) ?: continue
+                taken += hold
+                takenIds += hold.placementId
+                (if (target.hand) hands else feet)[target.stripe] += hold.placementId
             }
             return hands.zip(feet)
         }
 
         val limbs = 2 * climbers
-        fun playable(layout: List<Pair<List<Int>, List<Int>>>) =
-            layout.none { (hands, feet) -> hands.isEmpty() || feet.isEmpty() } &&
-                layout.sumOf { it.first.size } >= MIN_SPOTS_PER_LIMB * limbs &&
-                layout.sumOf { it.second.size } >= MIN_SPOTS_PER_LIMB * limbs
-        val candidates = if (spacing == KnotSpacing.CLOSE) listOf(close()) else listOf(spaced(mirrored = false), spaced(mirrored = true))
-        // Of the playable ones, the fullest; the first on a tie.
-        val best = candidates.filter(::playable).maxByOrNull { layout -> layout.sumOf { it.first.size + it.second.size } } ?: return null
-        return KnotLayout(climbers, best, periods)
+        fun playable(stripes: List<Pair<List<Int>, List<Int>>>) =
+            colours.indices.all { colour -> stripes.indices.any { pattern[it] == colour && stripes[it].first.isNotEmpty() } } &&
+                colours.indices.all { colour -> stripes.indices.any { pattern[it] == colour && stripes[it].second.isNotEmpty() } } &&
+                stripes.sumOf { it.first.size } >= MIN_SPOTS_PER_LIMB * limbs &&
+                stripes.sumOf { it.second.size } >= MIN_SPOTS_PER_LIMB * limbs
+
+        /** How far apart the easiest and hardest colour, and the easiest and hardest climber's part, are on average. */
+        fun unfairness(stripes: List<Pair<List<Int>, List<Int>>>): Double {
+            val spots = stripes.flatMapIndexed { i, (hands, _) -> hands.map { id -> Triple(pattern[i], rows.holdOf(id)!!, grades[id] ?: usual) } }
+            fun spread(groups: Collection<List<Double>>) = groups.filter { it.isNotEmpty() }.map { it.average() }.let { if (it.isEmpty()) 0.0 else it.max() - it.min() }
+            val byColour = spots.groupBy({ it.first }, { it.third }).values
+            val byPart = spots.groupBy({ ((xM(it.second) - start) / (width / climbers)).toInt().coerceIn(0, climbers - 1) }, { it.third }).values
+            return spread(byColour) + spread(byPart)
+        }
+
+        val chosen = if (draw == null) {
+            build(::nearest).takeIf(::playable)
+        } else {
+            val random = Random(draw.seed)
+            List(DRAWS) { build { drawn(it, random, draw.avoid) } }.filter(::playable).minByOrNull(::unfairness)
+        }
+        return chosen?.let { KnotLayout(climbers, it, pattern) }
     }
 
     /** At least this many spots per hand and per foot on the wall, so a call always has somewhere to go. */
     const val MIN_SPOTS_PER_LIMB = 1.5
 
-    /** Neighbouring stripes' targets sit this share of a step lower and higher. */
-    private const val STRICT_SHIFT = 0.25
+    /** Fields drawn for one game, of which the fairest lights. */
+    const val DRAWS = 24
+    /** The hardest share of the rated hand holds that never becomes a spot. */
+    const val HARDEST_SHARE = 0.2
 
     /** Room beyond the outer holds when a field takes the whole wall. */
     private const val EDGE_M = 0.2
     /** A big hold this much farther from its target still wins. */
     private const val BIG_HOLD_BONUS_M = 0.1
+    /** In a draw, a big hold is this many times as likely as another. */
+    private const val BIG_HOLD_TICKETS = 3
+    /** A drawn spot may sit this much above or below its share of the height. */
+    private const val HEIGHT_SLACK_M = 0.1
     /** Grid rounding: holds 29 cm apart on a 30 cm spacing still count as apart. */
     private const val SPACING_SLACK_M = 0.02
 
@@ -381,5 +458,32 @@ class KnotCaller(seed: Long, private val places: Int, private val colours: List<
         turn = place
         number++
         return KnotCall(number, climber, limb, colour)
+    }
+}
+
+/**
+ * Rates hand holds for a [KnotDraw]: the average grade of the climbs that use a hold as a hand hold (start, hand or
+ * finish), for holds in at least [minClimbs] of them. Feed it the board's graded climbs at its angle with [add].
+ */
+class KnotHandGrades(private val minClimbs: Int = MIN_CLIMBS) {
+    private val sums = HashMap<Int, Double>()
+    private val counts = HashMap<Int, Int>()
+
+    fun add(frames: String, grade: Double) {
+        // Frames that name mounting holes instead of placements say nothing about the holds.
+        if (frames.trimStart().startsWith('h')) return
+        BoardClimbParser.forEachHold(frames) { placement, role ->
+            if (HoldRole.roleClass(role) != HoldRole.FOOT) {
+                sums[placement] = (sums[placement] ?: 0.0) + grade
+                counts[placement] = (counts[placement] ?: 0) + 1
+            }
+        }
+    }
+
+    fun grades(): Map<Int, Double> = counts.filterValues { it >= minClimbs }.mapValues { (placement, count) -> sums.getValue(placement) / count }
+
+    companion object {
+        /** Fewer climbs than this say too little about a hold. */
+        const val MIN_CLIMBS = 20
     }
 }

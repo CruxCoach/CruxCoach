@@ -278,11 +278,17 @@ class WallGamesViewModelTest {
         angle = 40,
     )
 
-    private fun kilterViewModel(): WallGamesViewModel {
+    private fun kilterViewModel(handGrades: Map<Int, Double> = emptyMap()): WallGamesViewModel {
         connectedBrand.value = BoardBrand.KILTER
         every { ble.connectedBoard } returns mockk(relaxed = true) { every { apiLevel } returns 3 }
         coEvery { ble.sendRawLeds(any(), any(), any()) } returns true
-        return viewModel(loader = mockk(relaxed = true) { coEvery { load() } returns WallGameBoardLoad.Ready(kilter) })
+        return viewModel(
+            loader = mockk(relaxed = true) {
+                coEvery { load() } returns WallGameBoardLoad.Ready(kilter)
+                every { knotBigHolds(any()) } returns emptySet()
+                every { knotHandGrades(any()) } returns handGrades
+            },
+        )
     }
 
     @Test
@@ -348,10 +354,28 @@ class WallGamesViewModelTest {
         vm.setKnotSpacing(KnotSpacing.WIDE)
         val wide = vm.state.value.knot
         assertEquals(KnotSpacing.WIDE, wide.spacing)
-        assertTrue(wide.layout!!.stripes.sumOf { it.first.size + it.second.size } < close.layout!!.stripes.sumOf { it.first.size + it.second.size })
+        // The same spots, spread over fewer, wider stripes.
+        assertEquals(close.layout!!.spots.size, wide.layout!!.spots.size)
+        assertTrue(wide.layout!!.stripes.size <= close.layout!!.stripes.size)
         // The field that lights is the one of the chosen spacing.
         vm.start()
         assertEquals(wide.layout!!.stripes.flatMap { it.first + it.second }.toSet(), vm.state.value.knot.run.field!!.spots.keys)
+    }
+
+    @Test
+    fun knotWithACatalogueDrawsAFreshFieldEveryGameAwayFromTheLastOne() {
+        // Every hold rated, the easier the lower.
+        val vm = kilterViewModel(handGrades = kilter.rows.holds.associate { it.placementId to 10.0 + it.y / 10 })
+        vm.selectGame(WallGame.KNOT)
+        vm.setKnotPlayers(2)
+        val first = awaitState(vm) { it.knot.layout != null }.knot.layout!!
+        vm.start()
+        // What lights is what the preview showed.
+        assertEquals(first.spots, awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!.spots.keys)
+        val second = vm.state.value.knot.layout!!
+        assertTrue(first.spots != second.spots)
+        val again = (first.spots intersect second.spots).size
+        assertTrue("$again holds again", again <= first.spots.size / 4)
     }
 
     @Test
@@ -369,9 +393,9 @@ class WallGamesViewModelTest {
         val six = kilterVm.state.value.knot
         assertEquals(6, six.players)
         assertEquals(4, six.atWall)
-        // Four at the wall on a 12 ft wide field: the colours twice, 36 spots.
+        // Four at the wall on a 12 ft wide field: the colours again and again, 36 spots.
         assertEquals(4, six.layout!!.climbers)
-        assertEquals(2, six.layout!!.periods)
+        assertTrue(six.layout!!.stripes.size > 4)
         assertEquals(36, six.previewSpots()!!.size)
         kilterVm.setKnotPlayers(12)
         assertEquals(Knot.MAX_PLAYERS, kilterVm.state.value.knot.players)
