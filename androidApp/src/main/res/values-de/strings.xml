@@ -3507,10 +3507,6 @@
     <string name="knot_part_left">links</string>
     <string name="knot_part_middle">Mitte</string>
     <string name="knot_part_right">rechts</string>
-    <plurals name="knot_held">
-        <item quantity="one">%d Ansage gehalten</item>
-        <item quantity="other">%d Ansagen gehalten</item>
-    </plurals>
     <plurals name="knot_held_label">
         <item quantity="one">Ansage gehalten</item>
         <item quantity="other">Ansagen gehalten</item>
@@ -3534,9 +3530,13 @@
     <string name="knot_by_tap_on">Ohne Zeitlimit: Jemand unter der Wand tippt „Weiter“.</string>
     <string name="knot_fell">Abgefallen</string>
     <string name="knot_steep_action">Auf sehr leicht</string>
+    <plurals name="knot_held_short">
+        <item quantity="one">%d gehalten</item>
+        <item quantity="other">%d gehalten</item>
+    </plurals>
     <plurals name="knot_out_after">
-        <item quantity="one">raus nach %d Ansage</item>
-        <item quantity="other">raus nach %d Ansagen</item>
+        <item quantity="one">raus nach %d</item>
+        <item quantity="other">raus nach %d</item>
     </plurals>
     <string name="knot_left_hand">linke Hand</string>
     <string name="knot_right_hand">rechte Hand</string>

@@ -405,20 +405,32 @@ private fun KnotClimbers(knot: KnotState, actions: WallGamesActions) {
             val climber = run.climbers[index]
             val name = if (playing) shownName(knot, index) else climberName(LocalContext.current, knot.names, index, numbered = false)
             val status = if (climber.out) pluralStringResource(R.plurals.knot_out_after, climber.held, climber.held)
-            else pluralStringResource(R.plurals.knot_held, climber.held, climber.held)
+            else pluralStringResource(R.plurals.knot_held_short, climber.held, climber.held)
             val called = playing && run.call?.climber == index && !climber.out
+            // The name is what you tap: it keeps its room, the count is short; at the largest font they stack.
+            val compact = compactLayout()
             val row: @Composable () -> Unit = {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                val nameText: @Composable (Modifier) -> Unit = { modifier ->
                     Text(
                         name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = if (run.winner == index || called) FontWeight.Bold else FontWeight.Normal,
                         textDecoration = if (climber.out) TextDecoration.LineThrough else null,
-                        maxLines = 1,
+                        maxLines = if (compact) 2 else 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
+                        modifier = modifier,
                     )
-                    Text(status, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.End, modifier = Modifier.padding(start = 8.dp))
+                }
+                if (compact) {
+                    Column(Modifier.fillMaxWidth()) {
+                        nameText(Modifier)
+                        Text(status, style = MaterialTheme.typography.bodySmall)
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        nameText(Modifier.weight(1f))
+                        Text(status, style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
+                    }
                 }
             }
             if (playing) {

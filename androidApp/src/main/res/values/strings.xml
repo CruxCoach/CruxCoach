@@ -3508,10 +3508,6 @@
     <string name="knot_part_left">left</string>
     <string name="knot_part_middle">middle</string>
     <string name="knot_part_right">right</string>
-    <plurals name="knot_held">
-        <item quantity="one">%d call held</item>
-        <item quantity="other">%d calls held</item>
-    </plurals>
     <plurals name="knot_held_label">
         <item quantity="one">call held</item>
         <item quantity="other">calls held</item>
@@ -3535,9 +3531,13 @@
     <string name="knot_by_tap_on">No timer: someone below taps “Next call”.</string>
     <string name="knot_fell">Off the wall</string>
     <string name="knot_steep_action">Switch to very easy</string>
+    <plurals name="knot_held_short">
+        <item quantity="one">%d held</item>
+        <item quantity="other">%d held</item>
+    </plurals>
     <plurals name="knot_out_after">
-        <item quantity="one">out after %d call</item>
-        <item quantity="other">out after %d calls</item>
+        <item quantity="one">out after %d</item>
+        <item quantity="other">out after %d</item>
     </plurals>
     <string name="knot_left_hand">left hand</string>
     <string name="knot_right_hand">right hand</string>
