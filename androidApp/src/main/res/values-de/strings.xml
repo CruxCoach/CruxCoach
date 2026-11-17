@@ -2715,6 +2715,7 @@
     <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
     <string name="settings_relay_manual_start">Board für andere Apps freigeben</string>
     <string name="settings_relay_manual_start_desc">Andere lassen über dein Handy Boulder am Board leuchten – für Boards mit nur einer Verbindung. Läuft, solange ein Board verbunden ist.</string>
+    <string name="settings_relay_first_share_hint">Startet nach dem ersten Freigeben im Verbindungsfenster.</string>
     <string name="relay_status_waiting">Startet, sobald ein Board verbunden ist.</string>
     <string name="relay_disclosure_title">Für Board-Apps freigeben</string>
     <string name="relay_disclosure_text">Dein Handy heißt währenddessen über Bluetooth „CruxCoach…“ – auch Auto und Kopfhörer zeigen diesen Namen – und nimmt Boulder anderer Board-Apps an. Der zuletzt gesendete Boulder leuchtet. Danach heißt dein Handy wieder wie vorher.</string>

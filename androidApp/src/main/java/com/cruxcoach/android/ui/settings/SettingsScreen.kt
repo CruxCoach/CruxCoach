@@ -306,6 +306,7 @@ internal fun SettingsScreen(
                         onSharingChange = { viewModel.updateNearbyClimbSharing(it) },
                         relayManualStart = state.relayManualStart,
                         onRelayManualStartChange = { viewModel.updateRelayManualStart(it) },
+                        relayDisclosureSeen = state.relayDisclosureSeen,
                     )
                     // Phones that cannot advertise never share, so never get renamed.
                     if (state.climbSharing.advertisingSupported != false) {

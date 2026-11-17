@@ -25,6 +25,7 @@ internal fun ClimbSharingSection(
     onSharingChange: (Boolean) -> Unit,
     relayManualStart: Boolean = false,
     onRelayManualStartChange: (Boolean) -> Unit = {},
+    relayDisclosureSeen: Boolean = true,
 ) {
     Text(
         stringResource(R.string.settings_sharing_title),
@@ -116,5 +117,15 @@ internal fun ClimbSharingSection(
         onCheckedChange = { onRelayManualStartChange(!it) },
         modifier = Modifier.testTag("settings_relay_manual_start"),
     )
+    // Automatic sharing waits for the first share from the connection sheet, where the
+    // disclosure is shown; until then "on" here only says what happens after it.
+    if (!relayManualStart && !relayDisclosureSeen) {
+        Text(
+            stringResource(R.string.settings_relay_first_share_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("settings_relay_first_share_hint"),
+        )
+    }
 
 }

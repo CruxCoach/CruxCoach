@@ -2716,6 +2716,7 @@
     <string name="relay_advertised_as">Visible to others as \"%1$s\"</string>
     <string name="settings_relay_manual_start">Share the board with other apps</string>
     <string name="settings_relay_manual_start_desc">Others light climbs on the board through your phone — for boards with a single connection. Runs while a board is connected.</string>
+    <string name="settings_relay_first_share_hint">Starts after you share once from the connection sheet.</string>
     <string name="relay_status_waiting">Starts as soon as a board is connected.</string>
     <string name="relay_disclosure_title">Share with board apps</string>
     <string name="relay_disclosure_text">Your phone is called “CruxCoach…” over Bluetooth while sharing – your car and headphones show this name too – and accepts climbs from other board apps. The last climb sent lights up. Afterwards your phone gets its own name back.</string>
