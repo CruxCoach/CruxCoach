@@ -77,23 +77,27 @@ data class RecentClimb(val uuid: String, val name: String, val angle: Int)
 
 /** Knot's settings and its round. */
 data class KnotState(
-    val climbers: Int = 1,
+    /** Players in the game; more than [maxClimbers] wait in line. */
+    val players: Int = 1,
     /** Names as typed; an empty one shows as "Player n". */
-    val names: List<String> = List(Knot.MAX_CLIMBERS) { "" },
+    val names: List<String> = List(Knot.MAX_PLAYERS) { "" },
     /** The next call comes when someone below taps, without a timer. */
     val byTap: Boolean = false,
     val spacing: KnotSpacing = KnotSpacing.CLOSE,
-    /** The spacings that keep the game playable on this wall for [climbers] ([Knot.layout] not null). */
+    /** The spacings that keep the game playable on this wall for [atWall] climbers ([Knot.layout] not null). */
     val spacings: Set<KnotSpacing> = emptySet(),
     /** The colours the board lights for Knot; null when it can't name them. */
     val colours: List<KnotColour>? = null,
     /** Climbers this board fits at once; 0 without colours. */
     val maxClimbers: Int = 0,
-    /** Where the field's spots sit for [climbers]; null when the wall has no field for them. */
+    /** Where the field's spots sit for [atWall] climbers; null when the wall has no field for them. */
     val layout: KnotLayout? = null,
     val safetySeen: Boolean = true,
     val run: KnotRun = KnotRun(),
 ) {
+    /** Climbers at the wall at once: every player when they fit, else as many as fit. */
+    val atWall: Int get() = minOf(players, maxClimbers.coerceAtLeast(1))
+
     /** The board's angle when it is steep enough for the hint. */
     fun steepAngle(board: WallGameBoard?): Int? = board?.angle?.takeIf { it > Knot.STEEP_DEGREES }
 
@@ -184,6 +188,7 @@ class WallGamesViewModel @Inject constructor(
         onWall = ::showKnot,
         onCall = ::announce,
         onBeep = { if (mutableState.value.soundOn) sounds.play(it) },
+        onStepIn = ::announceStepIn,
     )
     /** What Knot last put on the wall, to put back after a reconnect. */
     private var knotWall: Map<Int, KnotColour> = emptyMap()
@@ -261,7 +266,7 @@ class WallGamesViewModel @Inject constructor(
                     unavailable = load.takeIf { board == null },
                     thiefDensity = density,
                     thiefRoute = board?.let { b -> HoldsThief.route(b.rows, density, thiefSeed) }.orEmpty(),
-                    knot = knotFor(board, it.knot.climbers, it.knot),
+                    knot = knotFor(board, it.knot.players, it.knot),
                 )
             }
             if (board != null && mutableState.value.game == WallGame.KNOT) prepareKnot()
@@ -392,23 +397,25 @@ class WallGamesViewModel @Inject constructor(
     // ── Knot ───────────────────────────────────────────────────────────
 
     /**
-     * Knot's colours, width and field for [climbers] at [spacing] on [board]. A spacing the wall can't keep playable
-     * for that many climbers is offered greyed out, and the field falls back to close.
+     * Knot's colours, width and field for [players] at [spacing] on [board]: as many as fit climb, the others wait in
+     * line. A spacing the wall can't keep playable for that many at the wall is offered greyed out, and the field
+     * falls back to close.
      */
-    private fun knotFor(board: WallGameBoard?, climbers: Int, knot: KnotState, spacing: KnotSpacing = knot.spacing): KnotState {
+    private fun knotFor(board: WallGameBoard?, players: Int, knot: KnotState, spacing: KnotSpacing = knot.spacing): KnotState {
         val colours = board?.let { Knot.colours(it.brand) }
         val unit = board?.let { Knot.metresPerUnit(it.brand) }
         if (board == null || colours == null || unit == null) {
             return knot.copy(colours = null, maxClimbers = 0, layout = null, spacings = emptySet())
         }
         val max = Knot.maxClimbers(board.rows, unit)
-        val count = climbers.coerceIn(1, max.coerceAtLeast(1))
-        val layouts = KnotSpacing.entries.associateWith { Knot.layout(board.rows, count, colours.size, unit, knotBigHolds.orEmpty(), it) }
+        val count = players.coerceIn(Knot.PLAYERS)
+        val atWall = minOf(count, max.coerceAtLeast(1))
+        val layouts = KnotSpacing.entries.associateWith { Knot.layout(board.rows, atWall, colours.size, unit, knotBigHolds.orEmpty(), it) }
         val chosen = spacing.takeIf { layouts[it] != null } ?: KnotSpacing.CLOSE
         return knot.copy(
             colours = colours,
             maxClimbers = max,
-            climbers = count,
+            players = count,
             spacing = chosen,
             spacings = layouts.filterValues { it != null }.keys,
             layout = layouts[chosen],
@@ -417,7 +424,7 @@ class WallGamesViewModel @Inject constructor(
 
     override fun setKnotSpacing(spacing: KnotSpacing) {
         if (mutableState.value.running) return
-        mutableState.update { it.copy(knot = knotFor(it.board, it.knot.climbers, it.knot, spacing)) }
+        mutableState.update { it.copy(knot = knotFor(it.board, it.knot.players, it.knot, spacing)) }
     }
 
     /** Looks once for the board's big holds. */
@@ -429,17 +436,17 @@ class WallGamesViewModel @Inject constructor(
             val big = withContext(Dispatchers.IO) { runCatching { loader.knotBigHolds(board) }.getOrDefault(emptySet()) }
             if (big.isEmpty()) return@launch
             knotBigHolds = big
-            mutableState.update { it.copy(knot = knotFor(it.board, it.knot.climbers, it.knot)) }
+            mutableState.update { it.copy(knot = knotFor(it.board, it.knot.players, it.knot)) }
         }
     }
 
-    override fun setKnotClimbers(climbers: Int) {
+    override fun setKnotPlayers(players: Int) {
         if (mutableState.value.running) return
-        mutableState.update { it.copy(knot = knotFor(it.board, climbers, it.knot)) }
+        mutableState.update { it.copy(knot = knotFor(it.board, players, it.knot)) }
     }
 
     override fun setKnotName(climber: Int, name: String) {
-        if (climber !in 0 until Knot.MAX_CLIMBERS) return
+        if (climber !in 0 until Knot.MAX_PLAYERS) return
         mutableState.update { s ->
             s.copy(knot = s.knot.copy(names = s.knot.names.mapIndexed { i, n -> if (i == climber) name.take(NAME_LIMIT) else n }))
         }
@@ -473,14 +480,21 @@ class WallGamesViewModel @Inject constructor(
         val layout = s.knot.layout ?: return
         val colours = s.knot.colours ?: return
         sender.forget()
-        knotRunner.light(layout.field(Knot.colourOrder(colours, knotSeeds.nextLong())), s.knot.climbers)
+        knotRunner.light(layout.field(Knot.colourOrder(colours, knotSeeds.nextLong(), layout.periods)), s.knot.players)
     }
 
     /** A short beep, so the climbers listen, then the call. The sound switch silences both. */
     private fun announce(call: KnotCall) {
         if (!mutableState.value.soundOn) return
-        sounds.play(GameBeep.COUNTDOWN)
-        voice.say(call, solo = mutableState.value.knot.run.climbers.size <= 1, afterMs = CALL_AFTER_BEEP_MS)
+        voice.say(call, solo = mutableState.value.knot.run.climbers.size <= 1, afterMs = CALL_AFTER_BEEP_MS) {
+            sounds.play(GameBeep.COUNTDOWN)
+        }
+    }
+
+    /** The next in line: a beep, then "Player 5, to the wall", after any call still being spoken. */
+    private fun announceStepIn(player: Int) {
+        if (!mutableState.value.soundOn) return
+        voice.sayToWall(player, afterMs = CALL_AFTER_BEEP_MS) { sounds.play(GameBeep.COUNTDOWN) }
     }
 
     // ── Timed games ────────────────────────────────────────────────────

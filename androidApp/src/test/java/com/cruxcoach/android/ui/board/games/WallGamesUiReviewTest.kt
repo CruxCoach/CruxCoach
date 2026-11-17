@@ -336,29 +336,33 @@ class WallGamesUiReviewTest {
 
     private val kilter: WallGameBoard by lazy { loadKilter(sizeId = 10).copy(angle = 40) }
 
-    /** Knot set up on the Kilter 12x12 for [climbers], as the view model leaves it. */
-    private fun knotIdle(climbers: Int, safetySeen: Boolean = true, byTap: Boolean = false): WallGamesState {
+    /** Knot set up on the Kilter 12x12 for [players], as the view model leaves it. */
+    private fun knotIdle(players: Int, safetySeen: Boolean = true, byTap: Boolean = false): WallGamesState {
         val colours = Knot.colours(BoardBrand.KILTER)!!
+        val max = Knot.maxClimbers(kilter.rows, 0.0254)
         return WallGamesState(
             loading = false,
             board = kilter,
             game = WallGame.KNOT,
             knot = KnotState(
-                climbers = climbers,
-                names = listOf("Anna", "Benedikt", "").take(Knot.MAX_CLIMBERS),
+                players = players,
+                names = listOf("Anna", "Benedikt", "", "Dilara", "Emil", "Fritzi", "", "Hannes"),
                 byTap = byTap,
                 colours = colours,
-                maxClimbers = Knot.maxClimbers(kilter.rows, 0.0254),
-                layout = Knot.layout(kilter.rows, climbers, colours.size, 0.0254),
+                maxClimbers = max,
+                layout = Knot.layout(kilter.rows, minOf(players, max), colours.size, 0.0254),
                 spacings = KnotSpacing.entries.toSet(),
                 safetySeen = safetySeen,
             ),
         )
     }
 
+    /** Players on parts 0, 1 …, in the order given. */
+    private fun onParts(vararg climbers: KnotClimber): List<KnotClimber> = climbers.mapIndexed { i, c -> c.copy(part = i) }
+
     private fun knotRun(climbers: Int, byTap: Boolean = false, run: (KnotField) -> KnotRun): WallGamesState {
         val idle = knotIdle(climbers, byTap = byTap)
-        val field = idle.knot.layout!!.field(Knot.colourOrder(idle.knot.colours!!, 3))
+        val field = idle.knot.layout!!.field(Knot.colourOrder(idle.knot.colours!!, 3, idle.knot.layout!!.periods))
         return idle.copy(knot = idle.knot.copy(run = run(field)))
     }
 
@@ -387,12 +391,12 @@ class WallGamesUiReviewTest {
 
     @Test
     fun knotPositions() = shoot("knot-positions") {
-        Screen(knotRun(3) { KnotRun(KnotPhase.POSITIONS, field = it, climbers = List(3) { KnotClimber() }) })
+        Screen(knotRun(3) { KnotRun(KnotPhase.POSITIONS, field = it, climbers = List(3) { i -> KnotClimber(part = i) }) })
     }
 
     @Test
     fun knotCountdown() = shoot("knot-countdown") {
-        Screen(knotRun(2) { KnotRun(KnotPhase.COUNTDOWN, field = it, countdown = 4, climbers = List(2) { KnotClimber() }, callMs = 6_000) })
+        Screen(knotRun(2) { KnotRun(KnotPhase.COUNTDOWN, field = it, countdown = 4, climbers = List(2) { i -> KnotClimber(part = i) }, callMs = 6_000) })
     }
 
     @Test
@@ -402,7 +406,7 @@ class WallGamesUiReviewTest {
                 KnotRun(
                     KnotPhase.RUNNING, field = it,
                     // Benedikt came off during this call: his row offers the undo.
-                    climbers = listOf(KnotClimber(held = 6), KnotClimber(out = true, held = 4, outAtCall = 17), KnotClimber(held = 5)),
+                    climbers = onParts(KnotClimber(held = 6), KnotClimber(out = true, held = 4, outAtCall = 17), KnotClimber(held = 5)),
                     call = KnotCall(17, climber = 2, limb = KnotLimb.RIGHT_FOOT, colour = KnotColour.MAGENTA),
                     callMs = 6_000, callLeftMs = 3_900,
                 )
@@ -415,7 +419,7 @@ class WallGamesUiReviewTest {
         Screen(
             knotRun(2, byTap = true) {
                 KnotRun(
-                    KnotPhase.RUNNING, field = it, climbers = listOf(KnotClimber(held = 3), KnotClimber(held = 2)),
+                    KnotPhase.RUNNING, field = it, climbers = onParts(KnotClimber(held = 3), KnotClimber(held = 2)),
                     call = KnotCall(6, climber = 1, limb = KnotLimb.LEFT_HAND, colour = KnotColour.YELLOW),
                 )
             },
@@ -427,7 +431,7 @@ class WallGamesUiReviewTest {
         Screen(
             knotRun(1) {
                 KnotRun(
-                    KnotPhase.RUNNING, field = it, climbers = listOf(KnotClimber(held = 11)),
+                    KnotPhase.RUNNING, field = it, climbers = onParts(KnotClimber(held = 11)),
                     call = KnotCall(12, climber = 0, limb = KnotLimb.LEFT_HAND, colour = KnotColour.WHITE),
                     callMs = 4_000, callLeftMs = 1_200,
                 )
@@ -440,7 +444,7 @@ class WallGamesUiReviewTest {
         Screen(
             knotRun(2) {
                 KnotRun(
-                    KnotPhase.FINISHED, field = it, climbers = listOf(KnotClimber(held = 14), KnotClimber(out = true, held = 13)),
+                    KnotPhase.FINISHED, field = it, climbers = onParts(KnotClimber(held = 14), KnotClimber(out = true, held = 13)),
                     call = KnotCall(28, climber = 1, limb = KnotLimb.LEFT_FOOT, colour = KnotColour.YELLOW), winner = 0,
                 )
             },
@@ -449,12 +453,56 @@ class WallGamesUiReviewTest {
 
     @Test
     fun knotSoloResult() = shoot("knot-solo-result") {
-        Screen(knotRun(1) { KnotRun(KnotPhase.FINISHED, field = it, climbers = listOf(KnotClimber(out = true, held = 23))) })
+        Screen(knotRun(1) { KnotRun(KnotPhase.FINISHED, field = it, climbers = onParts(KnotClimber(out = true, held = 23))) })
     }
 
     @Test
     fun knotStopped() = shoot("knot-stopped") {
-        Screen(knotRun(3) { KnotRun(KnotPhase.FINISHED, field = it, climbers = List(3) { i -> KnotClimber(held = 3 + i) }) })
+        Screen(knotRun(3) { KnotRun(KnotPhase.FINISHED, field = it, climbers = List(3) { i -> KnotClimber(held = 3 + i, part = i) }, stopped = true) })
+    }
+
+    // The line: more players than the wall takes.
+
+    @Test
+    fun knotLineSetup() = shoot("knot-line-setup") { Screen(knotIdle(6)) }
+
+    @Test
+    fun knotLinePositions() = shoot("knot-line-positions") {
+        Screen(knotRun(6) { KnotRun(KnotPhase.POSITIONS, field = it, climbers = List(6) { i -> KnotClimber(part = i.takeIf { i < 4 }) }) })
+    }
+
+    @Test
+    fun knotLineStepIn() = shoot("knot-line-step-in") {
+        Screen(
+            knotRun(6) {
+                KnotRun(
+                    KnotPhase.RUNNING, field = it,
+                    // Benedikt came off the second part during this call; Emil, next in line, is on his way there.
+                    climbers = listOf(
+                        KnotClimber(held = 5, part = 0),
+                        KnotClimber(out = true, held = 3, outAtCall = 21, part = 1),
+                        KnotClimber(held = 6, part = 2),
+                        KnotClimber(held = 4, part = 3),
+                        KnotClimber(part = 1),
+                        KnotClimber(),
+                    ),
+                    call = KnotCall(21, climber = 3, limb = KnotLimb.LEFT_FOOT, colour = KnotColour.BLUE),
+                    callMs = 6_000, callLeftMs = 4_200, stepIn = 4,
+                )
+            },
+        )
+    }
+
+    @Test
+    fun knotLineResult() = shoot("knot-line-result") {
+        Screen(
+            knotRun(6) {
+                KnotRun(
+                    KnotPhase.FINISHED, field = it,
+                    climbers = listOf(9, 3, 12, 7, 12, 1).mapIndexed { i, held -> KnotClimber(out = true, held = held, part = i % 4) },
+                )
+            },
+        )
     }
 
     // -------------------------------------------------------------- loading

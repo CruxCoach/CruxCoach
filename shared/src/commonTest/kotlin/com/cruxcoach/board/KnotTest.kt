@@ -33,6 +33,7 @@ class KnotTest {
     private val kilter7x10 = Board("Kilter 7x10", KnotBoardFixtures.kilter7x10, INCH_M, 4)
     private val moonBoard = Board("MoonBoard", KnotBoardFixtures.moonBoard, MOON_CELL_M, 3)
     private val moonBoardMini = Board("Mini MoonBoard", KnotBoardFixtures.moonBoardMini, MOON_CELL_M, 3)
+    private val kilter16x12 = Board("Kilter 16x12", KnotBoardFixtures.kilter16x12, INCH_M, 4)
 
     private fun layout(board: Board, climbers: Int): KnotLayout? =
         Knot.layout(board.rows, climbers, board.colours, board.metresPerUnit)
@@ -55,8 +56,10 @@ class KnotTest {
 
     @Test
     fun fieldAndSpotsGrowWithTheClimbers() {
-        assertEquals(listOf(1.2, 2.0, 2.8), Knot.CLIMBERS.map { (Knot.fieldWidthM(it) * 10).toInt() / 10.0 })
-        assertEquals(listOf(2 to 1, 3 to 2, 4 to 3), Knot.CLIMBERS.map { Knot.handSpots(it) to Knot.footSpots(it) })
+        assertEquals(listOf(1.2, 2.0, 2.8, 3.6, 4.4), (1..5).map { kotlin.math.round(Knot.fieldWidthM(it) * 10) / 10.0 })
+        assertEquals(listOf(2 to 1, 3 to 2, 4 to 3, 5 to 4, 6 to 5), (1..5).map { Knot.handSpots(it) to Knot.footSpots(it) })
+        // The four colours come once up to three climbers, twice for four and three times for five.
+        assertEquals(listOf(1, 1, 1, 2, 3), (1..5).map { Knot.periods(Knot.fieldWidthM(it), 4) })
     }
 
     @Test
@@ -85,17 +88,21 @@ class KnotTest {
     // ── Width ─────────────────────────────────────────────────────────
 
     @Test
-    fun threeClimbersOnlyOnWideBoards() {
-        assertEquals(3, Knot.maxClimbers(kilter12x12.rows, INCH_M))
+    fun climbersAtTheWallFollowTheSpanOfTheHolds() {
+        // 0.8 m each: 4 on a 12 ft wide board, 5 on 16 ft, 2 on a 7x10 and a MoonBoard.
+        assertEquals(4, Knot.maxClimbers(kilter12x12.rows, INCH_M))
+        assertEquals(5, Knot.maxClimbers(kilter16x12.rows, INCH_M))
         assertEquals(2, Knot.maxClimbers(kilter7x10.rows, INCH_M))
         assertEquals(2, Knot.maxClimbers(moonBoard.rows, MOON_CELL_M))
         assertEquals(2, Knot.maxClimbers(moonBoardMini.rows, MOON_CELL_M))
         assertEquals(0, Knot.maxClimbers(WallRows.of(emptyList()), INCH_M))
-        // A narrow strip of wall still takes one.
+        // A narrow strip of wall still takes one, and no wall more than the players of a game.
         assertEquals(1, Knot.maxClimbers(WallRows.of(listOf(WallHold(1, 0.0, 0.0), WallHold(2, 4.0, 40.0))), INCH_M))
+        assertEquals(Knot.MAX_PLAYERS, Knot.maxClimbers(WallRows.of(listOf(WallHold(1, 0.0, 0.0), WallHold(2, 400.0, 40.0))), INCH_M))
         assertNull(layout(kilter7x10, 3))
         assertNull(layout(moonBoard, 3))
-        assertNull(Knot.layout(kilter12x12.rows, 4, 4, INCH_M))
+        assertNull(layout(kilter12x12, 5))
+        assertNull(layout(kilter16x12, 6))
         assertNull(Knot.layout(kilter12x12.rows, 0, 4, INCH_M))
     }
 
@@ -108,15 +115,22 @@ class KnotTest {
         moonBoardMini to 1, moonBoardMini to 2,
     )
 
+    /** Four and five at the wall: the colours come two or three times. */
+    private val wide = listOf(kilter12x12 to 4, kilter16x12 to 4, kilter16x12 to 5)
+
     @Test
-    fun everyStripeGetsItsFullSpotsAndNoBoardLightsMoreThanTheTable() {
-        val table = mapOf(1 to 12, 2 to 20, 3 to 28)
-        for ((board, climbers) in playable) {
+    fun everyColourGetsItsFullSpotsAndNoBoardLightsMoreThanTheTable() {
+        // The table of #154, and the same 8 per climber on the wider fields.
+        val table = mapOf(1 to 12, 2 to 20, 3 to 28, 4 to 36, 5 to 44)
+        for ((board, climbers) in playable + wide) {
             val layout = assertNotNull(layout(board, climbers), "${board.name}, $climbers")
-            assertEquals(board.colours, layout.stripes.size)
-            layout.stripes.forEach { (hands, feet) ->
-                assertEquals(Knot.handSpots(climbers), hands.size, "${board.name}, $climbers: hands")
-                assertEquals(Knot.footSpots(climbers), feet.size, "${board.name}, $climbers: feet")
+            assertEquals(board.colours * layout.periods, layout.stripes.size)
+            layout.stripes.withIndex().groupBy { it.index % board.colours }.values.forEach { colour ->
+                assertEquals(Knot.handSpots(climbers), colour.sumOf { it.value.first.size }, "${board.name}, $climbers: hands")
+                assertEquals(Knot.footSpots(climbers), colour.sumOf { it.value.second.size }, "${board.name}, $climbers: feet")
+                // Shared out evenly: no stripe of a colour has more than one spot over another.
+                assertTrue(colour.maxOf { it.value.first.size } - colour.minOf { it.value.first.size } <= 1)
+                assertTrue(colour.maxOf { it.value.second.size } - colour.minOf { it.value.second.size } <= 1)
             }
             val all = layout.stripes.flatMap { it.first + it.second }
             assertEquals(all.size, all.toSet().size, "${board.name}, $climbers: a hold used twice")
@@ -127,7 +141,7 @@ class KnotTest {
 
     @Test
     fun handsSitHighFeetLowAndEverythingStaysUnderTwoMetresTwenty() {
-        for ((board, climbers) in playable) {
+        for ((board, climbers) in playable + wide) {
             val layout = layout(board, climbers)!!
             layout.stripes.forEach { (hands, feet) ->
                 hands.forEach {
@@ -144,18 +158,19 @@ class KnotTest {
 
     @Test
     fun fieldWidthGrowsWithClimbersAndStaysCentred() {
-        for (board in listOf(kilter12x12, kilter7x10, moonBoard)) {
+        for (board in listOf(kilter12x12, kilter7x10, moonBoard, kilter16x12)) {
             val left = board.rows.holds.minOf { it.x } * board.metresPerUnit
             val right = board.rows.holds.maxOf { it.x } * board.metresPerUnit
             val centre = (left + right) / 2
             var previous = 0.0
             for (climbers in 1..Knot.maxClimbers(board.rows, board.metresPerUnit)) {
-                val xs = layout(board, climbers)!!.stripes.flatMap { it.first + it.second }.map { xM(board, it) }
+                val layout = layout(board, climbers)!!
+                val xs = layout.stripes.flatMap { it.first + it.second }.map { xM(board, it) }
                 val width = xs.max() - xs.min()
                 assertTrue(width <= Knot.fieldWidthM(climbers) + 0.01, "${board.name}, $climbers: $width m wide")
                 assertTrue(width > previous, "${board.name}, $climbers: not wider than for ${climbers - 1}")
                 // Centred within one stripe.
-                val stripe = Knot.fieldWidthM(climbers) / board.colours
+                val stripe = Knot.fieldWidthM(climbers) / layout.stripes.size
                 assertTrue(kotlin.math.abs((xs.max() + xs.min()) / 2 - centre) < stripe, "${board.name}, $climbers: off centre")
                 previous = width
             }
@@ -169,7 +184,7 @@ class KnotTest {
 
     @Test
     fun stripesRunLeftToRightAndSpotsKeepTheirDistance() {
-        for ((board, climbers) in playable) {
+        for ((board, climbers) in playable + wide) {
             val layout = layout(board, climbers)!!
             val centres = layout.stripes.map { (hands, feet) -> (hands + feet).map { xM(board, it) }.average() }
             assertEquals(centres.sorted(), centres, "${board.name}, $climbers: stripes out of order")
@@ -197,7 +212,7 @@ class KnotTest {
     fun aWallWithoutRoomForHandsHasNoField() {
         // Two low rows only: feet, but nowhere for the hands.
         val low = WallRows.of((0 until 40).map { WallHold(it, (it % 20) * 8.0, (it / 20) * 8.0) })
-        assertEquals(3, Knot.maxClimbers(low, INCH_M))
+        assertEquals(4, Knot.maxClimbers(low, INCH_M))
         assertNull(Knot.layout(low, 1, 4, INCH_M))
         val tall = WallRows.of(low.holds + (100 until 200).map { WallHold(it, (it % 20) * 8.0, 16.0 + ((it - 100) / 20) * 16.0) })
         assertNotNull(Knot.layout(tall, 1, 4, INCH_M))
@@ -230,6 +245,52 @@ class KnotTest {
         assertEquals(listOf(0..1, 1..2, 2..3), Knot.startStripes(three))
         val moonTwo = layout(moonBoard, 2)!!.field(moon)
         assertEquals(listOf(0..1, 1..2), Knot.startStripes(moonTwo))
+        // Four on eight stripes: two each; five on twelve share a stripe with a neighbour.
+        val four = layout(kilter12x12, 4)!!.field(aurora)
+        assertEquals(listOf(0..1, 2..3, 4..5, 6..7), Knot.startStripes(four))
+        val five = layout(kilter16x12, 5)!!.field(aurora)
+        assertEquals(listOf(0..2, 2..4, 4..7, 7..9, 9..11), Knot.startStripes(five))
+    }
+
+    @Test
+    fun wideFieldsRepeatTheColoursSoEveryClimberHasEachWithinAboutAMetre() {
+        for ((board, climbers) in wide) {
+            val name = "${board.name}, $climbers"
+            val layout = layout(board, climbers)!!
+            assertEquals(if (climbers == 4) 2 else 3, layout.periods, name)
+            val order = Knot.colourOrder(aurora, 11, layout.periods)
+            val field = layout.field(order)
+            // The same order again and again from the left; a call names each colour once.
+            assertEquals(List(layout.periods) { order }.flatten(), field.stripes.map { it.colour }, name)
+            assertEquals(order, field.colours, name)
+            // From the middle of each climber's part, every colour has a hand and a foot spot within about a metre.
+            val xs = field.spots.keys.map { xM(board, it) }
+            val partWidth = (xs.max() - xs.min()) / climbers
+            var farthest = 0.0
+            for (part in 0 until climbers) {
+                val middle = xs.min() + partWidth * (part + 0.5)
+                for (colour in order) {
+                    val stripes = field.stripes.filter { it.colour == colour }
+                    val hand = stripes.flatMap { it.hands }.minOf { kotlin.math.abs(xM(board, it) - middle) }
+                    val foot = stripes.flatMap { it.feet }.minOf { kotlin.math.abs(xM(board, it) - middle) }
+                    farthest = maxOf(farthest, hand, foot)
+                    assertTrue(hand <= 1.05 && foot <= 1.05, "$name, part $part, $colour: hand $hand m, foot $foot m")
+                }
+            }
+            println("Knot $name: every colour within ${(farthest * 100).toInt()} cm")
+        }
+    }
+
+    @Test
+    fun repeatedColoursKeepRedAwayFromGreenWhereTheSetsMeet() {
+        val four = listOf(KnotColour.RED, KnotColour.BLUE, KnotColour.GREEN, KnotColour.YELLOW)
+        val apart = setOf(KnotColour.RED, KnotColour.GREEN)
+        (0L until 100L).map { Knot.colourOrder(four, it, periods = 2) }.forEach { order ->
+            val sides = (order + order).zipWithNext()
+            assertTrue(sides.none { (a, b) -> setOf(a, b) == apart }, "$order")
+        }
+        // One set: only its own neighbours count, as before.
+        assertEquals(Knot.colourOrder(aurora, 7), Knot.colourOrder(aurora, 7, periods = 1))
     }
 
     // ── Spacing ───────────────────────────────────────────────────────
@@ -288,6 +349,29 @@ class KnotTest {
     }
 
     @Test
+    fun wideFieldsKeepTheSpacingWhereTheyOfferIt() {
+        for ((board, climbers) in wide) {
+            var previous = Int.MAX_VALUE
+            for (spacing in KnotSpacing.entries) {
+                val name = "${board.name}, $climbers, $spacing"
+                // Close always fits; a wider spacing may not keep 1.5 spots per hand and foot on the narrower stripes.
+                val layout = layout(board, climbers, spacing) ?: continue.also { assertNotEquals(KnotSpacing.CLOSE, spacing, name) }
+                val hands = layout.stripes.flatMap { it.first }
+                val feet = layout.stripes.flatMap { it.second }
+                println("Knot $name: ${hands.size} + ${feet.size} = ${hands.size + feet.size} lit")
+                if (spacing != KnotSpacing.CLOSE) {
+                    hands.forEachIndexed { i, a -> hands.drop(i + 1).forEach { b -> assertTrue(apartM(board, a, b) >= spacing.handsM - 0.03, "$name: hands") } }
+                    feet.forEach { a -> (hands + feet).filter { it != a }.forEach { b -> assertTrue(apartM(board, a, b) >= spacing.feetM - 0.03, "$name: feet") } }
+                }
+                assertTrue(hands.size >= 3 * climbers && feet.size >= 3 * climbers, "$name: ${hands.size} + ${feet.size}")
+                layout.stripes.forEach { (h, f) -> assertTrue(h.isNotEmpty() && f.isNotEmpty(), "$name: empty stripe") }
+                assertTrue(hands.size + feet.size <= previous, "$name: more spots than a closer spacing")
+                previous = hands.size + feet.size
+            }
+        }
+    }
+
+    @Test
     fun aSpacingThatLeavesTooFewSpotsIsRefused() {
         // Hands all over, but feet only along one low row 20 cm apart: close fits a foot spot per colour, wide not.
         val holds = (0 until 18).flatMap { col -> (5 until 12).map { row -> WallHold(row * 100 + col, col * 8.0, row * 8.0) } } +
@@ -327,7 +411,7 @@ class KnotTest {
 
     @Test
     fun callsGoRoundTheClimbersInAFixedOrder() {
-        val caller = KnotCaller(seed = 5, climbers = 3, colours = aurora)
+        val caller = KnotCaller(seed = 5, places = 3, colours = aurora)
         val all = setOf(0, 1, 2)
         assertEquals(listOf(0, 1, 2, 0, 1, 2), (1..6).map { caller.next(all)!!.climber })
         // Climber 1 is out: the order skips them and keeps going round.
@@ -337,9 +421,20 @@ class KnotTest {
     }
 
     @Test
+    fun callsFollowThePartsWhenTheNextInLineStepsIn() {
+        val caller = KnotCaller(seed = 5, places = 2, colours = aurora)
+        assertEquals(listOf(0, 1, 0), (1..3).map { caller.next(mapOf(0 to 0, 1 to 1))!!.climber })
+        // Climber 0 came off the left part and climber 2 took it: the order goes on with the right part, then 2.
+        assertEquals(listOf(1, 2, 1), (1..3).map { caller.next(mapOf(0 to 2, 1 to 1))!!.climber })
+        // Until climber 3 is in position on the right, the calls stay with 2.
+        assertEquals(listOf(2, 2), (1..2).map { caller.next(mapOf(0 to 2))!!.climber })
+        assertEquals(3, caller.next(mapOf(0 to 2, 1 to 3))!!.climber)
+    }
+
+    @Test
     fun aClimberNeverGetsTheSameLimbAndColourTwiceInARow() {
         for (seed in 0L until 50L) {
-            for (climbers in Knot.CLIMBERS) {
+            for (climbers in Knot.PLAYERS) {
                 val caller = KnotCaller(seed, climbers, moon)
                 val calls = (1..300).map { caller.next((0 until climbers).toSet())!! }
                 calls.groupBy { it.climber }.values.forEach { own ->

@@ -108,7 +108,7 @@ interface WallGamesActions {
     fun start()
     fun stop()
     fun reset()
-    fun setKnotClimbers(climbers: Int) {}
+    fun setKnotPlayers(players: Int) {}
     fun setKnotName(climber: Int, name: String) {}
     fun setKnotByTap(byTap: Boolean) {}
     fun setKnotSpacing(spacing: KnotSpacing) {}

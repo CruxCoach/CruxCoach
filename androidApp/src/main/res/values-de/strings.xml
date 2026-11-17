@@ -3485,18 +3485,21 @@
     <string name="wall_games_sound_turn_on">Countdown-Ton einschalten</string>
     <!-- Knoten (#154) -->
     <string name="wall_games_knot">Knoten</string>
-    <string name="wall_games_knot_desc">Unten an der Wand leuchtet ein Feld aus Farbstreifen. Nach einem Piepton ruft das Handy einen Spieler, eine Hand oder einen Fuß und eine Farbe auf, und diese Griffe blinken: Setz sie auf einen freien Griff dieser Farbe. Pro Griff eine Hand oder ein Fuß; ist keiner dieser Farbe frei, bleib, wo du bist.\n\nWer abfällt, den Boden berührt, einen dunklen Griff nimmt oder nicht rechtzeitig da ist, ist raus und tippt auf seinen Namen. Wer zuletzt an der Wand ist, gewinnt; allein zählst du die Ansagen, die du hältst.\n\nMit „Nächste Ansage per Tipp“ ruft jemand unter der Wand die nächste Ansage auf, wenn alle bereit sind, ohne Zeitlimit.</string>
-    <string name="knot_climbers">Spieler an der Wand</string>
-    <plurals name="knot_board_fits">
-        <item quantity="one">An dieses Board passt eine Person auf einmal.</item>
-        <item quantity="other">An dieses Board passen %d Personen auf einmal.</item>
+    <string name="wall_games_knot_desc">Unten an der Wand leuchtet ein Feld aus Farbstreifen. Nach einem Piepton ruft das Handy einen Spieler, eine Hand oder einen Fuß und eine Farbe auf, und diese Griffe blinken: Setz sie auf einen freien Griff dieser Farbe. Pro Griff eine Hand oder ein Fuß; ist keiner dieser Farbe frei, bleib, wo du bist.\n\nWer abfällt, den Boden berührt, einen dunklen Griff nimmt oder nicht rechtzeitig da ist, ist raus und tippt auf seinen Namen. Wer zuletzt an der Wand ist, gewinnt; allein zählst du die Ansagen, die du hältst.\n\nSind mehr Spieler da, als an die Wand passen, warten die anderen in einer Reihe: Wer abfällt, macht Platz für den Nächsten, und wer die meisten Ansagen hält, gewinnt.\n\nMit „Nächste Ansage per Tipp“ ruft jemand unter der Wand die nächste Ansage auf, wenn alle bereit sind, ohne Zeitlimit.</string>
+    <string name="knot_climbers">Spieler</string>
+    <plurals name="knot_line">
+        <item quantity="one">Eine Person an der Wand, die anderen warten in der Reihe.</item>
+        <item quantity="other">%d gleichzeitig an der Wand, die anderen warten in der Reihe.</item>
     </plurals>
-    <string name="knot_rounds">Mehr Spieler? Spielt in Runden: Wer gewinnt, bleibt, und der Nächste fordert heraus.</string>
+    <string name="knot_next_up">Als Nächstes: %1$s</string>
+    <string name="knot_to_wall">%1$s: an die Wand</string>
+    <string name="knot_from_left">Von links</string>
+    <string name="knot_tie">Gleichstand: %1$s</string>
     <string name="knot_player">Spieler\u00A0%1$d</string>
     <string name="knot_call_time">%1$s s pro Ansage</string>
     <string name="knot_steep">Steile Wand (%1$d°): Fang sehr leicht an oder stell die Wand flacher.</string>
     <string name="knot_safety_title">Bevor ihr spielt</string>
-    <string name="knot_safety_text">Knoten wird tief und eng gespielt. Matten unter das ganze Feld, nichts auf dem Boden unter der Wand und höchstens drei Spieler gleichzeitig an der Wand.</string>
+    <string name="knot_safety_text">Knoten wird tief und eng gespielt. Matten unter das ganze Feld, nichts auf dem Boden unter der Wand und nie mehr Spieler an der Wand, als die App anzeigt.</string>
     <string name="knot_unsupported_shinywall">Knoten gibt es für die Shiny Wall noch nicht.</string>
     <string name="knot_unsupported">Für dieses Board gibt es Knoten nicht.</string>
     <string name="knot_no_field">An dieser Wand sind zu wenige tiefe Griffe für ein Knoten-Feld.</string>

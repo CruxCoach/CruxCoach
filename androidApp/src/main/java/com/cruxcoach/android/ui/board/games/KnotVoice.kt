@@ -25,19 +25,44 @@ import javax.inject.Inject
 class KnotVoice @Inject constructor(@ApplicationContext private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private var player: MediaPlayer? = null
-    private val queue = ArrayDeque<String>()
 
-    /** Plays [call] after [afterMs] (the beep before it); a call still playing is cut off. Solo calls have no player. */
-    fun say(call: KnotCall, solo: Boolean, afterMs: Long = 0) {
-        stop()
+    /** A clip to play, or a [cue] (the beep) followed by a pause. [toWall] parts belong to a "to the wall". */
+    private class Part(val toWall: Boolean, val path: String? = null, val cue: (() -> Unit)? = null, val pauseMs: Long = 0)
+
+    private val queue = ArrayDeque<Part>()
+    /** The part playing now, or its pause; null when quiet. */
+    private var current: Part? = null
+
+    /**
+     * Plays [cue] (the beep), then [call] [afterMs] later. A call still being spoken is cut off; a "to the wall" is
+     * not, the call follows it. Solo calls have no player.
+     */
+    fun say(call: KnotCall, solo: Boolean, afterMs: Long = 0, cue: () -> Unit = {}) {
+        queue.removeAll { !it.toWall }
+        if (current?.toWall != true) {
+            handler.removeCallbacksAndMessages(null)
+            runCatching { player?.stop() }
+            current = null
+        }
+        enqueue(false, clipNames(call, solo), afterMs, cue)
+    }
+
+    /** Plays [cue] (the beep), then "Player n, to the wall" for [player] (from 0) [afterMs] later, after anything still being said. */
+    fun sayToWall(player: Int, afterMs: Long = 0, cue: () -> Unit = {}) {
+        enqueue(true, listOf("player_${player + 1}", TO_THE_WALL), afterMs, cue)
+    }
+
+    private fun enqueue(toWall: Boolean, clips: List<String>, afterMs: Long, cue: () -> Unit) {
         val folder = "$DIR/${language()}"
-        queue += clipNames(call, solo).map { "$folder/$it.ogg" }
-        handler.postDelayed(::playNext, afterMs)
+        queue += Part(toWall, cue = cue, pauseMs = afterMs)
+        queue += clips.map { Part(toWall, path = "$folder/$it.ogg") }
+        if (current == null) playNext()
     }
 
     fun stop() {
         handler.removeCallbacksAndMessages(null)
         queue.clear()
+        current = null
         runCatching { player?.stop() }
     }
 
@@ -48,7 +73,15 @@ class KnotVoice @Inject constructor(@ApplicationContext private val context: Con
     }
 
     private fun playNext() {
-        val path = queue.removeFirstOrNull() ?: return
+        val part = queue.removeFirstOrNull()
+        current = part
+        if (part == null) return
+        part.cue?.let { cue ->
+            cue()
+            handler.postDelayed(::playNext, part.pauseMs)
+            return
+        }
+        val path = part.path ?: return playNext()
         try {
             val media = player ?: MediaPlayer().also { created ->
                 created.setAudioAttributes(
@@ -88,6 +121,8 @@ class KnotVoice @Inject constructor(@ApplicationContext private val context: Con
         const val DIR = "knot_voice"
         /** Pause between the parts of a call. */
         const val GAP_MS = 120L
+
+        const val TO_THE_WALL = "to_the_wall"
 
         /** The clips of [call] in the order they are spoken: player (unless solo), hand or foot, colour. */
         fun clipNames(call: KnotCall, solo: Boolean): List<String> = listOfNotNull(

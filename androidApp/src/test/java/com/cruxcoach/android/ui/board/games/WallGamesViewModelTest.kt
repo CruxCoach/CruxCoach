@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board.games
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.lifecycle.SavedStateHandle
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardCleaningState
@@ -289,13 +290,13 @@ class WallGamesViewModelTest {
         val vm = kilterViewModel()
         vm.selectGame(WallGame.KNOT)
         val setup = vm.state.value.knot
-        assertEquals(3, setup.maxClimbers)
-        assertEquals(1, setup.climbers)
+        assertEquals(4, setup.maxClimbers)
+        assertEquals(1, setup.players)
         assertTrue(vm.state.value.canStart)
         // A 40° wall gets the steep hint.
         assertEquals(40, setup.steepAngle(vm.state.value.board))
 
-        vm.setKnotClimbers(2)
+        vm.setKnotPlayers(2)
         vm.setKnotName(0, "Anna")
         assertEquals(20, vm.state.value.knot.previewSpots()!!.size)
         vm.start()
@@ -354,7 +355,7 @@ class WallGamesViewModelTest {
     }
 
     @Test
-    fun knotIsNotOfferedOnAShinyWallAndStopsAtThreeOnWideBoards() {
+    fun knotIsNotOfferedOnAShinyWallAndPutsMorePlayersThanFitInLine() {
         val vm = viewModel()
         vm.selectGame(WallGame.KNOT)
         val shiny = vm.state.value
@@ -364,8 +365,43 @@ class WallGamesViewModelTest {
 
         val kilterVm = kilterViewModel()
         kilterVm.selectGame(WallGame.KNOT)
-        kilterVm.setKnotClimbers(5)
-        assertEquals(3, kilterVm.state.value.knot.climbers)
+        kilterVm.setKnotPlayers(6)
+        val six = kilterVm.state.value.knot
+        assertEquals(6, six.players)
+        assertEquals(4, six.atWall)
+        // Four at the wall on a 12 ft wide field: the colours twice, 36 spots.
+        assertEquals(4, six.layout!!.climbers)
+        assertEquals(2, six.layout!!.periods)
+        assertEquals(36, six.previewSpots()!!.size)
+        kilterVm.setKnotPlayers(12)
+        assertEquals(Knot.MAX_PLAYERS, kilterVm.state.value.knot.players)
+    }
+
+    @Test
+    fun knotCallsTheNextInLineToTheWallWhenSomeoneComesOff() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        vm.setKnotPlayers(5)
+        vm.start()
+        val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run
+        assertEquals(4, lit.field!!.climbers)
+        assertEquals(listOf(4), lit.line)
+        vm.startKnotCalls()
+        vm.knotOut(2)
+        val run = vm.state.value.knot.run
+        assertEquals(4, run.stepIn)
+        assertEquals(listOf(0, 1, 4, 3), run.onParts)
+        verify { voice.sayToWall(4, any(), any()) }
+        // The second tap of a double tap on that row doesn't put the one stepping in out.
+        vm.knotOut(4)
+        assertTrue(vm.state.value.knot.run.climbers[4].atWall)
+        // Nobody left on the wall or in line: the most calls held win, here nobody held one.
+        listOf(0, 1, 3).forEach(vm::knotOut)
+        SystemClock.sleep(1_100)
+        vm.knotOut(4)
+        val over = awaitState(vm) { it.knot.run.phase == KnotPhase.FINISHED }.knot.run
+        assertNull(over.winner)
+        assertTrue(!over.stopped)
     }
 
     @Test

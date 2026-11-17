@@ -28,10 +28,14 @@ class KnotRunnerTest {
         ),
     )
 
+    /** The same field with parts for three climbers. */
+    private val field3 = field.copy(climbers = 3)
+
     private class Log {
         val walls = mutableListOf<Map<Int, KnotColour>>()
         val calls = mutableListOf<KnotCall>()
         val beeps = mutableListOf<GameBeep>()
+        val stepIns = mutableListOf<Int>()
     }
 
     private fun TestScope.runner(log: Log) = KnotRunner(
@@ -40,13 +44,14 @@ class KnotRunnerTest {
         onWall = { log.walls += it },
         onCall = { log.calls += it },
         onBeep = { log.beeps += it },
+        onStepIn = { log.stepIns += it },
     )
 
     @Test
     fun theFieldStaysLitThroughStartAndCountdownThenCallsComeOnTime() = runTest {
         val log = Log()
         val runner = runner(log)
-        runner.light(field, climbers = 2)
+        runner.light(field, players = 2)
         assertEquals(KnotPhase.POSITIONS, runner.run.value.phase)
         assertEquals(listOf(field.spots), log.walls)
 
@@ -81,7 +86,7 @@ class KnotRunnerTest {
     fun theCalledColourBlinksThreeTimesThenStaysLit() = runTest {
         val log = Log()
         val runner = runner(log)
-        runner.light(field, climbers = 1)
+        runner.light(field, players = 1)
         runner.start(callMs = 3_000, seed = 2)
         advanceTimeBy(5_000)
         runCurrent()
@@ -103,7 +108,7 @@ class KnotRunnerTest {
     fun theLastClimberOnTheWallWinsAndTheFieldBlinksBeforeTheWallClears() = runTest {
         val log = Log()
         val runner = runner(log)
-        runner.light(field, climbers = 3)
+        runner.light(field3, players = 3)
         runner.start(callMs = 3_000, seed = 3)
         advanceTimeBy(5_000 + 3_000 * 4)
         runCurrent()
@@ -139,7 +144,7 @@ class KnotRunnerTest {
     fun soloEndsWhenTheClimberIsOutAndCountsTheCallsHeld() = runTest {
         val log = Log()
         val runner = runner(log)
-        runner.light(field, climbers = 1)
+        runner.light(field, players = 1)
         runner.start(callMs = 3_000, seed = 4)
         advanceTimeBy(5_000 + 3_000 * 3 + 1_000)
         runCurrent()
@@ -156,7 +161,7 @@ class KnotRunnerTest {
     fun aClimberOutDuringTheirCallDoesNotHoldItAndIsSkipped() = runTest {
         val log = Log()
         val runner = runner(log)
-        runner.light(field, climbers = 3)
+        runner.light(field3, players = 3)
         runner.start(callMs = 3_000, seed = 5)
         advanceTimeBy(5_000 + 3_000 + 1_000)
         runCurrent()
@@ -175,19 +180,20 @@ class KnotRunnerTest {
     fun stopBeforeTheCountdownGoesBackAndClearsAndStopAfterEndsWithoutAWinner() = runTest {
         val log = Log()
         val runner = runner(log)
-        runner.light(field, climbers = 2)
+        runner.light(field, players = 2)
         runner.stop()
         assertEquals(KnotPhase.IDLE, runner.run.value.phase)
         assertEquals(emptyMap<Int, KnotColour>(), log.walls.last())
         assertFalse(runner.run.value.active)
 
-        runner.light(field, climbers = 2)
+        runner.light(field, players = 2)
         runner.start(callMs = 3_000, seed = 6)
         advanceTimeBy(6_000)
         runCurrent()
         runner.stop()
         assertEquals(KnotPhase.FINISHED, runner.run.value.phase)
         assertNull(runner.run.value.winner)
+        assertTrue(runner.run.value.stopped)
         advanceTimeBy(2_000)
         runCurrent()
         assertEquals(emptyMap<Int, KnotColour>(), log.walls.last())
@@ -200,7 +206,7 @@ class KnotRunnerTest {
     fun byTapTheNextCallComesOnlyWhenSomeoneTaps() = runTest {
         val log = Log()
         val runner = runner(log)
-        runner.light(field, climbers = 2)
+        runner.light(field, players = 2)
         runner.start(callMs = 0, seed = 8)
         // A tap during the countdown is not a call.
         runner.next()
@@ -232,7 +238,7 @@ class KnotRunnerTest {
     fun outCountsDuringTheCountdownToo() = runTest {
         val log = Log()
         val runner = runner(log)
-        runner.light(field, climbers = 2)
+        runner.light(field, players = 2)
         runner.start(callMs = 3_000, seed = 7)
         advanceTimeBy(2_000)
         runCurrent()
@@ -242,5 +248,125 @@ class KnotRunnerTest {
         advanceTimeBy(10_000)
         runCurrent()
         assertTrue(log.calls.isEmpty())
+    }
+
+    // ── The line ────────────────────────────────────────────────────
+
+    @Test
+    fun withMorePlayersThanPartsTheOthersWaitAndTheNextGetsTimeToReachTheFreedPart() = runTest {
+        val log = Log()
+        val runner = runner(log)
+        runner.light(field, players = 4)
+        val lit = runner.run.value
+        assertTrue(lit.withLine)
+        assertEquals(listOf(2, 3), lit.line)
+        assertEquals(listOf(0, 1), lit.onParts)
+
+        runner.start(callMs = 3_000, seed = 9)
+        advanceTimeBy(6_000)
+        runCurrent()
+        assertEquals(0, log.calls.single().climber)
+        // Climber 0 comes off: 2 is called to the left part.
+        runner.out(0)
+        assertEquals(listOf(2), log.stepIns)
+        assertEquals(2, runner.run.value.stepIn)
+        assertEquals(listOf(2, 1), runner.run.value.onParts)
+        assertEquals(listOf(3), runner.run.value.line)
+        // The calls stay with 1 until 2 has had 8 s to get there.
+        advanceTimeBy(2_000 + 3_000 + 2_999)
+        runCurrent()
+        assertEquals(listOf(0, 1, 1), log.calls.map { it.climber })
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(listOf(0, 1, 1, 2), log.calls.map { it.climber })
+        assertNull(runner.run.value.stepIn)
+        assertEquals(KnotPhase.RUNNING, runner.run.value.phase)
+    }
+
+    @Test
+    fun aDoubleTapDoesNotPutTheNextInLineOutAndAWrongOutIsUndoneUntilTheNextCall() = runTest {
+        val log = Log()
+        val runner = runner(log)
+        runner.light(field, players = 3)
+        runner.start(callMs = 3_000, seed = 10)
+        advanceTimeBy(6_000)
+        runCurrent()
+        runner.out(1)
+        // The second tap of a double tap lands on the row of 2, who just took the part.
+        advanceTimeBy(300)
+        runner.out(2)
+        assertTrue(runner.run.value.climbers[2].atWall)
+        // A deliberate second tap on 1 undoes the out: 1 is back, 2 waits again, first in line.
+        advanceTimeBy(1_000)
+        runner.out(1)
+        assertEquals(listOf(0, 1), runner.run.value.onParts)
+        assertEquals(listOf(2), runner.run.value.line)
+        assertNull(runner.run.value.stepIn)
+        // Out again, and after the next call the out stands.
+        runner.out(1)
+        advanceTimeBy(3_000)
+        runCurrent()
+        runner.out(1)
+        assertTrue(runner.run.value.climbers[1].out)
+        assertEquals(listOf(0, 2), runner.run.value.onParts)
+    }
+
+    @Test
+    fun theLineEndsWhenEveryoneHasClimbedAndTheMostCallsHeldWin() = runTest {
+        val log = Log()
+        val runner = runner(log)
+        runner.light(field, players = 3)
+        runner.start(callMs = 3_000, seed = 11)
+        // Calls to 0 and 1 in turn: after four calls each has held two.
+        advanceTimeBy(5_000 + 4 * 3_000 + 1_000)
+        runCurrent()
+        assertEquals(listOf(2, 2), runner.run.value.climbers.take(2).map { it.held })
+        runner.out(0)
+        // 1 holds on; 2 steps in. Nobody is the last one standing: the round goes on until all are off.
+        advanceTimeBy(30_000)
+        runCurrent()
+        runner.out(1)
+        assertEquals(KnotPhase.RUNNING, runner.run.value.phase)
+        advanceTimeBy(1_500)
+        runner.out(2)
+        val run = runner.run.value
+        assertEquals(KnotPhase.FINISHED, run.phase)
+        assertFalse(run.stopped)
+        val held = run.climbers.map { it.held }
+        assertEquals(held.indexOf(held.max()), run.winner)
+        assertTrue(held[1] > held[0])
+    }
+
+    @Test
+    fun aTieInTheLineHasNoWinnerAndByTapTheNextInLineIsCalledAtOnce() = runTest {
+        val log = Log()
+        val runner = runner(log)
+        runner.light(field, players = 3)
+        runner.start(callMs = 0, seed = 12)
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertEquals(listOf(0), log.calls.map { it.climber })
+        runner.out(0)
+        // By tap there is no wait: whoever taps "Next call" waits until everyone is ready.
+        runner.next()
+        advanceTimeBy(1_500)
+        runCurrent()
+        runner.next()
+        advanceTimeBy(1_500)
+        runCurrent()
+        assertEquals(listOf(0, 1, 2), log.calls.map { it.climber })
+        // 2 holds their call; 1 comes off during the next one, then 2: one call each.
+        runner.next()
+        advanceTimeBy(1_500)
+        runCurrent()
+        assertEquals(1, log.calls.last().climber)
+        runner.out(1)
+        advanceTimeBy(1_500)
+        runner.out(2)
+        val run = runner.run.value
+        assertEquals(KnotPhase.FINISHED, run.phase)
+        assertEquals(listOf(0, 1, 1), run.climbers.map { it.held })
+        assertNull(run.winner)
+        assertFalse(run.stopped)
     }
 }

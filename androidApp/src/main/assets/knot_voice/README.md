@@ -7,7 +7,8 @@ otherwise.
 
 | Clip | English | German |
 |---|---|---|
-| `player_1` … `player_3` | "Player one" … | „Spieler eins“ … |
+| `player_1` … `player_8` | "Player one" … | „Spieler eins“ … |
+| `to_the_wall` (after a player: the next in line) | "To the wall" | „An die Wand“ |
 | `left_hand`, `right_hand`, `left_foot`, `right_foot` | "Left hand" … | „Linke Hand“ … |
 | `blue`, `yellow`, `magenta`, `white` | Aurora boards | |
 | `green`, `red` (and `blue`) | MoonBoard | |

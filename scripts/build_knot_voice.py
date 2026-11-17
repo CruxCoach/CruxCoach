@@ -16,7 +16,9 @@ The voice models are published under the MIT licence in https://huggingface.co/r
 Needs Python 3.10+, `pip install piper-tts` (1.8) and ffmpeg with libvorbis. The models are downloaded by hand
 into MODELS (the `.onnx` and `.onnx.json` files from the repository above):
 
-    scripts/build_knot_voice.py --models MODELS [--out androidApp/src/main/assets/knot_voice]
+    scripts/build_knot_voice.py --models MODELS [--out androidApp/src/main/assets/knot_voice] [--only NAME,...]
+
+The synthesis is not exactly repeatable, so `--only` makes just the named clips and leaves the others as they are.
 """
 
 from __future__ import annotations
@@ -39,6 +41,12 @@ CLIPS = {
         "player_1": "Player one.",
         "player_2": "Player two.",
         "player_3": "Player three.",
+        "player_4": "Player four.",
+        "player_5": "Player five.",
+        "player_6": "Player six.",
+        "player_7": "Player seven.",
+        "player_8": "Player eight.",
+        "to_the_wall": "To the wall.",
         "left_hand": "Left hand.",
         "right_hand": "Right hand.",
         "left_foot": "Left foot.",
@@ -54,6 +62,12 @@ CLIPS = {
         "player_1": "Spieler eins.",
         "player_2": "Spieler zwei.",
         "player_3": "Spieler drei.",
+        "player_4": "Spieler vier.",
+        "player_5": "Spieler fünf.",
+        "player_6": "Spieler sechs.",
+        "player_7": "Spieler sieben.",
+        "player_8": "Spieler acht.",
+        "to_the_wall": "An die Wand.",
         "left_hand": "Linke Hand.",
         "right_hand": "Rechte Hand.",
         "left_foot": "Linker Fuß.",
@@ -82,7 +96,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--models", type=Path, required=True, help="folder with the Piper .onnx and .onnx.json files")
     parser.add_argument("--out", type=Path, default=Path("androidApp/src/main/assets/knot_voice"))
+    parser.add_argument("--only", help="comma-separated clip names to make; all when left out")
     args = parser.parse_args()
+    only = set(args.only.split(",")) if args.only else None
+    unknown = (only or set()) - set(CLIPS["en"])
+    if unknown:
+        parser.error(f"unknown clips: {', '.join(sorted(unknown))}")
 
     from piper import PiperVoice, SynthesisConfig  # imported here so --help works without Piper
 
@@ -97,6 +116,8 @@ def main() -> int:
         target.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp:
             for name, text in CLIPS[language].items():
+                if only is not None and name not in only:
+                    continue
                 raw = Path(tmp) / f"{name}.wav"
                 with wave.open(str(raw), "wb") as wav:
                     voice.synthesize_wav(text, wav, syn_config=natural if name in COLOURS else brisk)

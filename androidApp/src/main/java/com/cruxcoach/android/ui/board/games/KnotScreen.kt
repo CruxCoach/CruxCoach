@@ -91,38 +91,30 @@ internal fun KnotSettings(state: WallGamesState, actions: WallGamesActions) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(R.string.knot_climbers), style = MaterialTheme.typography.titleSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Knot.CLIMBERS.forEach { count ->
+            Knot.PLAYERS.forEach { count ->
                 FilterChip(
-                    selected = count == knot.climbers,
-                    onClick = { actions.setKnotClimbers(count) },
-                    enabled = count <= knot.maxClimbers,
+                    selected = count == knot.players,
+                    onClick = { actions.setKnotPlayers(count) },
                     label = { Text(count.toString()) },
                     colors = chipColors(),
                     modifier = Modifier.testTag("knot_climbers_$count"),
                 )
             }
         }
-        if (knot.maxClimbers < Knot.MAX_CLIMBERS) {
+        // More players than the wall takes: the others wait in line.
+        if (knot.players > knot.atWall) {
             Text(
-                pluralStringResource(R.plurals.knot_board_fits, knot.maxClimbers, knot.maxClimbers),
+                pluralStringResource(R.plurals.knot_line, knot.atWall, knot.atWall),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        // More players than fit: only once the wall is full.
-        if (knot.climbers == knot.maxClimbers) {
-            Text(
-                stringResource(R.string.knot_rounds),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag("knot_rounds"),
+                modifier = Modifier.testTag("knot_line"),
             )
         }
     }
     // Solo needs no name: the calls go to the one climber.
-    if (knot.climbers > 1) {
+    if (knot.players > 1) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            (0 until knot.climbers).forEach { climber ->
+            (0 until knot.players).forEach { climber ->
                 OutlinedTextField(
                     value = knot.names[climber],
                     onValueChange = { actions.setKnotName(climber, it) },
@@ -130,7 +122,7 @@ internal fun KnotSettings(state: WallGamesState, actions: WallGamesActions) {
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Words,
-                        imeAction = if (climber < knot.climbers - 1) ImeAction.Next else ImeAction.Done,
+                        imeAction = if (climber < knot.players - 1) ImeAction.Next else ImeAction.Done,
                     ),
                     modifier = Modifier.fillMaxWidth().testTag("knot_name_$climber"),
                 )
@@ -219,9 +211,9 @@ private fun KnotSpacingPicker(knot: KnotState, actions: WallGamesActions) {
             Text(
                 pluralStringResource(
                     R.plurals.knot_spacing_unavailable,
-                    knot.climbers,
+                    knot.atWall,
                     greyed.map { stringResource(it.labelRes) }.joinToString(", "),
-                    knot.climbers,
+                    knot.atWall,
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -313,28 +305,60 @@ private fun KnotPositions(knot: KnotState) {
         fontWeight = FontWeight.SemiBold,
         textAlign = TextAlign.Center,
     )
-    val field = knot.run.field
-    if (knot.run.climbers.size <= 1 || field == null) {
-        Text(stringResource(R.string.knot_positions_solo), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-        return
-    }
+    val run = knot.run
     Text(stringResource(R.string.knot_positions_solo), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-    val parts = if (knot.run.climbers.size == 2) listOf(R.string.knot_part_left, R.string.knot_part_right)
-    else listOf(R.string.knot_part_left, R.string.knot_part_middle, R.string.knot_part_right)
-    knot.run.climbers.indices.forEach { climber ->
+    if (run.climbers.size <= 1 || run.field == null) return
+    // Who climbs where: by name for up to three parts, else in order from the left.
+    val sides = when (run.parts) {
+        2 -> listOf(R.string.knot_part_left, R.string.knot_part_right)
+        3 -> listOf(R.string.knot_part_left, R.string.knot_part_middle, R.string.knot_part_right)
+        else -> null
+    }
+    if (sides == null && run.parts > 1) {
+        Text(stringResource(R.string.knot_from_left), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    run.onParts.forEachIndexed { part, climber ->
+        if (climber == null) return@forEachIndexed
         Text(
-            stringResource(R.string.knot_part, shownName(knot, climber), stringResource(parts[climber])),
+            sides?.let { stringResource(R.string.knot_part, shownName(knot, climber), stringResource(it[part])) } ?: shownName(knot, climber),
             style = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.Center,
             modifier = Modifier.testTag("knot_part_$climber"),
         )
     }
+    KnotLine(knot)
+}
+
+/** Who waits, in order: "Next up: 5 · Eve, 6 · Finn". */
+@Composable
+private fun KnotLine(knot: KnotState) {
+    val line = knot.run.line
+    if (line.isEmpty()) return
+    val context = LocalContext.current
+    Text(
+        stringResource(R.string.knot_next_up, line.joinToString(", ") { climberName(context, knot.names, it) }),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().testTag("knot_next_up"),
+    )
 }
 
 /** The call in large type, readable from the wall: who, which hand or foot, which colour, and the time left. */
 @Composable
 private fun KnotCallPanel(knot: KnotState) {
     val run = knot.run
+    // The next in line, called to the wall: on top, where everyone looks after the beep.
+    run.stepIn?.let { stepIn ->
+        Text(
+            stringResource(R.string.knot_to_wall, shownName(knot, stepIn)),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = CruxCoachDesign.colors.brandAccent,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.testTag("knot_step_in"),
+        )
+    }
     val call = run.call ?: return
     Text(
         stringResource(R.string.knot_call_number, call.number),
@@ -399,8 +423,14 @@ private fun KnotClimbers(knot: KnotState, actions: WallGamesActions) {
         if (playing) {
             Text(stringResource(R.string.knot_tap_name), style = MaterialTheme.typography.titleSmall)
         }
-        val order = if (playing) run.climbers.indices.toList()
-        else run.climbers.indices.sortedWith(compareByDescending<Int> { it == run.winner }.thenByDescending { run.climbers[it].held })
+        // While playing, one row per part of the field, left to right, so a row stays where it is: the climber there,
+        // or the last one off it; a fresh Out whose part someone else took stays below until the next call.
+        val order = if (playing) {
+            val onParts = run.onParts.filterNotNull()
+            onParts + run.climbers.indices.filter { it !in onParts && run.climbers[it].out && run.climbers[it].outAtCall == run.call?.number }
+        } else {
+            run.climbers.indices.sortedWith(compareByDescending<Int> { it == run.winner }.thenByDescending { run.climbers[it].held })
+        }
         order.forEach { index ->
             val climber = run.climbers[index]
             val name = if (playing) shownName(knot, index) else climberName(LocalContext.current, knot.names, index, numbered = false)
@@ -464,6 +494,7 @@ private fun KnotClimbers(knot: KnotState, actions: WallGamesActions) {
                 }
             }
         }
+        if (playing) KnotLine(knot)
     }
 }
 
@@ -492,6 +523,21 @@ private fun KnotResult(knot: KnotState) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.testTag("knot_result"),
         )
+        // With a line, the most calls held win; several with as many share first place.
+        run.withLine && !run.stopped -> {
+            val context = LocalContext.current
+            val most = run.climbers.maxOf { it.held }
+            val first = run.climbers.indices.filter { run.climbers[it].held == most }
+            Text(
+                stringResource(R.string.knot_tie, first.joinToString(", ") { climberName(context, knot.names, it, numbered = false) }),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag("knot_result"),
+            )
+        }
         else -> Text(
             stringResource(R.string.knot_stopped),
             style = MaterialTheme.typography.headlineSmall,

@@ -3486,18 +3486,21 @@
     <string name="wall_games_sound_turn_on">Turn countdown sound on</string>
     <!-- Knot (#154) -->
     <string name="wall_games_knot">Knot</string>
-    <string name="wall_games_knot_desc">A field of colour stripes lights up low on the wall. After a beep the phone calls a player, a hand or a foot and a colour, and those holds blink: move it to a free hold of that colour. One hand or foot per hold; if none of that colour is free, stay where you are.\n\nWhoever comes off, touches the floor, uses an unlit hold or isn’t there in time is out and taps their name. The last one on the wall wins; solo, count the calls you hold.\n\nWith “Tap for the next call”, someone below the wall calls the next one when everyone is ready, without a timer.</string>
-    <string name="knot_climbers">Players at the wall</string>
-    <plurals name="knot_board_fits">
-        <item quantity="one">This board fits one climber at a time.</item>
-        <item quantity="other">This board fits %d climbers at a time.</item>
+    <string name="wall_games_knot_desc">A field of colour stripes lights up low on the wall. After a beep the phone calls a player, a hand or a foot and a colour, and those holds blink: move it to a free hold of that colour. One hand or foot per hold; if none of that colour is free, stay where you are.\n\nWhoever comes off, touches the floor, uses an unlit hold or isn’t there in time is out and taps their name. The last one on the wall wins; solo, count the calls you hold.\n\nMore players than the wall takes wait in line: whoever comes off makes room for the next, and the most calls held wins.\n\nWith “Tap for the next call”, someone below the wall calls the next one when everyone is ready, without a timer.</string>
+    <string name="knot_climbers">Players</string>
+    <plurals name="knot_line">
+        <item quantity="one">One at the wall at a time, the others wait in line.</item>
+        <item quantity="other">%d at the wall at a time, the others wait in line.</item>
     </plurals>
-    <string name="knot_rounds">More players? Play in rounds: the winner stays and the next one challenges.</string>
+    <string name="knot_next_up">Next up: %1$s</string>
+    <string name="knot_to_wall">%1$s: to the wall</string>
+    <string name="knot_from_left">From the left</string>
+    <string name="knot_tie">Tie: %1$s</string>
     <string name="knot_player">Player\u00A0%1$d</string>
     <string name="knot_call_time">%1$s s per call</string>
     <string name="knot_steep">Steep wall (%1$d°): start very easy or set the wall flatter.</string>
     <string name="knot_safety_title">Before you play</string>
-    <string name="knot_safety_text">Knot is played low and close together. Mats under the whole field, nothing on the floor below the wall, and at most three players on the wall at once.</string>
+    <string name="knot_safety_text">Knot is played low and close together. Mats under the whole field, nothing on the floor below the wall, and never more players on the wall than the app shows.</string>
     <string name="knot_unsupported_shinywall">Knot isn’t available on Shiny Wall yet.</string>
     <string name="knot_unsupported">Knot isn’t available for this board.</string>
     <string name="knot_no_field">This wall has too few low holds for a Knot field.</string>

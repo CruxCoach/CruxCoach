@@ -133,14 +133,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Countdown with beeps and a stopwatch; for Shiny Wall, Kilter, the other
   Aurora boards and MoonBoard (not Quantum). Without a connected board the
   game runs on the screen; games are never logged.
-- Knot, a new wall game for 1 to 3 climbers: a low field of colour stripes
+- Knot, a new wall game for 1 to 8 players: a low field of colour stripes
   lights up (four colours, three on the MoonBoard). After a beep the phone
   calls a player, a hand or a foot and a colour ("Player 2 – right hand –
   blue"), from recordings in English or German that come with the app, so no
   speech engine is needed; the called holds blink. The field grows with the
-  number of climbers, so they get in each other's way, and stays low.
-  Whoever comes off taps their name: the last one on the wall wins, solo you
-  count the calls you hold. Five levels (10 to 3 seconds per call), or "Tap
+  number of climbers, so they get in each other's way, and stays low; as many
+  climb as the wall is wide (0.8 m each, 4 on a 12 ft board), and wide fields
+  repeat their colours. Whoever comes off taps their name: the last one on
+  the wall wins, solo you count the calls you hold. More players wait in line
+  and step in for whoever comes off; then the most calls held win. Five levels (10 to 3 seconds per call), or "Tap
   for the next call" for someone below the wall, optional names, a safety
   hint before the first game and a hint on steep walls. For Kilter, the
   other Aurora boards and MoonBoard (not Shiny Wall or Quantum).
