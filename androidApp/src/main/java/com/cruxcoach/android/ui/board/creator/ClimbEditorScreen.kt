@@ -55,6 +55,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -804,7 +805,7 @@ private fun GradeSlider(gradeId: Int?, onChange: (Int?) -> Unit) {
         )
         Slider(
             value = effective.toFloat(),
-            onValueChange = { onChange(it.toInt()) },
+            onValueChange = { onChange(it.roundToInt()) },
             valueRange = 10f..33f,
             steps = 22,
         )

@@ -74,6 +74,7 @@ import com.cruxcoach.domain.spraywall.SprayWallHistory
 import com.cruxcoach.domain.spraywall.SprayWallVersion
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -384,7 +385,7 @@ fun SprayClimbEditorScreen(
                     Text(stringResource(R.string.spray_climb_grade, formatSprayGrade(state.difficulty, state.gradeScale)), style = MaterialTheme.typography.labelLarge)
                     Slider(
                         value = state.difficulty.toFloat(),
-                        onValueChange = { viewModel.setDifficulty(it.toInt()) },
+                        onValueChange = { viewModel.setDifficulty(it.roundToInt()) },
                         valueRange = SprayClimbRules.MIN_DIFFICULTY.toFloat()..SprayClimbRules.MAX_DIFFICULTY.toFloat(),
                         steps = SprayClimbRules.MAX_DIFFICULTY - SprayClimbRules.MIN_DIFFICULTY - 1,
                         modifier = Modifier.testTag("spray_climb_grade"),

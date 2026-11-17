@@ -149,8 +149,8 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 }
 
                 fun toUnifiedIndex(sliderPos: Float): Int {
-                    if (frenchMode) return sliderPos.toInt()
-                    return vScaleIndices.getOrElse(sliderPos.toInt()) { vScaleIndices.last() }
+                    if (frenchMode) return sliderPos.roundToInt()
+                    return vScaleIndices.getOrElse(sliderPos.roundToInt()) { vScaleIndices.last() }
                 }
 
                 val minLabel = GradeDisplayHelper.formatByIndex(
@@ -237,7 +237,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 FilterSwitchRow(stringResource(R.string.board_filter_my_climbs), state.filter.myClimbsOnly, viewModel::updateMyClimbsFilter, "board_filter_my_climbs")
                 if (activeBrand.supportsBenchmarkFilter) FilterSwitchRow(stringResource(R.string.board_filter_benchmarks_only), state.filter.benchmarkOnly, viewModel::updateBenchmarkFilter, "board_filter_benchmark", enabled = !state.filter.ungradedOnly)
                 Text(stringResource(R.string.board_filter_min_ascents, state.filter.minAscensionists), style = MaterialTheme.typography.titleMedium)
-                Slider(value = state.filter.minAscensionists.toFloat(), onValueChange = { viewModel.setMinAscensionists(it.toInt()) },
+                Slider(value = state.filter.minAscensionists.toFloat(), onValueChange = { viewModel.setMinAscensionists(it.roundToInt()) },
                     onValueChangeFinished = { viewModel.commitFilterChange() }, valueRange = 0f..50f, steps = 49,
                     enabled = !state.filter.myClimbsOnly && !state.filter.ungradedOnly)
                 if (activeBrand.supportsClimbTypeFilter) FilterChoiceRow(stringResource(R.string.board_filter_type), state.filter.climbTypeFilter,

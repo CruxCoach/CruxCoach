@@ -21,6 +21,7 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.util.GradeConverter
+import kotlin.math.roundToInt
 
 @Composable
 internal fun ProfileSection(
@@ -88,7 +89,7 @@ internal fun ProfileSection(
             Text(stringResource(R.string.settings_profile_sessions_per_week, profile.sessionsPerWeek), style = MaterialTheme.typography.bodySmall)
             Slider(
                 value = profile.sessionsPerWeek.toFloat(),
-                onValueChange = { onSessionsPerWeekChange(it.toInt()) },
+                onValueChange = { onSessionsPerWeekChange(it.roundToInt()) },
                 valueRange = 1f..7f,
                 steps = 5,
                 colors = SliderDefaults.colors(thumbColor = OrangeAccent, activeTrackColor = OrangeAccent)
