@@ -845,7 +845,7 @@ class BoardBleConnection(
      * The board, layout and size the board-size check confirmed on this link: the user saw the
      * connected board light that size's holds. [BoardSwitchLinkPolicy] keeps the link when it is
      * saved, also after the check has closed: the board picker saves it on its own Confirm. Only
-     * while that board is connected, as the next link may be to another board.
+     * for this link: every disconnect and every new connection attempt drops it.
      */
     internal val sizeConfirmedOnBoard: ActiveBoardSelection?
         get() {
@@ -1694,6 +1694,7 @@ class BoardBleConnection(
         Log.d(TAG, "Remote/error disconnect (status=0x${status.toString(16)})")
         if (wasQuantum) markQuantumStateStale()
         _connectionState.value = ConnectionState.DISCONNECTED
+        sizeConfirmation = null
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null
         _connectedQuantumModel.value = null
@@ -1767,6 +1768,7 @@ class BoardBleConnection(
         attemptBudget = maxAttempts.coerceIn(1, MAX_CONNECT_ATTEMPTS)
         userDisconnecting = false
         _connectionState.value = ConnectionState.CONNECTING
+        sizeConfirmation = null
         if (board.boardBrand == BoardBrand.QUANTUM) {
             quantumNotificationAccumulator.reset()
             val previousQuantumState = _quantumControllerState.value
@@ -1919,6 +1921,7 @@ class BoardBleConnection(
                     _connectFailureReason.value = R.string.board_ble_connect_failed_hint
                 }
                 _connectionState.value = ConnectionState.DISCONNECTED
+                sizeConfirmation = null
                 _connectedBoardName.value = null
                 _connectedBoardBrand.value = null
                 _connectedQuantumModel.value = null
@@ -3051,6 +3054,7 @@ class BoardBleConnection(
         cleaning.attach(null)
         _connectedBoardDescriptor.value = null
         _connectionState.value = ConnectionState.DISCONNECTED
+        sizeConfirmation = null
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null
         // Cleared here rather than only in the disconnect callback: with no GATT

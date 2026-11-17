@@ -66,6 +66,15 @@ class BoardSizeConfirmedLinkTest {
         assertNull(connection.sizeConfirmedOnBoard)
     }
 
+    @Test fun `a new link to the same board does not bring the confirmed size back`() {
+        connection.noteSizeConfirmed(confirmed)
+        val callback = get<BluetoothGattCallback>("gattCallback")
+        callback.onConnectionStateChange(gatt, 0x08, BluetoothProfile.STATE_DISCONNECTED)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        state().value = ConnectionState.CONNECTED // the next link to the same board (same address)
+        assertNull(connection.sizeConfirmedOnBoard)
+    }
+
     @Test fun `a size confirmed once the link is gone is not kept for the next one`() {
         state().value = ConnectionState.DISCONNECTED
         connection.noteSizeConfirmed(confirmed)
