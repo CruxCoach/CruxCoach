@@ -1263,6 +1263,19 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.COMEBACK_NO_BOARD -> R.string.cb_reason_no_board
 })
 
+private val com.cruxcoach.athlete.logic.Evidence.WeeklyTarget.isFingerWeekMet: Boolean
+    get() = area == com.cruxcoach.athlete.logic.VolumeArea.FINGER && done >= target
+
+/**
+ * The weekly line a "weekly plan" reason means: the area with the most left, else a finger week already met,
+ * which is why there is no finger training today (RC1 walk 2026-11-16: "Finger has the most left" beside
+ * "Week: Finger 0/0", while pulling was behind).
+ */
+internal fun weeklyTargetMeant(basedOn: List<com.cruxcoach.athlete.logic.Evidence>): com.cruxcoach.athlete.logic.Evidence.WeeklyTarget? {
+    val weekly = basedOn.filterIsInstance<com.cruxcoach.athlete.logic.Evidence.WeeklyTarget>()
+    return weekly.firstOrNull { it.done < it.target } ?: weekly.firstOrNull { it.isFingerWeekMet } ?: weekly.firstOrNull()
+}
+
 /** A reason with today's details where it has them ("Heute geschont: Schulter …", "Wie meist am Montag: …"). */
 @Composable
 private fun suggestionReasonText(reason: SuggestionReason, state: TodayState): String {
@@ -1290,8 +1303,9 @@ private fun suggestionReasonText(reason: SuggestionReason, state: TodayState): S
     }
     // The weekly plan names the area it means (device test 2026-10-17: "this area" on a finger day meant pull).
     if (reason == SuggestionReason.WEEKLY_TARGET) {
-        state.suggestion?.basedOn?.filterIsInstance<com.cruxcoach.athlete.logic.Evidence.WeeklyTarget>()?.firstOrNull()?.let { w ->
-            return stringResource(R.string.trv_reason_weekly_area, com.cruxcoach.android.ui.training.workouts.volumeAreaLabel(w.area))
+        weeklyTargetMeant(state.suggestion?.basedOn.orEmpty())?.let { w ->
+            return if (w.isFingerWeekMet) stringResource(R.string.trv_reason_finger_week_met)
+            else stringResource(R.string.trv_reason_weekly_area, com.cruxcoach.android.ui.training.workouts.volumeAreaLabel(w.area))
         }
     }
     // A comeback stage says how to climb (owner 2026-10-20): its own words, and why lighter.
