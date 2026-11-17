@@ -658,6 +658,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Training: new users who climb regularly no longer see "finger load rising" in their first four weeks.
   The 28-day normal now counts from the first logged day once 14 days are logged; until then the careful
   start (no max finger work) stays.
+- Training: deleting an injury ends its injury pause when no other injury is open, as
+  "It's over" does. A pause that started the same day goes away entirely. Undo brings the
+  pause back.
 - Training: once the week's training days (climbing included) are used up, Today suggests mobility or
   rest. "Train anyway" on that card gives the training Today would have suggested without the day limit,
   for the rest of the day. The short daily sessions of a comeback plan do not use up a day.

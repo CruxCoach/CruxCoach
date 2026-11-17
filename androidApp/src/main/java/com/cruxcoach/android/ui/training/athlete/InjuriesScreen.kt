@@ -87,18 +87,31 @@ class InjuriesViewModel @Inject constructor(private val service: AthleteService)
         }
     }
 
-    /** A deleted injury with its comeback diary, kept for "Undo". */
-    data class Deleted(val injury: Injury, val diary: List<ComebackEntry>)
+    /** A deleted injury with its comeback diary and the injury pause it ended, kept for "Undo". */
+    data class Deleted(val injury: Injury, val diary: List<ComebackEntry>, val pause: PausePeriod? = null)
 
     private val _deleted = MutableSharedFlow<Deleted>(extraBufferCapacity = 1)
     val deleted: SharedFlow<Deleted> = _deleted.asSharedFlow()
 
-    /** Deletes the injury with its comeback diary; [undoDelete] brings both back. */
+    /**
+     * Deletes the injury with its comeback diary; [undoDelete] brings both back. Like healing, it ends an
+     * injury pause once nothing else is open. A pause that only started today goes entirely, so an injury
+     * entered by mistake leaves no paused day behind; an older one ends today and keeps the days it covered.
+     */
     fun delete(injury: Injury) = io {
         val repo = service.repo
+        val today = service.today().toString()
         val diary = repo.comebackEntries(injury.id)
-        repo.deleteInjury(injury.id)
-        _deleted.emit(Deleted(injury, diary))
+        var pause: PausePeriod? = null
+        repo.transaction {
+            repo.deleteInjury(injury.id)
+            if (repo.activeInjuries().isEmpty()) {
+                pause = repo.openPause()?.takeIf { it.reason == PauseReason.INJURY }?.also {
+                    if (it.startDay == today) repo.deletePause(it.id) else repo.savePause(it.copy(endDay = today))
+                }
+            }
+        }
+        _deleted.emit(Deleted(injury, diary, pause))
     }
 
     fun undoDelete(deleted: Deleted) = io {
@@ -106,6 +119,7 @@ class InjuriesViewModel @Inject constructor(private val service: AthleteService)
         repo.transaction {
             repo.saveInjury(deleted.injury)
             deleted.diary.forEach { repo.saveComebackEntry(it) }
+            deleted.pause?.let { repo.savePause(it) }
         }
     }
 
