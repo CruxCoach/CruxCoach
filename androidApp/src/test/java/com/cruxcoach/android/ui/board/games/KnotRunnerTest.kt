@@ -226,7 +226,7 @@ class KnotRunnerTest {
         // A tap during the next call's blink calls the one after once it has blinked; two taps count once.
         runner.next()
         runner.next()
-        advanceTimeBy(1_500)
+        advanceTimeBy(1_750)
         runCurrent()
         assertEquals(3, log.calls.size)
         advanceTimeBy(10_000)
@@ -327,7 +327,7 @@ class KnotRunnerTest {
         runCurrent()
         runner.out(1)
         assertEquals(KnotPhase.RUNNING, runner.run.value.phase)
-        advanceTimeBy(1_500)
+        advanceTimeBy(1_750)
         runner.out(2)
         val run = runner.run.value
         assertEquals(KnotPhase.FINISHED, run.phase)
@@ -349,19 +349,19 @@ class KnotRunnerTest {
         runner.out(0)
         // By tap there is no wait: whoever taps "Next call" waits until everyone is ready.
         runner.next()
-        advanceTimeBy(1_500)
+        advanceTimeBy(1_750)
         runCurrent()
         runner.next()
-        advanceTimeBy(1_500)
+        advanceTimeBy(1_750)
         runCurrent()
         assertEquals(listOf(0, 1, 2), log.calls.map { it.climber })
         // 2 holds their call; 1 comes off during the next one, then 2: one call each.
         runner.next()
-        advanceTimeBy(1_500)
+        advanceTimeBy(1_750)
         runCurrent()
         assertEquals(1, log.calls.last().climber)
         runner.out(1)
-        advanceTimeBy(1_500)
+        advanceTimeBy(1_750)
         runner.out(2)
         val run = runner.run.value
         assertEquals(KnotPhase.FINISHED, run.phase)

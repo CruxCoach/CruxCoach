@@ -152,7 +152,10 @@ internal class KnotRunner(
                 // A tap before this call was up doesn't skip it.
                 while (taps.tryReceive().isSuccess) Unit
                 onCall(call)
-                var spent = 0L
+                // The call's own work on the phone (screen, beep, voice) comes first: a blink that started with it lost
+                // its first dark phase on a slow phone (30 ms instead of 250).
+                wait(BLINK_LEAD_MS)
+                var spent = BLINK_LEAD_MS
                 // The called spots blink: dark, lit, dark, lit … then stay lit.
                 val dark = field.without(call.colour, hands = call.limb.isHand)
                 repeat(BLINKS) {
@@ -288,6 +291,8 @@ internal class KnotRunner(
         const val TICK_MS = 100L
         const val BLINKS = 3
         const val BLINK_MS = 250L
+        /** The blink starts this long after its call, with the voice. */
+        const val BLINK_LEAD_MS = 250L
         /** A second tap on a name within this time is the same tap. */
         const val DOUBLE_TAP_MS = 1_000L
         /** Time for the next in line to get to the wall and into position before their first call. */

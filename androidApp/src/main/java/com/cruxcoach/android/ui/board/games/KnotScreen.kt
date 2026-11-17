@@ -429,80 +429,101 @@ private fun KnotClimbers(knot: KnotState, actions: WallGamesActions) {
         if (playing) {
             Text(stringResource(R.string.knot_tap_name), style = MaterialTheme.typography.titleSmall)
         }
-        // While playing, one row per part of the field, left to right, so a row stays where it is: the climber there,
-        // or the last one off it; a fresh Out whose part someone else took stays below until the next call.
+        // While playing, one button per part of the field, left to right, so a button stays where it is: the climber
+        // there, or the last one off it. A fresh Out whose part the next in line took comes last until the next call,
+        // so nothing moves when it appears.
         val order = if (playing) {
             val onParts = run.onParts.filterNotNull()
             onParts + run.climbers.indices.filter { it !in onParts && run.climbers[it].out && run.climbers[it].outAtCall == run.call?.number }
         } else {
             run.climbers.indices.sortedWith(compareByDescending<Int> { it == run.winner }.thenByDescending { run.climbers[it].held })
         }
-        order.forEach { index ->
-            val climber = run.climbers[index]
-            val name = if (playing) shownName(knot, index) else climberName(LocalContext.current, knot.names, index, numbered = false)
-            // Until the next call, a fresh Out can be undone: the row says so.
-            val undo = playing && climber.out && climber.outAtCall == run.call?.number
-            // After a game with a line everyone came off: a ranking by calls held, nobody struck out.
-            val struck = climber.out && (playing || !run.withLine)
-            val status = when {
-                undo -> stringResource(R.string.knot_undo)
-                struck -> pluralStringResource(R.plurals.knot_out_after, climber.held, climber.held)
-                else -> pluralStringResource(R.plurals.knot_held_short, climber.held, climber.held)
-            }
-            val called = playing && run.call?.climber == index && !climber.out
-            // The name is what you tap: it keeps its room, the count is short; at the largest font they stack.
-            val compact = compactLayout()
-            val row: @Composable () -> Unit = {
-                val nameText: @Composable (Modifier) -> Unit = { modifier ->
-                    Text(
-                        name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (run.winner == index || called) FontWeight.Bold else FontWeight.Normal,
-                        textDecoration = if (struck) TextDecoration.LineThrough else null,
-                        maxLines = if (compact) 2 else 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = modifier,
-                    )
-                }
-                val statusText: @Composable (Modifier) -> Unit = { modifier ->
-                    Text(
-                        status,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (undo) CruxCoachDesign.colors.brandAccent else LocalContentColor.current,
-                        fontWeight = if (undo) FontWeight.SemiBold else FontWeight.Normal,
-                        maxLines = 1,
-                        modifier = modifier,
-                    )
-                }
-                if (compact) {
-                    Column(Modifier.fillMaxWidth()) {
-                        nameText(Modifier)
-                        statusText(Modifier)
-                    }
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        nameText(Modifier.weight(1f))
-                        statusText(Modifier.padding(start = 8.dp))
-                    }
-                }
-            }
-            if (playing) {
-                OutlinedButton(
-                    onClick = { actions.knotOut(index) },
-                    colors = if (called) ButtonDefaults.outlinedButtonColors(containerColor = CruxCoachDesign.colors.brandAccentContainer)
-                    else ButtonDefaults.outlinedButtonColors(),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("knot_out_$index"),
-                ) {
-                    val colour = if (climber.out) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-                    CompositionLocalProvider(LocalContentColor provides colour) { row() }
-                }
-            } else {
-                Box(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 24.dp, vertical = 8.dp).testTag("knot_climber_$index")) {
-                    row()
-                }
+        // From three parts on, the buttons go two to a row, so all of them and a fresh Out fit under the call without
+        // scrolling; not at the largest font, where the names need the width.
+        val compact = compactLayout()
+        val columns = if (playing && run.parts >= GRID_FROM && !compact) 2 else 1
+        val buttons = order.map { index -> @Composable { modifier: Modifier -> KnotClimberRow(knot, index, playing, stacked = compact || columns > 1, actions, modifier) } }
+        buttons.chunked(columns).forEach { pair ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                pair.forEach { button -> button(Modifier.weight(1f)) }
+                // A lone last button keeps its column's width.
+                repeat(columns - pair.size) { Box(Modifier.weight(1f)) }
             }
         }
         if (playing) KnotLine(knot)
+    }
+}
+
+/** From this many parts of the field on, two name buttons go in a row. */
+private const val GRID_FROM = 3
+
+/** One player's button while playing (tap when you come off), or their line in the result. */
+@Composable
+private fun KnotClimberRow(knot: KnotState, index: Int, playing: Boolean, stacked: Boolean, actions: WallGamesActions, modifier: Modifier) {
+    val run = knot.run
+    val climber = run.climbers[index]
+    val name = if (playing) shownName(knot, index) else climberName(LocalContext.current, knot.names, index, numbered = false)
+    // Until the next call, a fresh Out can be undone: the row says so.
+    val undo = playing && climber.out && climber.outAtCall == run.call?.number
+    // After a game with a line everyone came off: a ranking by calls held, nobody struck out.
+    val struck = climber.out && (playing || !run.withLine)
+    val status = when {
+        undo -> stringResource(R.string.knot_undo)
+        struck -> pluralStringResource(R.plurals.knot_out_after, climber.held, climber.held)
+        else -> pluralStringResource(R.plurals.knot_held_short, climber.held, climber.held)
+    }
+    val called = playing && run.call?.climber == index && !climber.out
+    // The name is what you tap: it keeps its room, the count is short; at the largest font or two to a row
+    // they stack.
+    val compact = stacked
+    val row: @Composable () -> Unit = {
+        val nameText: @Composable (Modifier) -> Unit = { modifier ->
+            Text(
+                name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (run.winner == index || called) FontWeight.Bold else FontWeight.Normal,
+                textDecoration = if (struck) TextDecoration.LineThrough else null,
+                maxLines = if (compact) 2 else 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = modifier,
+            )
+        }
+        val statusText: @Composable (Modifier) -> Unit = { modifier ->
+            Text(
+                status,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (undo) CruxCoachDesign.colors.brandAccent else LocalContentColor.current,
+                fontWeight = if (undo) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 1,
+                modifier = modifier,
+            )
+        }
+        if (compact) {
+            Column(Modifier.fillMaxWidth()) {
+                nameText(Modifier)
+                statusText(Modifier)
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                nameText(Modifier.weight(1f))
+                statusText(Modifier.padding(start = 8.dp))
+            }
+        }
+    }
+    if (playing) {
+        OutlinedButton(
+            onClick = { actions.knotOut(index) },
+            colors = if (called) ButtonDefaults.outlinedButtonColors(containerColor = CruxCoachDesign.colors.brandAccentContainer)
+            else ButtonDefaults.outlinedButtonColors(),
+            modifier = modifier.heightIn(min = 56.dp).testTag("knot_out_$index"),
+        ) {
+            val colour = if (climber.out) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+            CompositionLocalProvider(LocalContentColor provides colour) { row() }
+        }
+    } else {
+        Box(modifier.heightIn(min = 48.dp).padding(horizontal = 24.dp, vertical = 8.dp).testTag("knot_climber_$index")) {
+            row()
+        }
     }
 }
 
