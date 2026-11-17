@@ -3117,6 +3117,8 @@
     <string name="community_report_hint_member">Already a member</string>
     <string name="community_report_hint_later">Not now</string>
     <string name="link_open_failed">No app can open this link.</string>
+    <!-- Screen reader action on a link in a message, announcement or report. -->
+    <string name="message_open_link">Open link %1$s</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>

@@ -712,6 +712,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - English texts use sentence case and one spelling (catalogue, favourites, colour, Wi-Fi);
   the statistics say "Tries" throughout. The German export list says "Begehungen",
   "Boulderlisten" and "Entwürfe", and "Über CruxCoach" no longer has an English line.
+- Messages can be copied: in announcements, the developer chat, the threads of bug reports
+  and feature requests, the report lists and the crash report, press and hold a text to
+  select it, with Copy and Select all. Web links in it (http and https) open in the browser.
+  A tap on a card still opens it or marks an announcement read.
 
 ## [0.2.4] - 2026-10-25
 

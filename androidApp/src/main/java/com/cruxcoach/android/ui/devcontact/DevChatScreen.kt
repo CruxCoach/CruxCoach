@@ -201,7 +201,7 @@ private fun ChatBubble(message: UiMessage) {
                     .background(bubbleColor)
                     .padding(12.dp)
             ) {
-                Text(
+                MessageText(
                     text = message.content,
                     color = textColor,
                     style = MaterialTheme.typography.bodyMedium

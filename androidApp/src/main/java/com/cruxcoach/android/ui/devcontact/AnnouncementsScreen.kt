@@ -161,10 +161,12 @@ private fun AnnouncementCard(
             // (the unread dot, surface tint and bold weight all flip), but it must
             // never collapse/truncate the text — there is no expand affordance, so
             // a truncated "read" announcement could never be read in full again.
-            Text(
+            // A long press selects the text to copy; opening one of its links reads it too.
+            MessageText(
                 text = announcement.content,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (announcement.isRead) FontWeight.Normal else FontWeight.Medium,
+                onLinkOpened = onClick,
             )
         }
     }

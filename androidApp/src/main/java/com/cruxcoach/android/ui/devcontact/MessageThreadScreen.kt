@@ -152,14 +152,14 @@ private fun OriginalMessageCard(message: UiMessage) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             message.subject?.let { subject ->
-                Text(
+                MessageText(
                     text = subject,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            Text(
+            MessageText(
                 text = message.content,
                 style = MaterialTheme.typography.bodyMedium
             )
@@ -215,7 +215,7 @@ private fun ThreadBubble(message: UiMessage) {
                     .background(bubbleColor)
                     .padding(12.dp)
             ) {
-                Text(
+                MessageText(
                     text = message.content,
                     color = textColor,
                     style = MaterialTheme.typography.bodyMedium
