@@ -3494,8 +3494,9 @@
     </plurals>
     <string name="knot_next_up">Next up: %1$s</string>
     <string name="knot_to_wall">%1$s: to the wall</string>
+    <string name="knot_to_wall_for">%1$s: to the wall, in place of %2$s</string>
     <string name="knot_from_left">From the left</string>
-    <string name="knot_tie">Tie: %1$s</string>
+    <string name="knot_tie">Joint winners: %1$s</string>
     <string name="knot_player">Player\u00A0%1$d</string>
     <string name="knot_call_time">%1$s s per call</string>
     <string name="knot_steep">Steep wall (%1$d°): start very easy or set the wall flatter.</string>
@@ -3530,7 +3531,7 @@
     <string name="knot_by_tap">Tap for the next call</string>
     <string name="knot_next_call">Next call</string>
     <string name="knot_tap_name">Off the wall? Tap your name.</string>
-    <string name="knot_numbered">%1$d · %2$s</string>
+    <string name="knot_numbered">%1$d\u00A0·\u00A0%2$s</string>
     <string name="knot_by_tap_on">No timer: someone below taps “Next call”.</string>
     <string name="knot_undo">Undo</string>
     <string name="knot_fell">Off the wall</string>

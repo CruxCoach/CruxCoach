@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -273,9 +274,16 @@ internal fun KnotRunContent(state: WallGamesState, actions: WallGamesActions, mo
                 contentColor = CruxCoachDesign.colors.onBrandAccentContainer,
                 shape = MaterialTheme.shapes.medium,
             ) {
+                // Whose place: the one who came off it, so the newcomer knows where to start.
+                val place = run.climbers[stepIn].part
+                val before = run.climbers.indices.lastOrNull { it != stepIn && run.climbers[it].part == place && run.climbers[it].out }
                 Text(
-                    stringResource(R.string.knot_to_wall, shownName(state.knot, stepIn)),
-                    style = MaterialTheme.typography.titleLarge,
+                    if (before != null) stringResource(R.string.knot_to_wall_for, shownName(state.knot, stepIn), shownName(state.knot, before))
+                    else stringResource(R.string.knot_to_wall, shownName(state.knot, stepIn)),
+                    // In dp like the call below it: at the largest font it would push the names off the screen.
+                    style = with(LocalDensity.current) {
+                        MaterialTheme.typography.titleLarge.copy(fontSize = STEP_IN_TEXT.toSp(), lineHeight = STEP_IN_LINE.toSp())
+                    },
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -366,6 +374,8 @@ private fun KnotLine(knot: KnotState) {
 private fun KnotCallPanel(knot: KnotState) {
     val run = knot.run
     val call = run.call ?: return
+    // At the largest font the rest of the screen grows: the call gives up a little, so the names stay in view.
+    val small = compactLayout()
     Text(
         stringResource(R.string.knot_call_number, call.number),
         style = MaterialTheme.typography.titleMedium,
@@ -375,9 +385,9 @@ private fun KnotCallPanel(knot: KnotState) {
     )
     // The calls start with the player, so the screen does too; solo there is only one.
     if (run.climbers.size > 1) {
-        BigText(shownName(knot, call.climber), maxSize = 44.dp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("knot_call_who"))
+        BigText(shownName(knot, call.climber), maxSize = if (small) 36.dp else 44.dp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("knot_call_who"))
     }
-    BigText(stringResource(call.limb.labelRes).capitalised(), maxSize = 60.dp, modifier = Modifier.testTag("knot_call_limb"))
+    BigText(stringResource(call.limb.labelRes).capitalised(), maxSize = if (small) 48.dp else 60.dp, modifier = Modifier.testTag("knot_call_limb"))
     // Dot and word as one group, centred together.
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -386,7 +396,7 @@ private fun KnotCallPanel(knot: KnotState) {
     ) {
         ColourDot(call.colour, 36)
         Box(Modifier.weight(1f, fill = false)) {
-            BigText(stringResource(call.colour.labelRes).capitalised(), maxSize = 60.dp, fill = false, modifier = Modifier.testTag("knot_call_colour"))
+            BigText(stringResource(call.colour.labelRes).capitalised(), maxSize = if (small) 48.dp else 60.dp, fill = false, modifier = Modifier.testTag("knot_call_colour"))
         }
     }
     if (!run.byTap) {
@@ -439,7 +449,7 @@ private fun KnotClimbers(knot: KnotState, actions: WallGamesActions) {
             run.climbers.indices.sortedWith(compareByDescending<Int> { it == run.winner }.thenByDescending { run.climbers[it].held })
         }
         // From three parts on, the buttons go two to a row, so all of them and a fresh Out fit under the call without
-        // scrolling; not at the largest font, where the names need the width.
+        // scrolling. Not at the largest font: half a row breaks a name like "2 · Benedikt" into pieces, even 411 dp wide.
         val compact = compactLayout()
         val columns = if (playing && run.parts >= GRID_FROM && !compact) 2 else 1
         val buttons = order.map { index -> @Composable { modifier: Modifier -> KnotClimberRow(knot, index, playing, stacked = compact || columns > 1, actions, modifier) } }
@@ -453,6 +463,10 @@ private fun KnotClimbers(knot: KnotState, actions: WallGamesActions) {
         if (playing) KnotLine(knot)
     }
 }
+
+/** The size of the call to the wall, whatever the font size. */
+private val STEP_IN_TEXT = 22.dp
+private val STEP_IN_LINE = 28.dp
 
 /** From this many parts of the field on, two name buttons go in a row. */
 private const val GRID_FROM = 3

@@ -3493,8 +3493,9 @@
     </plurals>
     <string name="knot_next_up">Als Nächstes: %1$s</string>
     <string name="knot_to_wall">%1$s: an die Wand</string>
+    <string name="knot_to_wall_for">%1$s: an die Wand, für %2$s</string>
     <string name="knot_from_left">Von links</string>
-    <string name="knot_tie">Gleichstand: %1$s</string>
+    <string name="knot_tie">Gemeinsam vorn: %1$s</string>
     <string name="knot_player">Spieler\u00A0%1$d</string>
     <string name="knot_call_time">%1$s s pro Ansage</string>
     <string name="knot_steep">Steile Wand (%1$d°): Fang sehr leicht an oder stell die Wand flacher.</string>
@@ -3529,7 +3530,7 @@
     <string name="knot_by_tap">Nächste Ansage per Tipp</string>
     <string name="knot_next_call">Weiter</string>
     <string name="knot_tap_name">Abgefallen? Tipp auf deinen Namen.</string>
-    <string name="knot_numbered">%1$d · %2$s</string>
+    <string name="knot_numbered">%1$d\u00A0·\u00A0%2$s</string>
     <string name="knot_by_tap_on">Ohne Zeitlimit: Jemand unter der Wand tippt „Weiter“.</string>
     <string name="knot_undo">Rückgängig</string>
     <string name="knot_fell">Abgefallen</string>

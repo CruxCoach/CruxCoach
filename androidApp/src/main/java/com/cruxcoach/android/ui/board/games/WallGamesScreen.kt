@@ -768,7 +768,8 @@ private fun GameActionBar(
                 }
             }
             // Knot by tap keeps its two short buttons in one row, so the names stay above the bar.
-            val oneRow = state.game == WallGame.KNOT && state.knot.run.byTap && state.knot.run.active
+            val knotCalls = state.knot.run.phase == KnotPhase.COUNTDOWN || state.knot.run.phase == KnotPhase.RUNNING
+            val oneRow = state.game == WallGame.KNOT && state.knot.run.byTap && knotCalls
             if (compactLayout() && !oneRow) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) { buttons(Modifier.fillMaxWidth()) }
             } else {
