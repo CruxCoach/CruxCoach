@@ -18,8 +18,8 @@ import kotlinx.coroutines.launch
 /** Where a Knot round stands. [POSITIONS]: the field is lit and the climbers take their start. */
 enum class KnotPhase { IDLE, POSITIONS, COUNTDOWN, RUNNING, FINISHED }
 
-/** One climber of a round: [held] counts the calls they held, [out] once they came off. */
-data class KnotClimber(val out: Boolean = false, val held: Int = 0)
+/** One climber of a round: [held] counts the calls they held, [out] once they came off, during call [outAtCall]. */
+data class KnotClimber(val out: Boolean = false, val held: Int = 0, val outAtCall: Int? = null)
 
 data class KnotRun(
     val phase: KnotPhase = KnotPhase.IDLE,
@@ -142,11 +142,11 @@ internal class KnotRunner(
         if (run.climbers[climber].out) {
             if (now() - (outAt[climber] ?: 0L) < DOUBLE_TAP_MS) return
             outAt.remove(climber)
-            mutableRun.update { r -> r.copy(climbers = r.climbers.mapIndexed { i, c -> if (i == climber) c.copy(out = false) else c }) }
+            mutableRun.update { r -> r.copy(climbers = r.climbers.mapIndexed { i, c -> if (i == climber) c.copy(out = false, outAtCall = null) else c }) }
             return
         }
         outAt[climber] = now()
-        val climbers = run.climbers.mapIndexed { i, c -> if (i == climber) c.copy(out = true) else c }
+        val climbers = run.climbers.mapIndexed { i, c -> if (i == climber) c.copy(out = true, outAtCall = run.call?.number ?: 0) else c }
         val left = climbers.indices.filter { !climbers[it].out }
         mutableRun.update { it.copy(climbers = climbers) }
         val over = if (climbers.size > 1) left.size <= 1 else left.isEmpty()

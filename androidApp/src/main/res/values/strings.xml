@@ -3498,7 +3498,7 @@
     <string name="knot_steep">Steep wall (%1$d°): start very easy or set the wall flatter.</string>
     <string name="knot_safety_title">Before you play</string>
     <string name="knot_safety_text">Knot is played low and close together. Mats under the whole field, nothing on the floor below the wall, and at most three players on the wall at once.</string>
-    <string name="knot_unsupported_shinywall">Knot needs holds that light in named colours. The app doesn’t know which colours a Shiny Wall shows, so Knot isn’t available here yet.</string>
+    <string name="knot_unsupported_shinywall">Knot isn’t available on Shiny Wall yet.</string>
     <string name="knot_unsupported">Knot isn’t available for this board.</string>
     <string name="knot_no_field">This wall has too few low holds for a Knot field.</string>
     <string name="knot_light">Light the field</string>
@@ -3529,6 +3529,7 @@
     <string name="knot_tap_name">Off the wall? Tap your name.</string>
     <string name="knot_numbered">%1$d · %2$s</string>
     <string name="knot_by_tap_on">No timer: someone below taps “Next call”.</string>
+    <string name="knot_undo">Undo</string>
     <string name="knot_fell">Off the wall</string>
     <string name="knot_steep_action">Switch to very easy</string>
     <plurals name="knot_held_short">

@@ -3497,7 +3497,7 @@
     <string name="knot_steep">Steile Wand (%1$d°): Fang sehr leicht an oder stell die Wand flacher.</string>
     <string name="knot_safety_title">Bevor ihr spielt</string>
     <string name="knot_safety_text">Knoten wird tief und eng gespielt. Matten unter das ganze Feld, nichts auf dem Boden unter der Wand und höchstens drei Spieler gleichzeitig an der Wand.</string>
-    <string name="knot_unsupported_shinywall">Knoten braucht Griffe, die in benannten Farben leuchten. Welche Farben eine Shiny Wall zeigt, weiß die App nicht, deshalb gibt es Knoten hier noch nicht.</string>
+    <string name="knot_unsupported_shinywall">Knoten gibt es für die Shiny Wall noch nicht.</string>
     <string name="knot_unsupported">Für dieses Board gibt es Knoten nicht.</string>
     <string name="knot_no_field">An dieser Wand sind zu wenige tiefe Griffe für ein Knoten-Feld.</string>
     <string name="knot_light">Feld einschalten</string>
@@ -3528,8 +3528,9 @@
     <string name="knot_tap_name">Abgefallen? Tipp auf deinen Namen.</string>
     <string name="knot_numbered">%1$d · %2$s</string>
     <string name="knot_by_tap_on">Ohne Zeitlimit: Jemand unter der Wand tippt „Weiter“.</string>
+    <string name="knot_undo">Rückgängig</string>
     <string name="knot_fell">Abgefallen</string>
-    <string name="knot_steep_action">Auf sehr leicht</string>
+    <string name="knot_steep_action">Auf sehr leicht stellen</string>
     <plurals name="knot_held_short">
         <item quantity="one">%d gehalten</item>
         <item quantity="other">%d gehalten</item>

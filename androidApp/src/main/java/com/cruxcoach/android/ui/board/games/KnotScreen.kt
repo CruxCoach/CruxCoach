@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -152,20 +153,18 @@ internal fun KnotSettings(state: WallGamesState, actions: WallGamesActions) {
             Text(stringResource(R.string.knot_steep, steep), style = MaterialTheme.typography.bodyMedium, modifier = modifier)
         }
         val action: @Composable () -> Unit = {
-            TextButton(onClick = { actions.setLevel(1) }, modifier = Modifier.heightIn(min = 48.dp).testTag("knot_level_1")) {
+            TextButton(
+                onClick = { actions.setLevel(1) },
+                contentPadding = PaddingValues(horizontal = 0.dp),
+                modifier = Modifier.heightIn(min = 48.dp).testTag("knot_level_1"),
+            ) {
                 Text(stringResource(R.string.knot_steep_action))
             }
         }
-        if (compactLayout()) {
-            Column(Modifier.fillMaxWidth().testTag("knot_steep")) {
-                text(Modifier)
-                action()
-            }
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().testTag("knot_steep")) {
-                text(Modifier.weight(1f))
-                action()
-            }
+        // The action under its sentence, lined up with it: beside it, the sentence would shrink to a column.
+        Column(Modifier.fillMaxWidth().testTag("knot_steep")) {
+            text(Modifier)
+            action()
         }
     }
 }
@@ -389,9 +388,10 @@ private fun KnotClimbers(knot: KnotState, actions: WallGamesActions) {
     val run = knot.run
     val playing = run.phase == KnotPhase.RUNNING
     if (playing && run.climbers.size == 1) {
-        OutlinedButton(
+        // Solo, the fall is the one action that counts.
+        Button(
             onClick = { actions.knotOut(0) },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).testTag("knot_out_0"),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp).testTag("knot_out_0"),
         ) { Text(stringResource(R.string.knot_fell), style = MaterialTheme.typography.titleMedium) }
         return
     }
@@ -404,8 +404,13 @@ private fun KnotClimbers(knot: KnotState, actions: WallGamesActions) {
         order.forEach { index ->
             val climber = run.climbers[index]
             val name = if (playing) shownName(knot, index) else climberName(LocalContext.current, knot.names, index, numbered = false)
-            val status = if (climber.out) pluralStringResource(R.plurals.knot_out_after, climber.held, climber.held)
-            else pluralStringResource(R.plurals.knot_held_short, climber.held, climber.held)
+            // Until the next call, a fresh Out can be undone: the row says so.
+            val undo = playing && climber.out && climber.outAtCall == run.call?.number
+            val status = when {
+                undo -> stringResource(R.string.knot_undo)
+                climber.out -> pluralStringResource(R.plurals.knot_out_after, climber.held, climber.held)
+                else -> pluralStringResource(R.plurals.knot_held_short, climber.held, climber.held)
+            }
             val called = playing && run.call?.climber == index && !climber.out
             // The name is what you tap: it keeps its room, the count is short; at the largest font they stack.
             val compact = compactLayout()
@@ -421,15 +426,25 @@ private fun KnotClimbers(knot: KnotState, actions: WallGamesActions) {
                         modifier = modifier,
                     )
                 }
+                val statusText: @Composable (Modifier) -> Unit = { modifier ->
+                    Text(
+                        status,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (undo) CruxCoachDesign.colors.brandAccent else LocalContentColor.current,
+                        fontWeight = if (undo) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 1,
+                        modifier = modifier,
+                    )
+                }
                 if (compact) {
                     Column(Modifier.fillMaxWidth()) {
                         nameText(Modifier)
-                        Text(status, style = MaterialTheme.typography.bodySmall)
+                        statusText(Modifier)
                     }
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         nameText(Modifier.weight(1f))
-                        Text(status, style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
+                        statusText(Modifier.padding(start = 8.dp))
                     }
                 }
             }

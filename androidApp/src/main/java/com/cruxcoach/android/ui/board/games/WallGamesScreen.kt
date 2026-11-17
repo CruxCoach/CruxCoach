@@ -259,7 +259,8 @@ internal fun WallGamesContent(
             ) {
                 GamePicker(selected = state.game, onSelect = actions::selectGame)
                 GameSettings(state = state, actions = actions, onChooseClimb = onChooseClimb)
-                GameBoardPreview(state)
+                // Knot without a field on this board has nothing to show on the wall.
+                if (state.game != WallGame.KNOT || state.knot.layout != null) GameBoardPreview(state)
             }
         }
     }
@@ -766,7 +767,9 @@ private fun GameActionBar(
                     }
                 }
             }
-            if (compactLayout()) {
+            // Knot by tap keeps its two short buttons in one row, so the names stay above the bar.
+            val oneRow = state.game == WallGame.KNOT && state.knot.run.byTap && state.knot.run.active
+            if (compactLayout() && !oneRow) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) { buttons(Modifier.fillMaxWidth()) }
             } else {
                 Row(

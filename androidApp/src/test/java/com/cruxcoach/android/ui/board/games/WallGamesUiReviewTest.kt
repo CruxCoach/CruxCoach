@@ -401,7 +401,8 @@ class WallGamesUiReviewTest {
             knotRun(3) {
                 KnotRun(
                     KnotPhase.RUNNING, field = it,
-                    climbers = listOf(KnotClimber(held = 6), KnotClimber(out = true, held = 4), KnotClimber(held = 5)),
+                    // Benedikt came off during this call: his row offers the undo.
+                    climbers = listOf(KnotClimber(held = 6), KnotClimber(out = true, held = 4, outAtCall = 17), KnotClimber(held = 5)),
                     call = KnotCall(17, climber = 2, limb = KnotLimb.RIGHT_FOOT, colour = KnotColour.MAGENTA),
                     callMs = 6_000, callLeftMs = 3_900,
                 )
