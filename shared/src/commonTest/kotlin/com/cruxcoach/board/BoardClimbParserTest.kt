@@ -155,4 +155,48 @@ class BoardClimbParserTest {
             holds.map { HoldRole.roleClass(it.roleId) },
         )
     }
+
+    // ═══ forEachHold: the catalogue heatmap's scan, without a regex ═══
+
+    private fun scanned(frames: String): List<BoardHold> {
+        val holds = mutableListOf<BoardHold>()
+        BoardClimbParser.forEachHold(frames) { placementId, roleId -> holds.add(BoardHold(placementId, roleId)) }
+        return holds
+    }
+
+    @Test
+    fun forEachHold_findsWhatParseFramesFinds() {
+        listOf(
+            "p1091r15p1096r15p1163r12p1229r12p1276r13p1393r14",
+            "h1461p12h1575p13h1636p14",
+            "h1461p12s0e3h1575p13s1h1636p14e2",
+            "  p1r42p2r43p3r44p4r45",
+            "p1r1p2r2p3r3p4r4p5r5p6r8",
+            "",
+            "   ",
+            "p12r",
+            "pp1r2",
+            "p1rr2p3r4",
+            "p1r2,p3r4x1p5r6",
+            "xp7r12qp8r13",
+            "p99999999999r12p5r13",
+            "p5r99999999999p6r14",
+            "p0012r012",
+            "h12p",
+            "h1p2p3r4",
+            "rp1r2",
+        ).forEach { frames -> assertEquals(BoardClimbParser.parseFrames(frames), scanned(frames), frames) }
+    }
+
+    @Test
+    fun forEachHold_agreesWithParseFramesOnRandomInput() {
+        val random = kotlin.random.Random(250_000)
+        val alphabet = "phrxse0123456789, "
+        repeat(5_000) {
+            val frames = buildString {
+                repeat(random.nextInt(0, 40)) { append(alphabet[random.nextInt(alphabet.length)]) }
+            }
+            assertEquals(BoardClimbParser.parseFrames(frames), scanned(frames), frames)
+        }
+    }
 }

@@ -6,7 +6,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.GradeScale
@@ -132,6 +134,7 @@ internal fun BoardStatsSheetContent(
     customDateTo: LocalDate? = null,
     heatmapMode: HeatmapMode = HeatmapMode.PERSONAL,
     heatmapData: Map<Int, Float> = emptyMap(),
+    heatmapLoading: Boolean = false,
     placements: Map<Int, com.cruxcoach.data.repository.BoardPlacement> = emptyMap(),
     boardSize: com.cruxcoach.data.repository.BoardSize? = null,
     boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
@@ -362,7 +365,25 @@ internal fun BoardStatsSheetContent(
                             onHoldTapped = null,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        if (heatmapData.isEmpty()) {
+                        if (heatmapLoading) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.testTag("board_stats_heatmap_loading"),
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    stringResource(R.string.board_stats_heatmap_loading),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else if (heatmapData.isEmpty()) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 stringResource(R.string.board_stats_heatmap_empty),
