@@ -3,7 +3,9 @@ package com.cruxcoach.android.ui.spraywall
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -123,7 +125,9 @@ fun SprayConfirmDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { Text(text) },
+        // At the largest font the dialog fills the screen: the text scrolls, so its last sentence (on the publish
+        // dialog: no people in the photos) stays readable before the button.
+        text = { Text(text, Modifier.verticalScroll(rememberScrollState())) },
         confirmButton = {
             TextButton(onClick = onConfirm, modifier = Modifier.testTag("spray_confirm")) { Text(confirmLabel) }
         },
