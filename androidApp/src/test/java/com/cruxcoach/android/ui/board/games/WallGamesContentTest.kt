@@ -69,6 +69,17 @@ class WallGamesContentTest {
         assertEquals(listOf("stop"), calls)
     }
 
+    @Test fun `at its end the traverse has reached the top, the endurance climb is lit as a whole`() {
+        // Traverse keeps only the last moves lit, so "Whole climb lit" was not true there (RC1 walk).
+        val climb = GameClimb("c1", "Arete", 40, listOf(BoardHold(1, 13), BoardHold(5, 13)), offBoard = 0)
+        val end = GameRun(GamePhase.RUNNING, elapsedMs = 30_000, step = 9, steps = 9, timelineDone = true)
+        show(idle.copy(game = WallGame.TRAVERSE, climb = climb, run = end))
+        compose.onNodeWithText("Top reached").assertIsDisplayed()
+        compose.onNodeWithText("Whole climb lit").assertDoesNotExist()
+        state = state.copy(game = WallGame.ENDURANCE)
+        compose.onNodeWithText("Whole climb lit").assertIsDisplayed()
+    }
+
     @Test fun `the hold thief lights its climb first, then stealing is the main action`() {
         val route = listOf(BoardHold(1, 13), BoardHold(5, 13), BoardHold(9, 13))
         show(idle.copy(game = WallGame.THIEF, thiefRoute = route))
@@ -85,7 +96,7 @@ class WallGamesContentTest {
         show(WallGamesState(loading = false, unavailable = WallGameBoardLoad.NoHolds))
         compose.onNodeWithText("The hold positions of this board are not on the device yet. Download its catalogue first.").assertIsDisplayed()
         compose.onNodeWithTag("wall_games_start").assertDoesNotExist()
-        compose.onNodeWithText("Board catalogs").performClick()
+        compose.onNodeWithText("Board catalogues").performClick()
         assertEquals(listOf("catalogues"), calls)
     }
 

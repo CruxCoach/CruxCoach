@@ -822,7 +822,7 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         }
     }
 
-    /** The injury card: comeback button with its notice, "It's over" instead of "Healed", past injuries. */
+    /** The injury card: comeback button with its notice, "Mark as over" instead of "Healed", past injuries. */
     @Test
     fun injuriesCard() {
         comebackInjury(2)

@@ -542,6 +542,7 @@
     <string name="settings_privacy_desc">Was App und Website mit Daten tun. Öffnet cruxcoach.org.</string>
     <string name="settings_source_title">Quellcode</string>
     <string name="settings_source_desc">CruxCoach ist Open Source. Öffnet GitHub.</string>
+    <string name="settings_app_tagline">Open-Source-Trainings-App fürs Bouldern</string>
     <string name="board_filter_title">Filter</string>
     <string name="board_filter_selected_board">Gewähltes Board</string>
     <string name="settings_share_via_apps">Über Apps teilen</string>
@@ -694,6 +695,10 @@
     <string name="pain_wrist">Handgelenk</string>
     <string name="pain_back">Rücken</string>
     <string name="pain_knee">Knie</string>
+    <string name="tr_region_side_left">%1$s links</string>
+    <string name="tr_region_side_right">%1$s rechts</string>
+    <string name="tr_region_side_both">%1$s beidseitig</string>
+    <bool name="tr_region_lower_case_in_text">false</bool>
 
     <!-- RPE Labels -->
     <string name="rpe_very_light">Sehr leicht</string>
@@ -932,7 +937,7 @@
     <string name="payment_lightning_zap_subtitle">Betrag + Absender auf Nostr sichtbar</string>
     <string name="payment_card_title">Karte</string>
     <string name="payment_coming_soon">Demnächst verfügbar</string>
-    <string name="payment_zap_title_private">Lightning-Spende</string>
+    <string name="payment_zap_title_private">Lightning-Geschenk</string>
     <string name="payment_zap_title_public">Lightning Zap</string>
     <string name="payment_zap_amount">Betrag in Sats:</string>
     <string name="payment_zap_message_private">Nachricht (optional, verschlüsselt)</string>
@@ -1884,7 +1889,10 @@
     <string name="error_climb_not_in_db_your_logs">Deine Einträge</string>
     <string name="error_climb_not_in_db_log_send">Top</string>
     <string name="error_climb_not_in_db_log_attempt">Versuch</string>
-    <string name="error_climb_not_in_db_log_attempts">%1$d Versuch(e)</string>
+    <plurals name="error_climb_not_in_db_log_tries">
+        <item quantity="one">%d Versuch</item>
+        <item quantity="other">%d Versuche</item>
+    </plurals>
     <string name="error_select_category">Wähle mindestens eine Kategorie</string>
     <string name="error_cannot_open_file">Kann Datei nicht öffnen</string>
     <string name="error_cannot_read_file">Kann Datei nicht lesen</string>
@@ -1926,10 +1934,10 @@
     <string name="export_category_workout_logs">Workout-Logs</string>
     <string name="export_category_climb_logs">Boulder-Logbuch</string>
     <string name="export_category_training_plans">Trainingspläne</string>
-    <string name="export_category_board_logbook">Board-Sends &amp; -Versuche</string>
+    <string name="export_category_board_logbook">Board-Begehungen und -Versuche</string>
     <string name="export_category_board_sessions">Board-Sessions</string>
-    <string name="export_category_climb_lists">Climb-Listen &amp; Favoriten</string>
-    <string name="export_category_own_climbs">Eigene Climbs &amp; Drafts</string>
+    <string name="export_category_climb_lists">Boulderlisten und Favoriten</string>
+    <string name="export_category_own_climbs">Eigene Boulder und Entwürfe</string>
     <string name="import_auto_detect_hint">Wähle einen CruxCoach-JSON-Export oder ein CSV-ZIP</string>
     <string name="import_backup_detected">CruxCoach-Daten erkannt</string>
     <string name="import_duplicate_hint">Duplikate werden automatisch übersprungen</string>
@@ -2712,7 +2720,7 @@
     <string name="relay_multi_connect_direct">Dieses Board erlaubt mehrere Apps gleichzeitig – CruxRelay ist nicht nötig.</string>
     <string name="relay_unsupported_explanation">Quantum verwaltet mehrere Apps über eigene Layer. Verbinde weitere Apps direkt mit dem Board.</string>
     <string name="relay_chip_text">Relay für %1$s · %2$d verbunden</string>
-    <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
+    <string name="relay_advertised_as">Für andere sichtbar als „%1$s“</string>
     <string name="settings_relay_manual_start">Board für andere Apps freigeben</string>
     <string name="settings_relay_manual_start_desc">Andere lassen über dein Handy Boulder am Board leuchten – für Boards mit nur einer Verbindung. Läuft, solange ein Board verbunden ist.</string>
     <string name="settings_relay_first_share_hint">Startet nach dem ersten Freigeben im Verbindungsfenster.</string>
@@ -3456,6 +3464,7 @@
     <string name="wall_games_your_time">Deine Zeit: %1$s</string>
     <string name="wall_games_lava_top">Die Lava hat das Top erreicht.</string>
     <string name="wall_games_all_lit">Ganzer Boulder leuchtet</string>
+    <string name="wall_games_traverse_top">Top erreicht</string>
     <string name="wall_games_progress_rows">Reihe %1$d von %2$d</string>
     <string name="wall_games_progress_steps">Schritt %1$d von %2$d</string>
     <string name="wall_games_progress_moves">Zug %1$d von %2$d</string>

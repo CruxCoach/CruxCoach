@@ -40,7 +40,7 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.domain.board.HoldRole
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun LedColorSection(
     ledColors: LedHoldColors,
@@ -71,7 +71,9 @@ internal fun LedColorSection(
         )
     }
 
-    Row(
+    // Side by side when they fit, else one under the other: in a Row "Kilter Standard" broke into letters beside
+    // "CruxCoach Standard" at 320 dp and the largest font (RC1 walk).
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         TextButton(

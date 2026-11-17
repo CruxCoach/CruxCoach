@@ -53,7 +53,7 @@ class PaintBoxUiTest {
         compose.onNodeWithTag("paintbox_brush").assertDoesNotExist()
         compose.onNodeWithTag("paintbox_menu").assertDoesNotExist()
         compose.onNodeWithTag("paintbox_send").assertDoesNotExist()
-        compose.onNodeWithText("Tap the background color in the image.").assertIsDisplayed()
+        compose.onNodeWithText("Tap the background colour in the image.").assertIsDisplayed()
         compose.onNodeWithTag("paintbox_image_bg_off").assertTextContains("Keep background dark").assertIsOff().performClick()
         verify { vm.imageBackgroundOff(true) }
         compose.onNodeWithText("Background").performClick()
@@ -203,7 +203,7 @@ class PaintBoxUiTest {
         centres.zipWithNext().forEach { (left, right) -> assertTrue(layout, right - left >= 47.dp) }
         // The three tools keep the full height and width of a touch target.
         boxes.take(3).forEach { assertTrue(layout, it.right - it.left >= 47.5.dp && it.bottom - it.top >= 40.dp) }
-        compose.onNodeWithContentDescription("Pick up the color of a hold").performClick()
+        compose.onNodeWithContentDescription("Pick up the colour of a hold").performClick()
         verify { vm.pipette() }
     }
 
@@ -214,8 +214,8 @@ class PaintBoxUiTest {
                 listOf(0xf1, 0x91), "In this picture")
         } }
         compose.onNodeWithText("In this picture").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Picture color 1, similar to", substring = true).assertIsSelected()
-        compose.onNodeWithContentDescription("Picture color 2, similar to", substring = true).performClick()
+        compose.onNodeWithContentDescription("Picture colour 1, similar to", substring = true).assertIsSelected()
+        compose.onNodeWithContentDescription("Picture colour 2, similar to", substring = true).performClick()
         compose.runOnIdle { assertEquals(0x91, selected) }
         compose.onNodeWithContentDescription("Green").performScrollTo().assertIsDisplayed()
     }

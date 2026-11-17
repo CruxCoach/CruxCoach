@@ -90,7 +90,9 @@ class NutritionAlwaysOnTest : AthleteScreenTest() {
         // No kcal logged: calories are on by default and estimated from the macros (4/4/9).
         compose.onNodeWithTag("fuel_kcal", useUnmergedTree = true).assertTextEquals("≈470")
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_meal_lunch"))
-        compose.onNodeWithTag("fuel_meal_total_lunch", useUnmergedTree = true).assertTextEquals("P 15 · C 80 · F 10\u00A0g · ≈\u00A0470\u00A0kcal")
+        // No-break spaces keep each part together: "· F" ended a line and "10 g" started the next (RC1 walk).
+        compose.onNodeWithTag("fuel_meal_total_lunch", useUnmergedTree = true)
+            .assertTextEquals("P\u00A015 · C\u00A080 · F\u00A010\u00A0g · ≈\u00A0470\u00A0kcal")
 
         // The day before is "Yesterday", not a bare date (device test 2026-10-09).
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_prev_day"))

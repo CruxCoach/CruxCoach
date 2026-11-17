@@ -26,6 +26,8 @@
     <string name="trpg_page_cd_sides">Übung %1$d von %2$d: %3$s, %4$d von %5$d Sätzen je Seite</string>
     <string name="trpg_page_progress_sides">%1$d von %2$d Sätzen je Seite</string>
     <string name="trpg_reserve_question">Wie viele noch?</string>
+    <string name="trpg_reserve_question_seconds">Wie viele Sekunden noch?</string>
+    <string name="trpg_rir_short_seconds">Reserve %1$d\u00A0s</string>
     <string name="trpg_start_seconds">Start · %1$d\u00A0s</string>
     <string name="trpg_log_test">Eintragen</string>
     <string name="trpg_empty_hint">Füg eine Übung hinzu – oder tipp mehrere ein, z. B. „Klimmzüge 5x5 +20\u00A0kg, Plank 3x60\u00A0s“.</string>

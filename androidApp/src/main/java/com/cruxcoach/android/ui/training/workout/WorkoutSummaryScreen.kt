@@ -675,7 +675,9 @@ private fun setLine(def: ExerciseDefinition, s: ExerciseSet, units: UnitSystem):
     }
     s.edgeMm?.let { parts += stringResource(R.string.tr_format_mm, formatNumber(it)) }
     s.grip?.let { parts += gripLabel(it) }
-    s.rir?.let { parts += stringResource(R.string.trw_rir_short, it) }
+    // A timed hold's reserve is in seconds.
+    s.rir?.let { parts += stringResource(if (def.kind == ExerciseKind.TIME || def.kind == ExerciseKind.HANG) R.string.trpg_rir_short_seconds
+        else R.string.trw_rir_short, it) }
     s.note?.takeIf { it.isNotBlank() }?.let { parts += it }
     return parts.joinToString(" · ")
 }

@@ -600,7 +600,8 @@ private fun DoneRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPage,
                 }
             }
             set.rir?.let {
-                Text(stringResource(R.string.trw_rir_short, it), style = MaterialTheme.typography.bodySmall,
+                Text(stringResource(if (reserveInSeconds(def)) R.string.trpg_rir_short_seconds else R.string.trw_rir_short, it),
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -614,7 +615,7 @@ private fun LatestDoneExtras(set: ExerciseSet, def: ExerciseDefinition, state: P
     val units = state.profile.units
     val asks = set.setType == SetType.WORK && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG)
     Column(Modifier.padding(start = 48.dp, bottom = 4.dp)) {
-        if (asks) ReserveChoice(set, actions, "player_rir_", Modifier.padding(bottom = 4.dp))
+        if (asks) ReserveChoice(set, reserveInSeconds(def), actions, "player_rir_", Modifier.padding(bottom = 4.dp))
         state.feedback?.takeIf { it.def.slug == def.slug }?.let { fb ->
             val resources = LocalResources.current
             Column(Modifier.testTag("player_feedback")) {
@@ -657,7 +658,7 @@ private fun EditingRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPa
             }
             SetSteppers(set, def, units, state.profile.smallestIncrementKg, actions.onUpdate, Modifier.padding(top = 8.dp))
             if (set.setType != SetType.WARMUP && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG)) {
-                ReserveChoice(set, actions, "player_review_rir_", Modifier.padding(top = 12.dp))
+                ReserveChoice(set, reserveInSeconds(def), actions, "player_review_rir_", Modifier.padding(top = 12.dp))
             }
             // "Fertig" below when both do not fit in a row ("D/o" at the largest font).
             LabelBesideOrAbove(modifier = Modifier.padding(top = 8.dp), label = {
@@ -768,11 +769,15 @@ internal fun NumberChip(
     }
 }
 
-/** "How many more?" with 0, 1, 2, 3+ in one row; a second tap takes the answer back. */
+/** A timed hold's reserve is in seconds: it is added to the hold time (BenchmarkLogic). */
+private fun reserveInSeconds(def: ExerciseDefinition): Boolean = def.kind == ExerciseKind.TIME || def.kind == ExerciseKind.HANG
+
+/** "How many more?" (seconds for a timed hold) with 0, 1, 2, 3+ in one row; a second tap takes the answer back. */
 @Composable
-private fun ReserveChoice(set: ExerciseSet, actions: PageActions, tagPrefix: String, modifier: Modifier = Modifier) {
+private fun ReserveChoice(set: ExerciseSet, seconds: Boolean, actions: PageActions, tagPrefix: String, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.trpg_reserve_question), style = MaterialTheme.typography.bodyMedium,
+        Text(stringResource(if (seconds) R.string.trpg_reserve_question_seconds else R.string.trpg_reserve_question),
+            style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(bottom = 4.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
             listOf(0, 1, 2, 3).forEach { value ->

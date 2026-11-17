@@ -530,9 +530,11 @@ private fun RunPanel(state: WallGamesState) {
                         maxSize = 88.dp,
                         modifier = Modifier.testTag("wall_games_clock"),
                     )
-                    // Once the whole climb is lit, what to do next replaces the count.
+                    // Once the whole climb is lit, what to do next replaces the count. Traverse keeps only the last
+                    // moves lit, so there the top is reached rather than the whole climb lit (RC1 walk).
                     if (run.timelineDone && state.game.needsClimb) {
-                        Text(stringResource(R.string.wall_games_all_lit), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                        Text(stringResource(if (state.game == WallGame.TRAVERSE) R.string.wall_games_traverse_top else R.string.wall_games_all_lit),
+                            style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
                     } else {
                         ProgressLine(state)
                     }

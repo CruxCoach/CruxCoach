@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.booleanResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -243,6 +244,23 @@ fun injurySideLabel(s: InjurySide): String = stringResource(when (s) {
     InjurySide.RIGHT -> R.string.tr_side_right
     InjurySide.BOTH -> R.string.tr_side_both
 })
+
+/**
+ * An injured region with its side inside a sentence or a list: "left wrist" in English, "Handgelenk links" in German
+ * (RC1 walk: "Wrist Left, Elbow Right", "Ellbogen Rechts"). English writes the region in lower case there; a list
+ * that opens a line starts it with a capital itself.
+ */
+@Composable
+fun injuryPlaceLabel(region: InjuryRegion, side: InjurySide?): String {
+    val label = regionLabel(region)
+    val inText = if (booleanResource(R.bool.tr_region_lower_case_in_text)) label.lowercase(Locale.ROOT) else label
+    return when (side) {
+        null -> inText
+        InjurySide.LEFT -> stringResource(R.string.tr_region_side_left, inText)
+        InjurySide.RIGHT -> stringResource(R.string.tr_region_side_right, inText)
+        InjurySide.BOTH -> stringResource(R.string.tr_region_side_both, inText)
+    }
+}
 
 @Composable
 fun metricLabel(m: BodyMetric): String = stringResource(when (m) {
