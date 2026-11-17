@@ -127,6 +127,7 @@ internal fun LedEffectStatusLine(
         LedEffectStatus.NO_BOARD -> R.string.led_effect_status_no_board
         LedEffectStatus.UNSUPPORTED_BOARD -> R.string.led_effect_status_unsupported
         LedEffectStatus.PAUSED -> R.string.led_effect_status_paused
+        LedEffectStatus.TOO_MANY_HOLDS -> R.string.led_effect_status_too_many_holds
         LedEffectStatus.ENDED -> R.string.led_effect_status_ended
         LedEffectStatus.BACKGROUND -> R.string.led_effect_status_background
     }

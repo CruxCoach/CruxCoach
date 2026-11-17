@@ -470,6 +470,7 @@
     <string name="led_effect_status_no_board">Kein Kilter Board verbunden.</string>
     <string name="led_effect_status_unsupported">Dieses Board kann keine Effekte zeigen.</string>
     <string name="led_effect_status_paused">Pausiert, solange das Board belegt ist.</string>
+    <string name="led_effect_status_too_many_holds">Zu viele Griffe für den Effekt. Das Board zeigt die normalen Farben.</string>
     <string name="led_effect_status_ended">Am beleuchteten Boulder beendet.</string>
     <string name="led_effect_status_background">Pausiert, solange die App im Hintergrund ist.</string>
     <string name="led_effect_restart">Neu starten</string>
