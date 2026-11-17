@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NamedNavArgument
+import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -97,7 +98,7 @@ fun NavGraphBuilder.sprayWallGraph(nav: NavHostController) {
         SprayWallDetailsScreen(
             onBack = back,
             onSaved = back,
-            onDeleted = { nav.popBackStack(SprayWallRoutes.LIST, inclusive = false) },
+            onDeleted = { leaveDeletedWall(nav) },
             onOpenAccount = { go(Routes.KEY_MANAGEMENT) },
         )
     }
@@ -149,6 +150,14 @@ fun NavGraphBuilder.sprayWallGraph(nav: NavHostController) {
             onEdit = { wallId, climbUuid -> go(SprayWallRoutes.climbEditor(wallId, climbUuid)) },
         )
     }
+}
+
+/**
+ * After a wall is deleted, none of its screens stays open: back to where the wall was opened, the wall list or the map.
+ * Not to the list by name, which is not on the back stack when the map opened the wall.
+ */
+internal fun leaveDeletedWall(nav: NavController) {
+    if (!nav.popBackStack(SprayWallRoutes.WALL, inclusive = true)) nav.popBackStack()
 }
 
 private fun NavGraphBuilder.screen(
