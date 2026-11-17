@@ -12,6 +12,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.cruxcoach.android.R
+import kotlin.math.roundToInt
 
 @Composable
 internal fun RoutePlaybackSection(
@@ -76,7 +77,7 @@ internal fun RoutePlaybackSection(
         )
         Slider(
             value = routePlayback.countdownSeconds.toFloat(),
-            onValueChange = { onCountdownSecondsChange(it.toInt()) },
+            onValueChange = { onCountdownSecondsChange(it.roundToInt()) },
             valueRange = 1f..10f,
             steps = 8,
             modifier = Modifier.fillMaxWidth().semantics { contentDescription = countdownDescription },

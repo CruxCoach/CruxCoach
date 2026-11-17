@@ -74,6 +74,7 @@ import com.cruxcoach.domain.spraywall.SprayWall
 import com.cruxcoach.domain.spraywall.SprayWallHistory
 import com.cruxcoach.domain.spraywall.SprayWallVersion
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -372,7 +373,7 @@ private fun LogDialog(
                         Text(stringResource(R.string.spray_climb_grade, formatSprayGrade(difficulty, scale)), style = MaterialTheme.typography.labelLarge)
                         Slider(
                             value = difficulty.toFloat(),
-                            onValueChange = { difficulty = SprayClimbRules.clampDifficulty(it.toInt()) },
+                            onValueChange = { difficulty = SprayClimbRules.clampDifficulty(it.roundToInt()) },
                             valueRange = SprayClimbRules.MIN_DIFFICULTY.toFloat()..SprayClimbRules.MAX_DIFFICULTY.toFloat(),
                             steps = SprayClimbRules.MAX_DIFFICULTY - SprayClimbRules.MIN_DIFFICULTY - 1,
                         )

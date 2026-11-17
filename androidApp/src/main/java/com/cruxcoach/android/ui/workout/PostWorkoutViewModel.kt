@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 data class PostWorkoutState(
     val sessionId: Long? = null,
@@ -50,8 +51,9 @@ class PostWorkoutViewModel @Inject constructor(
 
     fun clearError() { _state.update { it.copy(error = null) } }
 
+    /** The sliders move in half steps; a snapped value can come out a hair off the mark, so it is rounded to it. */
     fun updateRpe(value: Float) {
-        _state.update { it.copy(rpe = value) }
+        _state.update { it.copy(rpe = toHalf(value)) }
     }
 
     fun updateEnergyLevel(value: Int) {
@@ -79,8 +81,10 @@ class PostWorkoutViewModel @Inject constructor(
     }
 
     fun updateSleepHours(hours: Float) {
-        _state.update { it.copy(sleepHours = hours.coerceIn(0f, 14f)) }
+        _state.update { it.copy(sleepHours = toHalf(hours).coerceIn(0f, 14f)) }
     }
+
+    private fun toHalf(value: Float) = (value * 2).roundToInt() / 2f
 
     fun updateNotes(text: String) {
         _state.update { it.copy(notes = text) }

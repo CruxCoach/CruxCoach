@@ -60,6 +60,7 @@ import com.cruxcoach.domain.spraywall.SprayGym
 import com.cruxcoach.domain.spraywall.SprayWall
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -376,7 +377,7 @@ fun SprayWallDetailsScreen(
                 Text(stringResource(R.string.spray_wall_angle, state.angle), style = MaterialTheme.typography.labelLarge)
                 Slider(
                     value = state.angle.toFloat(),
-                    onValueChange = { viewModel.setAngle((it / SprayWallDetailsState.ANGLE_STEP).toInt() * SprayWallDetailsState.ANGLE_STEP) },
+                    onValueChange = { viewModel.setAngle((it / SprayWallDetailsState.ANGLE_STEP).roundToInt() * SprayWallDetailsState.ANGLE_STEP) },
                     valueRange = 0f..SprayWallDetailsState.MAX_ANGLE.toFloat(),
                     steps = SprayWallDetailsState.MAX_ANGLE / SprayWallDetailsState.ANGLE_STEP - 1,
                     modifier = Modifier.testTag("spray_wall_angle"),

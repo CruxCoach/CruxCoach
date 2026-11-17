@@ -40,6 +40,7 @@ import com.cruxcoach.android.ui.training.bodymap.bodyAreaLabel
 import com.cruxcoach.android.ui.training.bodymap.bodyAreas
 import com.cruxcoach.android.ui.training.bodymap.toInjuryRegion
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -274,9 +275,9 @@ private fun InjuryCard(injury: Injury, onUpdate: (Injury) -> Unit, onResolve: ()
             }
             injury.detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             Text(stringResource(R.string.tra_injury_since, com.cruxcoach.android.ui.training.coach.formatIsoDay(injury.startedOn)), style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.tra_injury_pain, severity.toInt()), modifier = Modifier.padding(top = 8.dp))
+            Text(stringResource(R.string.tra_injury_pain, severity.roundToInt()), modifier = Modifier.padding(top = 8.dp))
             Slider(value = severity, onValueChange = { severity = it }, valueRange = 0f..Injury.MAX_SEVERITY.toFloat(),
-                steps = Injury.MAX_SEVERITY - 1, onValueChangeFinished = { onUpdate(injury.copy(severity = severity.toInt())) },
+                steps = Injury.MAX_SEVERITY - 1, onValueChangeFinished = { onUpdate(injury.copy(severity = severity.roundToInt())) },
                 modifier = Modifier.testTag("injury_pain_${injury.id}"))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.tra_injury_pause_climbing), modifier = Modifier.weight(1f))
@@ -372,7 +373,7 @@ private fun AddInjuryDialog(
                 OutlinedTextField(value = detail, onValueChange = { detail = it.take(120) },
                     label = { Text(stringResource(R.string.tra_injury_detail)) }, singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-                Text(stringResource(R.string.tra_injury_pain, severity.toInt()), modifier = Modifier.padding(top = 8.dp))
+                Text(stringResource(R.string.tra_injury_pain, severity.roundToInt()), modifier = Modifier.padding(top = 8.dp))
                 Slider(value = severity, onValueChange = { severity = it }, valueRange = 0f..Injury.MAX_SEVERITY.toFloat(),
                     steps = Injury.MAX_SEVERITY - 1, modifier = Modifier.testTag("injury_add_pain"))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -388,7 +389,7 @@ private fun AddInjuryDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(region, side, detail, severity.toInt(), pauseClimbing, pauseStreak) },
+            TextButton(onClick = { onSave(region, side, detail, severity.roundToInt(), pauseClimbing, pauseStreak) },
                 modifier = Modifier.testTag("injury_save")) { Text(stringResource(R.string.tr_action_save)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.tr_action_cancel)) } },
