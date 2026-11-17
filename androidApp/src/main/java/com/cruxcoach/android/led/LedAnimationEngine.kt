@@ -272,6 +272,9 @@ class LedAnimationEngine internal constructor(
             input.availability == LedBoardAvailability.UNSUPPORTED -> LedEffectStatus.UNSUPPORTED_BOARD
             input.availability == LedBoardAvailability.CLEANING || paused.isNotEmpty() -> LedEffectStatus.PAUSED
             frame == null -> LedEffectStatus.WAITING_FOR_CLIMB
+            // The loop leaves a climb this big on its own colours (see [runLoop]):
+            // the effect never runs on it, so it has not ended on it either.
+            frame.leds.size > MAX_ANIMATED_LEDS -> LedEffectStatus.TOO_MANY_HOLDS
             ended -> LedEffectStatus.ENDED
             !visible -> LedEffectStatus.BACKGROUND
             else -> LedEffectStatus.RUNNING

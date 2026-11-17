@@ -143,6 +143,26 @@ internal class LedEffectLimitsTest : LedEngineTestBase() {
     }
 
     @Test
+    fun theStatusSaysWhenTheLitClimbHasTooManyHoldsForTheEffect() = runEngineTest(
+        frame = litFrameOf(LedAnimationEngine.MAX_ANIMATED_LEDS),
+        selected = "two_phase_strobe",
+    ) { h ->
+        h.advance(10)
+        assertTrue(h.engine.isRunning.value, "up to the limit the effect runs")
+        assertEquals(LedEffectStatus.RUNNING, h.engine.status.value)
+
+        h.sink.litFrame.value = litFrameOf(LedAnimationEngine.MAX_ANIMATED_LEDS + 1)
+        h.advance(1_000)
+        assertFalse(h.engine.isRunning.value, "above it the board keeps the climb's own colours")
+        assertEquals(LedEffectStatus.TOO_MANY_HOLDS, h.engine.status.value, "so it must not say running")
+
+        h.sink.litFrame.value = fourRoleFrame()
+        h.advance(10)
+        assertTrue(h.engine.isRunning.value)
+        assertEquals(LedEffectStatus.RUNNING, h.engine.status.value, "the next smaller climb runs again")
+    }
+
+    @Test
     fun theBackgroundIsKeptOnlyWhenTheUserChoseIt() = runEngineTest(
         frame = fourRoleFrame(),
         selected = "pulse",

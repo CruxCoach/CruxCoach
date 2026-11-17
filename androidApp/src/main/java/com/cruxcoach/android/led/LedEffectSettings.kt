@@ -45,6 +45,12 @@ enum class LedEffectStatus {
     /** Route playback, the Easter animation, a wall game or hold cleaning has the wall. */
     PAUSED,
 
+    /**
+     * The lit climb has more holds than an effect may animate
+     * ([LedAnimationEngine.MAX_ANIMATED_LEDS]), so the board keeps its static colours.
+     */
+    TOO_MANY_HOLDS,
+
     /** The time limit ran out, or it was stopped, for the climb that is lit. */
     ENDED,
 
