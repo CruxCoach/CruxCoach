@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ble.ActiveBoardSelection
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.BoardWrite
@@ -14,6 +15,7 @@ import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -307,6 +309,38 @@ class BoardSizeCheckViewModelTest {
         viewModel.closeAndWait(releases = 1)
         verify(exactly = 1) { connection.connect(board, 1) }
         coVerify(exactly = 1) { connection.clearBoardWrite(BoardBrand.KILTER, 1L) }
+    }
+
+    private val kilterLayout = BoardConstants.KILTER_ORIGINAL_LAYOUT
+
+    private fun BoardSizeCheckViewModel.litOther(sizeId: Int) {
+        reject()
+        await { it.step == BoardSizeCheckStep.PICK_OTHER }
+        test(sizeId)
+        await { it.lit && it.size?.id == sizeId.toLong() }
+    }
+
+    @Test fun `a size confirmed in the board picker's check stays noted on the link for the picker's Confirm`() {
+        val viewModel = openLit()
+        viewModel.litOther(7)
+        var picked: Int? = null
+        viewModel.confirm(apply = false) { picked = it }
+        viewModel.closeAndWait(releases = 1) // the check lets the link go before the picker saves
+        assertEquals(7, picked)
+        verify(exactly = 1) { connection.noteSizeConfirmed(any()) }
+        verify { connection.noteSizeConfirmed(ActiveBoardSelection(BoardBrand.KILTER, kilterLayout, 7)) }
+        coVerify(exactly = 0) { preferences.setBoardSelection(any(), any(), any(), any()) }
+    }
+
+    @Test fun `the climb menu's check notes the size on the link before it saves it`() {
+        val viewModel = openLit()
+        viewModel.litOther(7)
+        viewModel.confirm(apply = true) {}
+        viewModel.closeAndWait(releases = 1)
+        coVerifyOrder {
+            connection.noteSizeConfirmed(ActiveBoardSelection(BoardBrand.KILTER, kilterLayout, 7))
+            preferences.setBoardSelection("kilter", kilterLayout, 7, any())
+        }
     }
 
     @Test fun `kilter sizes are listed most common first`() {

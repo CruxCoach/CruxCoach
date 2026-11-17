@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.ble.ActiveBoardSelection
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.BoardConstants
@@ -277,6 +278,10 @@ class BoardSizeCheckViewModel internal constructor(
         override suspend fun light(brand: BoardBrand, leds: List<Pair<Int, Int>>): Boolean = link.light(brand, leds)
 
         override suspend fun clear(brand: BoardBrand): Boolean = link.clear(brand)
+
+        // The selection saving this size writes, here ([apply]) or in the board picker.
+        override suspend fun confirmed(brand: BoardBrand, layoutId: Int?, sizeId: Int) =
+            link.confirmed(ActiveBoardSelection(brand, layoutId ?: userPreferences.boardLayoutId.first(), sizeId))
 
         override suspend fun apply(brand: BoardBrand, layoutId: Int?, sizeId: Int) {
             val layout = layoutId ?: userPreferences.boardLayoutId.first()

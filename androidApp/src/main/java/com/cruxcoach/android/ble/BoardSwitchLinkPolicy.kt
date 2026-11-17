@@ -28,7 +28,9 @@ internal data class ActiveBoardSelection(
  *
  * A size the board-size check confirmed on the connected board is no switch
  * either: the user saw that board light the new size's holds, so the link
- * stays and is bound to the corrected size.
+ * stays and is bound to the corrected size. The board picker saves it only
+ * after the check has closed, so the confirmation is kept with the link
+ * ([BoardBleConnection.sizeConfirmedOnBoard]), not read from the open check.
  */
 internal class BoardSwitchLinkPolicy {
     private var bound: ActiveBoardSelection? = null
@@ -45,19 +47,21 @@ internal class BoardSwitchLinkPolicy {
     }
 
     /**
-     * @param sizeConfirmedOnBoard the board-size check holds the link, so a new size of the
-     *   same board and layout is the one it confirmed on the connected board.
+     * @param sizeConfirmedOnBoard the board, layout and size the board-size check confirmed on
+     *   the connected board during this link. Only that very size keeps the link: one picked by
+     *   hand was never lit, and its LED map may be wrong for the board.
      * @return true when the link must be released because the user switched boards.
      */
     fun onSelectionChanged(
         selection: ActiveBoardSelection,
         connectedBrand: BoardBrand?,
         onboarded: Boolean,
-        sizeConfirmedOnBoard: Boolean = false,
+        sizeConfirmedOnBoard: ActiveBoardSelection? = null,
     ): Boolean {
         val previous = bound ?: return false
         if (selection == previous) return false
-        if (sizeConfirmedOnBoard && selection.brand == previous.brand && selection.layoutId == previous.layoutId) {
+        val sameBoard = selection.brand == previous.brand && selection.layoutId == previous.layoutId
+        if (sameBoard && selection == sizeConfirmedOnBoard) {
             bound = selection
             return false
         }
