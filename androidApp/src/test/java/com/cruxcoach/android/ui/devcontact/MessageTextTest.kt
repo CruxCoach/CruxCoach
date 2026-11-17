@@ -116,12 +116,15 @@ class MessageTextTest {
         showInCard(message)
 
         compose.onNodeWithText(message).performTouchInput { longClick(centerLeft.copy(x = 20f)) }
-        compose.waitForIdle()
+        // The menu can come before the selection settles (smart selection runs on its own thread).
+        compose.waitUntil(5_000) { menu.isShown && TextContextMenuKeys.CopyKey in menu.keys() }
 
-        assertTrue("menu shown", menu.isShown)
-        assertTrue(menu.keys().toString(), menu.keys().containsAll(listOf(TextContextMenuKeys.CopyKey, TextContextMenuKeys.SelectAllKey)))
-        menu.tap(TextContextMenuKeys.SelectAllKey)
-        compose.waitForIdle()
+        // Select all is offered unless the long press already took everything.
+        if (TextContextMenuKeys.SelectAllKey in menu.keys()) {
+            menu.tap(TextContextMenuKeys.SelectAllKey)
+            compose.waitUntil(5_000) { menu.isShown && TextContextMenuKeys.SelectAllKey !in menu.keys() }
+        }
+        assertTrue(menu.keys().toString(), TextContextMenuKeys.CopyKey in menu.keys())
         menu.tap(TextContextMenuKeys.CopyKey)
         compose.waitForIdle()
 
@@ -156,11 +159,10 @@ class MessageTextTest {
         showInCard("https://cruxcoach.org/download")
 
         compose.onNodeWithText("https://cruxcoach.org/download").performTouchInput { longClick(center) }
-        compose.waitForIdle()
+        compose.waitUntil(5_000) { menu.isShown }
 
         assertTrue(browser.opened.toString(), browser.opened.isEmpty())
         assertEquals(0, linksOpened)
-        assertTrue("menu shown", menu.isShown)
         assertEquals(0, cardTaps)
     }
 
