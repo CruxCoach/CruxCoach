@@ -85,8 +85,8 @@
     </plurals>
     <string name="trf_copy_confirm">Copy</string>
     <string name="trf_empty_day">Nothing logged yet. A rough entry is enough – you don\'t have to count precisely.</string>
-    <string name="trf_entry_macros">P %1$s · C %2$s · F %3$s</string>
-    <string name="trf_entry_macros_g">P %1$s · C %2$s · F %3$s\u00A0g</string>
+    <string name="trf_entry_macros">P\u00A0%1$s · C\u00A0%2$s · F\u00A0%3$s</string>
+    <string name="trf_entry_macros_g">P\u00A0%1$s · C\u00A0%2$s · F\u00A0%3$s\u00A0g</string>
     <string name="trf_entry_portions">%1$s\u00A0× portion</string>
     <string name="trf_entry_menu">Options for %1$s</string>
     <string name="trf_deleted">Entry deleted</string>

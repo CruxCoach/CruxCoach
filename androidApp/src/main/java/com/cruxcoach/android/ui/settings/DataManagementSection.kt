@@ -233,7 +233,7 @@ internal fun AppInfoSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            "Open-Source Bouldering Training App",
+            stringResource(R.string.settings_app_tagline),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

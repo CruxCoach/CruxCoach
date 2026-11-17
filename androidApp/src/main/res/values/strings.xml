@@ -194,7 +194,7 @@
     <!-- Setter detail / list (community) -->
     <string name="setter_detail_title_fallback">Setter</string>
     <string name="setter_detail_climb_count">%1$d climbs</string>
-    <string name="setter_detail_no_climbs">No climbs from this setter in your local catalog.</string>
+    <string name="setter_detail_no_climbs">No climbs from this setter in your local catalogue.</string>
     <string name="setter_detail_load_failed">Could not load this setter\'s climbs.</string>
     <string name="setters_list_load_failed">Could not load the setters list.</string>
     <string name="setter_detail_climb_meta">%1$d° · %2$s · ⭐%3$.1f · %4$d sends</string>
@@ -416,7 +416,7 @@
     <!-- Settings: Board Data -->
     <string name="settings_board_data_title">Board data</string>
     <string name="settings_board_type">Board type:</string>
-    <string name="settings_board_auto_download">Automatic download (WiFi):</string>
+    <string name="settings_board_auto_download">Automatic download (Wi-Fi):</string>
     <string name="settings_board_auto_download_desc">Daily / Weekly\nDownloads new board catalogues for the app in the background, usually over Wi-Fi. Networks marked as metered are excluded. Android may delay the start.\n\nManual\nYou start downloads yourself. Downloads can be large.</string>
 
     <!-- Settings: BLE -->
@@ -439,29 +439,29 @@
     <string name="settings_led_role_foot">Footholds</string>
     <string name="settings_led_role_top">Finish holds</string>
     <string name="settings_led_selected">Selected</string>
-    <string name="settings_led_pick_color">Choose color for %s</string>
+    <string name="settings_led_pick_color">Choose colour for %s</string>
     <string name="settings_led_reset_cruxcoach">CruxCoach Standard</string>
     <string name="settings_led_reset_kilter">Kilter Standard</string>
 
     <!-- Settings: LED effects (FEAT-074) -->
     <string name="settings_led_anim_title">LED effects</string>
     <string name="settings_led_anim_none">None</string>
-    <string name="settings_led_anim_none_hint">the climb shows its normal colors.</string>
+    <string name="settings_led_anim_none_hint">the climb shows its normal colours.</string>
     <string name="settings_led_anim_pulse">Pulse</string>
-    <string name="settings_led_anim_pulse_hint">each hold glows brighter and dimmer in its own color.</string>
+    <string name="settings_led_anim_pulse_hint">each hold glows brighter and dimmer in its own colour.</string>
     <string name="settings_led_anim_two_phase">Two-phase strobe</string>
-    <string name="settings_led_anim_two_phase_hint">flashes between the CruxCoach and the Kilter colors.</string>
+    <string name="settings_led_anim_two_phase_hint">flashes between the CruxCoach and the Kilter colours.</string>
     <string name="settings_led_anim_chaotic">Chaotic strobe</string>
-    <string name="settings_led_anim_chaotic_hint">the colors jump around; start, hand, top and foot holds stay apart.</string>
+    <string name="settings_led_anim_chaotic_hint">the colours jump around; start, hand, top and foot holds stay apart.</string>
     <string name="settings_led_anim_rainbow">Rainbow</string>
-    <string name="settings_led_anim_rainbow_hint">all colors travel slowly around the color wheel.</string>
+    <string name="settings_led_anim_rainbow_hint">all colours travel slowly around the colour wheel.</string>
     <string name="settings_led_effects_flashing">Flashes</string>
     <string name="settings_led_effects_remove_animations_note">“Remove animations” is on. This effect flashes anyway.</string>
     <string name="settings_led_effects_background">Keep running in other apps</string>
     <string name="settings_led_effects_background_on">In other apps the board stays connected to this phone.</string>
     <string name="settings_led_effects_needs_notifications">Needs notifications for the Stop button.</string>
     <string name="settings_led_effects_allow_notifications">Allow notifications</string>
-    <string name="settings_led_effects_info_board">On the board\nThe lit holds change their light. Works with a Kilter Board; other boards keep their normal colors. A choice shows at once, so the wall is the preview.</string>
+    <string name="settings_led_effects_info_board">On the board\nThe lit holds change their light. Works with a Kilter Board; other boards keep their normal colours. A choice shows at once, so the wall is the preview.</string>
     <string name="settings_led_effects_info_effects">Effects</string>
     <string name="settings_led_effects_info_effect">%1$s: %2$s</string>
     <string name="led_effect_status_running">Running on the board.</string>
@@ -469,7 +469,7 @@
     <string name="led_effect_status_no_board">No Kilter Board connected.</string>
     <string name="led_effect_status_unsupported">This board can’t show effects.</string>
     <string name="led_effect_status_paused">Paused while the board is busy.</string>
-    <string name="led_effect_status_too_many_holds">Too many holds for the effect. The board shows the normal colors.</string>
+    <string name="led_effect_status_too_many_holds">Too many holds for the effect. The board shows the normal colours.</string>
     <string name="led_effect_status_ended">Ended on the lit climb.</string>
     <string name="led_effect_status_background">Paused outside the app.</string>
     <string name="led_effect_restart">Restart</string>
@@ -484,12 +484,12 @@
     <string name="led_anim_notification_title">LED effect running</string>
     <string name="led_anim_notification_stop">Stop</string>
     <plurals name="settings_led_effects_info">
-        <item quantity="one">Pauses\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minute on the same climb the effect ends and the climb shows its normal colors. Send it again to restart.\n\nIn other apps\nFor filming, “Keep running in other apps” keeps the effect going while another app is open, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
-        <item quantity="other">Pauses\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minutes on the same climb the effect ends and the climb shows its normal colors. Send it again to restart.\n\nIn other apps\nFor filming, “Keep running in other apps” keeps the effect going while another app is open, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
+        <item quantity="one">Pauses\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minute on the same climb the effect ends and the climb shows its normal colours. Send it again to restart.\n\nIn other apps\nFor filming, “Keep running in other apps” keeps the effect going while another app is open, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
+        <item quantity="other">Pauses\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minutes on the same climb the effect ends and the climb shows its normal colours. Send it again to restart.\n\nIn other apps\nFor filming, “Keep running in other apps” keeps the effect going while another app is open, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
     </plurals>
     <plurals name="led_anim_notification_text">
-        <item quantity="one">Ends after %1$d minute on this climb. Stop shows its normal colors.</item>
-        <item quantity="other">Ends after %1$d minutes on this climb. Stop shows its normal colors.</item>
+        <item quantity="one">Ends after %1$d minute on this climb. Stop shows its normal colours.</item>
+        <item quantity="other">Ends after %1$d minutes on this climb. Stop shows its normal colours.</item>
     </plurals>
 
     <!-- Settings: Timer -->
@@ -535,12 +535,13 @@
     <!-- Settings: App Sharing -->
     <string name="settings_share_title">Share app</string>
     <string name="settings_share_desc">Share CruxCoach and public board catalogues with others — never personal data.</string>
-    <string name="settings_licenses_title">Open-source licenses</string>
-    <string name="settings_licenses_desc">Libraries used in CruxCoach and their licenses.</string>
+    <string name="settings_licenses_title">Open-source licences</string>
+    <string name="settings_licenses_desc">Libraries used in CruxCoach and their licences.</string>
     <string name="settings_privacy_title">Privacy notice</string>
     <string name="settings_privacy_desc">What the app and the website do with data. Opens cruxcoach.org.</string>
     <string name="settings_source_title">Source code</string>
     <string name="settings_source_desc">CruxCoach is open source. Opens GitHub.</string>
+    <string name="settings_app_tagline">Open-source bouldering training app</string>
     <string name="board_filter_title">Filters</string>
     <string name="board_filter_selected_board">Selected board</string>
     <string name="settings_share_via_apps">Share via apps</string>
@@ -693,6 +694,12 @@
     <string name="pain_wrist">Wrist</string>
     <string name="pain_back">Back</string>
     <string name="pain_knee">Knee</string>
+    <!-- An injured region (tr_region_*) with its side inside a sentence or a list: "left wrist, right elbow". %1$s is
+         the region, in lower case where tr_region_lower_case_in_text is true (English), as it is otherwise (German). -->
+    <string name="tr_region_side_left">left %1$s</string>
+    <string name="tr_region_side_right">right %1$s</string>
+    <string name="tr_region_side_both">%1$s (both sides)</string>
+    <bool name="tr_region_lower_case_in_text">true</bool>
 
     <!-- RPE Labels -->
     <string name="rpe_very_light">Very light</string>
@@ -863,7 +870,7 @@
     <string name="board_session_connecting">Connecting playlist…</string>
     <string name="board_session_end_title">End session?</string>
     <string name="board_session_end_confirm">End</string>
-    <string name="board_session_end_summary">Total time: %1$s\nActive: %2$s\nBreaks: %3$s\nSends: %4$d / Attempts: %5$d</string>
+    <string name="board_session_end_summary">Total time: %1$s\nActive: %2$s\nBreaks: %3$s\nSends: %4$d / Tries: %5$d</string>
     <string name="board_ble_disconnect_request_title">Connection request</string>
     <string name="board_ble_disconnect_request_message">Someone nearby wants to connect to the board. Release connection?</string>
     <string name="board_ble_disconnect_request_confirm">Release</string>
@@ -912,7 +919,7 @@
     <string name="announcements_notifications_description">Push notifications for new announcements</string>
 
     <!-- Payment -->
-    <string name="payment_sheet_title">Voluntary Gift</string>
+    <string name="payment_sheet_title">Voluntary gift</string>
     <string name="payment_lightning_title">Lightning</string>
     <string name="payment_lightning_desc">Fast, cheap, private</string>
     <string name="payment_kofi_title">Ko-fi</string>
@@ -927,12 +934,12 @@
     <string name="payment_gift_disclaimer">CruxCoach is and remains completely free — regardless of whether you send a gift or not. Gifts are purely voluntary and do not create any entitlement to services or features.</string>
     <string name="payment_lightning_private_title">Lightning (private)</string>
     <string name="payment_lightning_private_subtitle">No public trace on Nostr relays</string>
-    <string name="payment_lightning_zap_title">Lightning Zap (public)</string>
+    <string name="payment_lightning_zap_title">Lightning zap (public)</string>
     <string name="payment_lightning_zap_subtitle">Amount and sender visible on Nostr</string>
     <string name="payment_card_title">Card</string>
     <string name="payment_coming_soon">Coming soon</string>
-    <string name="payment_zap_title_private">Lightning donation</string>
-    <string name="payment_zap_title_public">Lightning Zap</string>
+    <string name="payment_zap_title_private">Lightning gift</string>
+    <string name="payment_zap_title_public">Lightning zap</string>
     <string name="payment_zap_amount">Amount in sats:</string>
     <string name="payment_zap_message_private">Message (optional, encrypted)</string>
     <string name="payment_zap_message_public">Message (optional, public)</string>
@@ -1050,7 +1057,7 @@
 
     <!-- Board: Session Summary -->
     <string name="board_session_summary_title">Session finished</string>
-    <string name="board_session_summary_attempts">Attempts</string>
+    <string name="board_session_summary_attempts">Tries</string>
     <string name="board_session_summary_hardest_send">Hardest send</string>
     <string name="board_session_summary_total_time">Total time</string>
     <string name="board_session_summary_active_time">Active time</string>
@@ -1058,7 +1065,7 @@
     <string name="board_session_summary_grade_distribution">Grade distribution</string>
     <string name="board_session_summary_intensity_zones">Intensity zones</string>
     <string name="board_session_summary_session_type">Training type</string>
-    <string name="board_session_type_warmup">Warm-Up</string>
+    <string name="board_session_type_warmup">Warm-up</string>
     <string name="board_session_type_volume">Volume</string>
     <string name="board_session_type_limit">Limit</string>
     <string name="board_session_type_pyramid">Pyramid</string>
@@ -1144,15 +1151,15 @@
     <string name="board_sync_no_network_message">An active internet connection is required for syncing.</string>
     <string name="board_sync_open_settings">Open settings</string>
     <string name="board_sync_metered_confirm_title">Download over mobile data?</string>
-    <string name="board_sync_metered_confirm_message">The current board catalogues are about 130 MB in total and may grow over time. You are not on WiFi — downloading now will use mobile data, which may incur charges.</string>
+    <string name="board_sync_metered_confirm_message">The current board catalogues are about 130 MB in total and may grow over time. You are not on Wi-Fi — downloading now will use mobile data, which may incur charges.</string>
     <string name="board_sync_metered_confirm_action">Use mobile data</string>
     <string name="board_sync_no_network_banner">No network available</string>
-    <string name="board_sync_no_wifi_banner">No WiFi — downloading now will use mobile data</string>
+    <string name="board_sync_no_wifi_banner">No Wi-Fi — downloading now will use mobile data</string>
     <string name="board_sync_to_browser">Done</string>
     <string name="board_sync_db_title">Board databases</string>
     <string name="board_sync_db_description">Downloads public climb catalogues into the app for offline use. Wi-Fi recommended; downloads can be large.</string>
     <string name="board_sync_compact_description">Downloads selected board catalogues in the background. You can keep using the app.</string>
-    <string name="board_sync_compact_waiting_wifi">Queued — starts automatically on WiFi</string>
+    <string name="board_sync_compact_waiting_wifi">Queued — starts automatically on Wi-Fi</string>
     <string name="board_sync_compact_progress">%1$d of %2$d boards ready</string>
     <string name="board_sync_compact_show_details">Show details</string>
     <string name="board_sync_compact_hide_details">Hide details</string>
@@ -1193,8 +1200,8 @@
     <string name="action_not_now">Not now</string>
 
     <!-- Kilter Account -->
-    <string name="kilter_section_title">Kilter Board Account</string>
-    <string name="kilter_connect_button">Connect Kilter Account</string>
+    <string name="kilter_section_title">Kilter Board account</string>
+    <string name="kilter_connect_button">Connect Kilter account</string>
     <string name="kilter_connect_desc">Imports your Kilter logbook and climb lists (“circuits”) into CruxCoach: once or with later checks for new entries. Enable uploading logs and publishing your own climbs separately.</string>
     <string name="kilter_connected_as">Connected as: %s</string>
     <string name="kilter_last_sync">Last sync: %s</string>
@@ -1212,13 +1219,13 @@
     <string name="kilter_relogin_button">Sign in again</string>
     <string name="kilter_disconnect">Disconnect</string>
     <string name="kilter_disconnect_confirm">Really disconnect Kilter account? Imported ascents will be kept.</string>
-    <string name="kilter_login_title">Kilter Login</string>
+    <string name="kilter_login_title">Kilter login</string>
     <string name="kilter_email_label">Email</string>
     <string name="kilter_password_label">Password</string>
     <string name="kilter_login_button">Sign in</string>
     <string name="kilter_login_error">Login failed</string>
     <string name="kilter_login_privacy">Your password is not stored. CruxCoach uses a token that renews with each app use.</string>
-    <string name="kilter_preview_title">Kilter Ascents</string>
+    <string name="kilter_preview_title">Kilter ascents</string>
     <string name="kilter_preview_found">%1$d ascents found (%2$d new, %3$d already imported)</string>
     <string name="kilter_import_one_time">Import once</string>
     <string name="kilter_import_one_time_desc">Import your logbook, then remove the saved sign-in</string>
@@ -1301,18 +1308,18 @@
     <string name="bodystat_stat_saved">%1$s saved</string>
 
     <!-- Dev Contact -->
-    <string name="devcontact_chat_title">Developer Chat</string>
+    <string name="devcontact_chat_title">Developer chat</string>
     <string name="devcontact_write_message">Write a message…</string>
-    <string name="devcontact_feature_suggest">Suggest Feature</string>
+    <string name="devcontact_feature_suggest">Suggest feature</string>
     <string name="devcontact_title_required">Title *</string>
     <string name="devcontact_description_required">Description *</string>
     <string name="devcontact_feature_placeholder">What would you like to see?</string>
-    <string name="devcontact_wishes">Feature Requests</string>
-    <string name="devcontact_bug_reports">Bug Reports</string>
-    <string name="devcontact_crash_reports">Crash Reports</string>
+    <string name="devcontact_wishes">Feature requests</string>
+    <string name="devcontact_bug_reports">Bug reports</string>
+    <string name="devcontact_crash_reports">Crash reports</string>
     <string name="devcontact_write_reply">Write a reply…</string>
-    <string name="devcontact_report_bug">Report Bug</string>
-    <string name="devcontact_steps_optional">Steps to Reproduce (optional)</string>
+    <string name="devcontact_report_bug">Report bug</string>
+    <string name="devcontact_steps_optional">Steps to reproduce (optional)</string>
     <string name="devcontact_announcements">Announcements</string>
 
     <!-- Common Components -->
@@ -1509,15 +1516,15 @@
     <string name="board_detail_method_footless">Footless</string>
     <string name="board_detail_method_footless_kickboard">Footless + kickboard</string>
     <string name="board_detail_method_no_kickboard">No kickboard</string>
-    <string name="board_heatmap_finish">Top Holds</string>
-    <string name="board_heatmap_foot">Foot Holds</string>
-    <string name="board_heatmap_global">All Climbs</string>
-    <string name="board_heatmap_hand">Hand Holds</string>
+    <string name="board_heatmap_finish">Top holds</string>
+    <string name="board_heatmap_foot">Foot holds</string>
+    <string name="board_heatmap_global">All climbs</string>
+    <string name="board_heatmap_hand">Hand holds</string>
     <string name="board_heatmap_less">Less</string>
     <string name="board_heatmap_more">More</string>
     <string name="board_heatmap_off">Off</string>
-    <string name="board_heatmap_personal">My Sends</string>
-    <string name="board_heatmap_start">Start Holds</string>
+    <string name="board_heatmap_personal">My sends</string>
+    <string name="board_heatmap_start">Start holds</string>
     <!-- %1$s: the holds, from board_holdsearch_count_holds; %2$s: the climbs, from board_holdsearch_count_climbs -->
     <string name="board_holdsearch_filter_summary">%1$s → %2$s</string>
     <plurals name="board_holdsearch_count_holds">
@@ -1529,18 +1536,18 @@
         <item quantity="other">%d climbs</item>
     </plurals>
     <plurals name="board_list_climb_count">
-        <item quantity="one">%d Climb</item>
-        <item quantity="other">%d Climbs</item>
+        <item quantity="one">%d climb</item>
+        <item quantity="other">%d climbs</item>
     </plurals>
     <plurals name="board_list_climb_count_with_plan">
-        <item quantity="one">%d Climb · Training plan</item>
-        <item quantity="other">%d Climbs · Training plan</item>
+        <item quantity="one">%d climb · training plan</item>
+        <item quantity="other">%d climbs · training plan</item>
     </plurals>
     <string name="board_list_filter_all">All</string>
     <string name="board_list_unavailable_count">%d not shown — board not downloaded</string>
     <string name="board_list_on_board_count">%1$d of %2$d on this board</string>
     <string name="board_list_default_name">List</string>
-    <string name="board_list_builtin_favorites">Favorites</string>
+    <string name="board_list_builtin_favorites">Favourites</string>
     <string name="board_list_builtin_ignored">Ignored</string>
     <string name="board_list_empty_message">Add climbs from the browser</string>
     <string name="board_list_empty_title">List is empty</string>
@@ -1600,9 +1607,9 @@
     <string name="training_type_volume">Volume</string>
     <string name="training_type_technique">Technique</string>
     <string name="training_type_deload">Deload</string>
-    <string name="wifi_disabled_error">WiFi is off. Please turn on WiFi.</string>
+    <string name="wifi_disabled_error">Wi-Fi is off. Please turn on Wi-Fi.</string>
     <string name="share_app_chooser">Share app</string>
-    <string name="hotspot_start_failed">Could not start hotspot.\n\nAPI: %1$d, WiFi: %2$s\n\nAttempts:\n%3$s</string>
+    <string name="hotspot_start_failed">Could not start hotspot.\n\nAPI: %1$d, Wi-Fi: %2$s\n\nAttempts:\n%3$s</string>
     <string name="share_download_button">Download CruxCoach</string>
     <string name="share_download_instructions">After downloading, open the APK file and install it.\nYou may need to allow \"Install from unknown sources\".</string>
     <string name="board_playback_frame">%1$d / %2$d</string>
@@ -1713,18 +1720,18 @@
     <string name="board_stats_grade_hard">Hard</string>
     <string name="board_stats_grade_medium">Medium</string>
     <string name="board_stats_grade_progression">Rolling performance level</string>
-    <string name="board_stats_interval_1y">1 Year</string>
-    <string name="board_stats_interval_30d">30 Days</string>
-    <string name="board_stats_interval_90d">90 Days</string>
-    <string name="board_stats_interval_all">All Time</string>
+    <string name="board_stats_interval_1y">1 year</string>
+    <string name="board_stats_interval_30d">30 days</string>
+    <string name="board_stats_interval_90d">90 days</string>
+    <string name="board_stats_interval_all">All time</string>
     <string name="board_stats_total">Total</string>
     <string name="board_stats_unique">Distinct climbs</string>
     <string name="board_zone_limit">Limit</string>
     <string name="board_zone_optimal">Optimal</string>
-    <string name="board_zone_warmup">Warm-Up</string>
+    <string name="board_zone_warmup">Warm-up</string>
     <string name="cd_adapt_plan">Adapt Plan</string>
     <string name="cd_add">Add</string>
-    <string name="cd_add_favorite">Add to favorites</string>
+    <string name="cd_add_favorite">Add to favourites</string>
     <string name="cd_add_to_list">Add to list</string>
     <string name="cd_app_share">Share App</string>
     <string name="cd_bluetooth">Bluetooth</string>
@@ -1777,7 +1784,7 @@
     <string name="cd_random_add">Add random</string>
     <string name="cd_refresh">Refresh</string>
     <string name="cd_remove">Remove</string>
-    <string name="cd_remove_favorite">Remove from favorites</string>
+    <string name="cd_remove_favorite">Remove from favourites</string>
     <string name="cd_reorder">Reorder</string>
     <string name="cd_report_bug">Report bug</string>
     <string name="cd_rest_timer">Rest timer</string>
@@ -1790,7 +1797,7 @@
     <string name="cd_stars">%d stars</string>
     <string name="cd_stop">Stop</string>
     <string name="cd_suggest_feature">Suggest feature</string>
-    <string name="cd_wifi_qr_code">WiFi QR Code</string>
+    <string name="cd_wifi_qr_code">Wi-Fi QR code</string>
     <string name="dashboard_greeting">Hey, %1$s!</string>
     <string name="day_fr">Fri</string>
     <string name="day_mo">Mon</string>
@@ -1799,7 +1806,7 @@
     <string name="day_th">Thu</string>
     <string name="day_tu">Tue</string>
     <string name="day_we">Wed</string>
-    <string name="devcontact_app_version">App Version</string>
+    <string name="devcontact_app_version">App version</string>
     <string name="devcontact_badge_bug">[BUG]</string>
     <string name="devcontact_badge_wish">[FEATURE]</string>
     <string name="devcontact_bug_sent">Bug report sent</string>
@@ -1812,20 +1819,20 @@
     <string name="devcontact_crashes_empty">No crash reports sent</string>
     <string name="devcontact_developer">Developer</string>
     <string name="devcontact_device">Device</string>
-    <string name="devcontact_device_info">Device Information</string>
+    <string name="devcontact_device_info">Device information</string>
     <string name="devcontact_feature_sent">Feature request sent</string>
     <string name="devcontact_language">Language</string>
     <string name="devcontact_message">Message</string>
     <string name="devcontact_messages">Messages</string>
     <string name="devcontact_notifications">Background announcements</string>
     <string name="devcontact_notifications_desc">Notifies you of developer announcements in the selected categories. Android notification permission is required. Off: announcements refresh when you open their page.</string>
-    <string name="devcontact_send_crash_reports">Send Crash Reports</string>
+    <string name="devcontact_send_crash_reports">Send crash reports</string>
     <string name="devcontact_send_crash_reports_desc">Automatic reporting\nSends saved crash reports on the next app start. Includes error details, time, app and Android versions, language and a broad device performance tier.\n\nPrivacy\nEnd-to-end encrypted, but linked to your public account key; not anonymous. Off: you send reports yourself.</string>
     <string name="devcontact_send_failed">Sending failed</string>
     <string name="devcontact_status_delivered">✓ Delivered · %1$s</string>
     <string name="devcontact_status_not_delivered">✗ Not delivered</string>
     <string name="devcontact_status_queued">⏳ In queue</string>
-    <string name="devcontact_support_developer">Send a Gift</string>
+    <string name="devcontact_support_developer">Send a gift</string>
     <string name="devcontact_title">Developer Contact</string>
     <string name="devcontact_unknown">unknown</string>
     <string name="devcontact_wishes_empty">No feature requests sent</string>
@@ -1841,7 +1848,10 @@
     <string name="error_climb_not_in_db_your_logs">Your logs</string>
     <string name="error_climb_not_in_db_log_send">Send</string>
     <string name="error_climb_not_in_db_log_attempt">Attempt</string>
-    <string name="error_climb_not_in_db_log_attempts">%1$d attempt(s)</string>
+    <plurals name="error_climb_not_in_db_log_tries">
+        <item quantity="one">%d try</item>
+        <item quantity="other">%d tries</item>
+    </plurals>
     <string name="error_select_category">Select at least one category</string>
     <string name="error_cannot_open_file">Cannot open file</string>
     <string name="error_cannot_read_file">Cannot read file</string>
@@ -1885,7 +1895,7 @@
     <string name="export_category_training_plans">Training plans</string>
     <string name="export_category_board_logbook">Board sends &amp; attempts</string>
     <string name="export_category_board_sessions">Board sessions</string>
-    <string name="export_category_climb_lists">Climb lists &amp; favorites</string>
+    <string name="export_category_climb_lists">Climb lists &amp; favourites</string>
     <string name="export_category_own_climbs">Own climbs &amp; drafts</string>
     <string name="import_auto_detect_hint">Select a CruxCoach JSON export or CSV ZIP</string>
     <string name="import_backup_detected">CruxCoach data detected</string>
@@ -1983,10 +1993,10 @@
     <string name="settings_group_all_boards">All boards</string>
     <string name="settings_group_selected_board">Settings for each board</string>
     <string name="settings_group_board_accounts_imports">Board accounts &amp; logbook imports</string>
-    <string name="settings_group_board_catalogs">Board catalogs</string>
+    <string name="settings_group_board_catalogs">Board catalogues</string>
     <string name="settings_group_backup_transfer">Backup &amp; transfer</string>
     <string name="settings_group_delete_data">Delete data</string>
-    <string name="settings_board_hub_desc">Choose Kilter for LED colors or MoonBoard for LED position. This does not change your active board. “All boards” applies to every brand.</string>
+    <string name="settings_board_hub_desc">Choose Kilter for LED colours or MoonBoard for LED position. This does not change your active board. “All boards” applies to every brand.</string>
     <string name="settings_board_active_badge">Active</string>
     <string name="settings_board_viewing">Viewing settings for %1$s</string>
     <string name="settings_board_make_active">Configure and set active</string>
@@ -2524,7 +2534,7 @@
     <string name="aurora_migration_importing">Importing…</string>
     <string name="aurora_migration_progress_starting">Starting…</string>
     <string name="aurora_migration_progress_parsing">Parsing the JSON…</string>
-    <string name="aurora_migration_progress_resolving" formatted="false">Matching %1$d climb names against your local board catalog…</string>
+    <string name="aurora_migration_progress_resolving" formatted="false">Matching %1$d climb names against your local board catalogue…</string>
     <string name="aurora_migration_progress_climbs" formatted="false">Importing your climbs (%1$d / %2$d)…</string>
     <string name="aurora_migration_progress_ascents" formatted="false">Importing ascents (%1$d / %2$d)…</string>
     <string name="aurora_migration_progress_bids" formatted="false">Importing attempts (%1$d / %2$d)…</string>
@@ -2538,7 +2548,7 @@
     <string name="aurora_migration_count_circuits">Playlists</string>
     <string name="aurora_migration_count_climbs">Your climbs</string>
     <string name="aurora_migration_count_summary" formatted="false">%1$s: %2$d imported · %3$d already present · %4$d skipped</string>
-    <string name="aurora_migration_unresolved_title" formatted="false">%1$d climb names couldn\'t be matched against your local catalog</string>
+    <string name="aurora_migration_unresolved_title" formatted="false">%1$d climb names couldn\'t be matched against your local catalogue</string>
     <string name="aurora_migration_import_another">Import another file</string>
     <string name="aurora_migration_staged_title">Saved for later</string>
     <string name="aurora_migration_staged_body">%1$s and %2$s are imported automatically once the Kilter catalogue has loaded.</string>
@@ -2713,7 +2723,7 @@
     <string name="relay_multi_connect_direct">This board accepts several apps at once — CruxRelay is not needed.</string>
     <string name="relay_unsupported_explanation">Quantum manages several apps through its own layers. Connect other apps to the board directly.</string>
     <string name="relay_chip_text">Relay for %1$s · %2$d connected</string>
-    <string name="relay_advertised_as">Visible to others as \"%1$s\"</string>
+    <string name="relay_advertised_as">Visible to others as “%1$s”</string>
     <string name="settings_relay_manual_start">Share the board with other apps</string>
     <string name="settings_relay_manual_start_desc">Others light climbs on the board through your phone — for boards with a single connection. Runs while a board is connected.</string>
     <string name="settings_relay_first_share_hint">Starts after you share once from the connection sheet.</string>
@@ -3091,7 +3101,7 @@
     <string name="settings_page_support">Bugs &amp; feature requests</string>
     <string name="settings_summary_support">Report bugs, request features and contact the developer. Configure notifications and automatic crash reports.</string>
     <string name="settings_page_about">About CruxCoach</string>
-    <string name="settings_summary_about">Version, licenses, privacy notice and source code, or share the app.</string>
+    <string name="settings_summary_about">Version, licences, privacy notice and source code, or share the app.</string>
     <!-- Community on Buzz (0.2.5): the link only opens in the browser; nothing is sent. -->
     <string name="settings_page_community">Community</string>
     <string name="settings_summary_community">Join the CruxCoach community on Buzz: talk to the developers, test new builds first and help shape what comes next.</string>
@@ -3121,11 +3131,11 @@
     <string name="ux_account_help">Account access\nYour private key works like a password. Keep it secret and store it outside this phone. It cannot be reset.\n\nYour data\nA key copy is not a data backup. Your logbook and lists need a separate backup.\n\nOptional tools\nAmber can manage your key in a separate app. Your public account ID can be shared, but cannot restore access.</string>
     <string name="ux_lists_help">Lists\nA list contains each climb once. Favourites are a built-in list.\n\nPlayback\nAn optional plan adds repeated climbs, angles and rests. Playing it does not automatically mean you climbed its steps. Record attempts and sends in the logbook.\n\nHistory\nHistory records climbs sent to the board LEDs. It is separate from your climbing logbook.</string>
     <string name="ux_logbook_help">Entries\nSends are successful log entries, including repeats. Attempts here are entries without a send. An entry can include several tries.\n\nFilters\nPeriod, outcome, board and angle narrow this list. The overview above the list always covers the whole logbook, and the statistics have their own period and board filter. Lighting a climb on the board does not log a climbing attempt.</string>
-    <string name="ux_stats_help">Filters\nThe board and the period at the top apply to every card below. The boards card and the tries card always show every board side by side.\n\nNumbers\nSends count successful entries, including repeats. Attempts add up the recorded tries of all entries, including sends; each entry counts at least once. Climbing days are days with at least one entry. Problems count each climb once per board.\n\nBests\nThe hardest flash, the most sends in one day, climbing days a week over the whole period and the most weeks in a row with a climbing day, all in the chosen period. The period starts with your first entry at the earliest.\n\nFlash\nA flash needs the first recorded entry for that climb at that angle to be a send with at most one try. Earlier attempts rule it out, even outside the chosen period, so missing history limits this.\n\nActivity\nThe calendar and the weekly chart count log entries, including unsuccessful ones.</string>
+    <string name="ux_stats_help">Filters\nThe board and the period at the top apply to every card below. The boards card and the tries card always show every board side by side.\n\nNumbers\nSends count successful entries, including repeats. Tries add up the tries recorded in all entries, including sends; each entry counts at least once. Climbing days are days with at least one entry. Problems count each climb once per board.\n\nBests\nThe hardest flash, the most sends in one day, climbing days a week over the whole period and the most weeks in a row with a climbing day, all in the chosen period. The period starts with your first entry at the earliest.\n\nFlash\nA flash needs the first recorded entry for that climb at that angle to be a send with at most one try. Earlier attempts rule it out, even outside the chosen period, so missing history limits this.\n\nActivity\nThe calendar and the weekly chart count log entries, including unsuccessful ones.</string>
     <string name="ux_restore_consequence">Restoring uses the previous account and enables encrypted backup. You will confirm the account change before continuing.</string>
     <string name="ux_logbook_unsent_attempts">Without a send</string>
     <string name="ux_later_send">Later send</string>
-    <string name="ux_grade_progression_help">Four-week window\nEach point uses up to three hardest distinct climb-and-angle combinations sent within that week and the previous three weeks, within the selected period. Repeats at the same angle count once.\n\nLevel\nWith three results, the middle grade is used; with two, their average; with one, its grade. Only successful entries with a known grade contribute.</string>
+    <string name="ux_grade_progression_help">Four-week window\nEach point uses up to the three hardest distinct climb-and-angle combinations sent within that week and the previous three weeks, within the selected period. Repeats at the same angle count once.\n\nLevel\nWith three results, the middle grade is used; with two, their average; with one, its grade. Only successful entries with a known grade contribute.</string>
 
     <!-- Profile and account task pages -->
     <string name="account_section_expanded">Expanded</string>
@@ -3457,6 +3467,8 @@
     <string name="wall_games_your_time">Your time: %1$s</string>
     <string name="wall_games_lava_top">The lava reached the top.</string>
     <string name="wall_games_all_lit">Whole climb lit</string>
+    <!-- Traverse keeps only the last moves lit: at the end the top is lit, not the whole climb. -->
+    <string name="wall_games_traverse_top">Top reached</string>
     <string name="wall_games_progress_rows">Row %1$d of %2$d</string>
     <string name="wall_games_progress_steps">Step %1$d of %2$d</string>
     <string name="wall_games_progress_moves">Move %1$d of %2$d</string>
@@ -3488,7 +3500,7 @@
     <string name="wall_games_sound_turn_on">Turn countdown sound on</string>
     <!-- Shiny Wall account (read-only logbook import) -->
     <string name="shinywall_section_title">Shiny Wall account</string>
-    <string name="shinywall_connect_desc">Imports your Shiny Wall logbook (ascents and projects), favorites, lists and your own routes into CruxCoach. Star ratings and comments stay in Shiny Wall.\n\nRead-only: CruxCoach never changes anything in your Shiny Wall account. Standard walls only.\n\nWhat you delete in CruxCoach stays deleted, entries and lists alike. To import everything again, delete your Shiny Wall logbook data under Settings → Delete local data.</string>
+    <string name="shinywall_connect_desc">Imports your Shiny Wall logbook (ascents and projects), favourites, lists and your own routes into CruxCoach. Star ratings and comments stay in Shiny Wall.\n\nRead-only: CruxCoach never changes anything in your Shiny Wall account. Standard walls only.\n\nWhat you delete in CruxCoach stays deleted, entries and lists alike. To import everything again, delete your Shiny Wall logbook data under Settings → Delete local data.</string>
     <string name="shinywall_connect_button">Connect Shiny Wall account</string>
     <string name="shinywall_login_title">Sign in to Shiny Wall</string>
     <string name="shinywall_login_privacy">Your email and password go to Google’s Firebase servers, which run Shiny Wall’s sign-in.</string>
@@ -3555,7 +3567,7 @@
     <string name="shinywall_import_error_denied">Shiny Wall did not allow reading your logbook.</string>
     <string name="shinywall_import_error_network">No connection to Shiny Wall. Check your internet connection.</string>
     <string name="shinywall_import_error_generic">The import failed. Please try again.</string>
-    <string name="shinywall_list_favorites">Shiny Wall favorites</string>
+    <string name="shinywall_list_favorites">Shiny Wall favourites</string>
     <string name="shinywall_list_own_routes">My Shiny Wall routes</string>
     <!-- Board-size check: optional help for users unsure about their board size -->
     <string name="board_size_check_title">Check your board size</string>

@@ -189,20 +189,12 @@ fun DataExportScreen(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // "All" leaves the opt-in health data out; the button says so (device test 2026-10-25).
-                    val healthListed = categoriesFor(state.exportFormat).any { it in OPT_IN_CATEGORIES }
-                    TextButton(onClick = { viewModel.selectAllExportCategories() }, modifier = Modifier.testTag("export_select_all")) {
-                        Text(stringResource(if (healthListed) R.string.export_select_all_but_health else R.string.bodystat_all),
-                            style = MaterialTheme.typography.labelSmall)
-                    }
-                    TextButton(onClick = { viewModel.deselectAllExportCategories() }) {
-                        Text(stringResource(R.string.bodystat_none), style = MaterialTheme.typography.labelSmall)
-                    }
-                }
+                // "All" leaves the opt-in health data out; the button says so (device test 2026-10-25).
+                ExportSelectionButtons(
+                    healthListed = categoriesFor(state.exportFormat).any { it in OPT_IN_CATEGORIES },
+                    onSelectAll = { viewModel.selectAllExportCategories() },
+                    onSelectNone = { viewModel.deselectAllExportCategories() },
+                )
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -298,6 +290,28 @@ internal fun dataExportShareIntent(share: ExportShare): Intent =
         clipData = ClipData.newRawUri("CruxCoach export", share.uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
+
+/**
+ * "All" (or "All except health data") and "None" above the category list: side by side when they fit, else "None"
+ * on the next line. In a Row, "Keine" broke into single letters beside "Alle außer Gesundheitsdaten" at 320 dp and
+ * the largest font (RC1 walk).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun ExportSelectionButtons(healthListed: Boolean, onSelectAll: () -> Unit, onSelectNone: () -> Unit) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        TextButton(onClick = onSelectAll, modifier = Modifier.testTag("export_select_all")) {
+            Text(stringResource(if (healthListed) R.string.export_select_all_but_health else R.string.bodystat_all),
+                style = MaterialTheme.typography.labelSmall)
+        }
+        TextButton(onClick = onSelectNone, modifier = Modifier.testTag("export_select_none")) {
+            Text(stringResource(R.string.bodystat_none), style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
 
 @Composable
 internal fun CategoryCheckboxRow(

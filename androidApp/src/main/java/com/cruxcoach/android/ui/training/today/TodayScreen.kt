@@ -667,8 +667,9 @@ private fun OpenWorkoutCard(onOpen: () -> Unit) {
 }
 
 /** Today's training is done: say so, and offer more only on request. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun DoneHeroCard(state: TodayState, onMore: () -> Unit, onOpenHistory: () -> Unit) {
+internal fun DoneHeroCard(state: TodayState, onMore: () -> Unit, onOpenHistory: () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.positiveContainer,
             contentColor = CruxCoachDesign.colors.onPositiveContainer),
@@ -689,11 +690,14 @@ private fun DoneHeroCard(state: TodayState, onMore: () -> Unit, onOpenHistory: (
                 style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp),
             )
             Text(stringResource(R.string.trt_done_hero_text), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // "Verlauf" goes under the outlined button when both do not fit: beside it, it broke into a column of
+            // single letters at 320 dp and the largest font (RC1 walk).
+            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val onCard = CruxCoachDesign.colors.onPositiveContainer
                 OutlinedButton(onClick = onMore, colors = ButtonDefaults.outlinedButtonColors(contentColor = onCard),
                     modifier = Modifier.testTag("today_done_more")) { Text(stringResource(R.string.trt_done_hero_more)) }
-                TextButton(onClick = onOpenHistory, colors = ButtonDefaults.textButtonColors(contentColor = onCard)) {
+                TextButton(onClick = onOpenHistory, colors = ButtonDefaults.textButtonColors(contentColor = onCard),
+                    modifier = Modifier.testTag("today_done_history")) {
                     Text(stringResource(R.string.trt_done_hero_history))
                 }
             }
@@ -719,7 +723,9 @@ private fun PauseBanner(onEndPause: () -> Unit) {
 @Composable
 private fun InjuryBanner(state: TodayState, onManage: () -> Unit) {
     val paused = state.injuries.any { it.climbingPaused }
-    val summary = state.injuries.map { i -> listOfNotNull(regionLabel(i.region), i.side?.let { injurySideLabel(it) }).joinToString(" ") }
+    // "Left wrist, right elbow" / "Handgelenk links, Ellbogen rechts".
+    val summary = state.injuries.map { i -> injuryPlaceLabel(i.region, i.side) }
+        .joinToString(", ").replaceFirstChar { it.titlecase(Locale.getDefault()) }
     Surface(
         onClick = onManage,
         color = CruxCoachDesign.colors.cautionContainer, contentColor = CruxCoachDesign.colors.onCautionContainer,
@@ -732,7 +738,7 @@ private fun InjuryBanner(state: TodayState, onManage: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(stringResource(if (paused) R.string.trt_injury_mode_paused else R.string.trt_injury_mode),
                     style = MaterialTheme.typography.labelLarge)
-                Text(summary.joinToString(", "), style = MaterialTheme.typography.bodySmall)
+                Text(summary, style = MaterialTheme.typography.bodySmall)
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.trt_injury_manage))
         }
@@ -1799,8 +1805,7 @@ private fun evidenceText(e: com.cruxcoach.athlete.logic.Evidence, state: TodaySt
     is com.cruxcoach.athlete.logic.Evidence.WeekPlan -> stringResource(R.string.tre_ev_week_plan)
     is com.cruxcoach.athlete.logic.Evidence.CheckIn -> stringResource(R.string.tre_ev_checkin, readinessReasonShort(e.reason))
     is com.cruxcoach.athlete.logic.Evidence.SoreToday -> stringResource(R.string.trt_ev_sore, regionLabel(e.region))
-    is com.cruxcoach.athlete.logic.Evidence.InjuryActive -> stringResource(R.string.tre_ev_injury,
-        regionLabel(e.region) + (e.side?.let { " " + injurySideLabel(it) } ?: ""))
+    is com.cruxcoach.athlete.logic.Evidence.InjuryActive -> stringResource(R.string.tre_ev_injury, injuryPlaceLabel(e.region, e.side))
     is com.cruxcoach.athlete.logic.Evidence.LoadTrendNote -> stringResource(R.string.tre_ev_trend, structureLabel(e.structure), trendLabel(e.trend))
     is com.cruxcoach.athlete.logic.Evidence.PerformanceValue -> {
         val def = state.catalog.fallbackFor(e.benchmark.exerciseSlug)
@@ -1883,13 +1888,17 @@ internal fun levelKindLabel(focus: SuggestionFocus): String = when (focus) {
 }
 
 @Composable
-private fun DurationHintCard(minutes: Int, onApply: () -> Unit) {
+internal fun DurationHintCard(minutes: Int, onApply: () -> Unit) {
     OutlinedCard(Modifier.fillMaxWidth().testTag("today_duration_hint")) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Timer, null)
             Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.tre_duration_hint, minutes), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-            TextButton(onClick = onApply) { Text(stringResource(R.string.tre_duration_apply)) }
+            // At the largest font the button goes under the hint: beside "Übernehmen" the hint was squeezed into a
+            // column about ten letters wide at 320 dp (RC1 walk).
+            LabelBesideOrAbove(modifier = Modifier.weight(1f),
+                label = { Text(stringResource(R.string.tre_duration_hint, minutes), style = MaterialTheme.typography.bodySmall) }) {
+                TextButton(onClick = onApply) { Text(stringResource(R.string.tre_duration_apply)) }
+            }
         }
     }
 }

@@ -422,7 +422,7 @@ private fun LegendSwatch(color: androidx.compose.ui.graphics.Color) {
 @Composable
 private fun InjuryBanner(advice: InjuryAdvice) {
     val injury = advice.injury
-    val where = injury?.let { listOfNotNull(regionLabel(it.region), it.side?.let { s -> injurySideLabel(s) }).joinToString(" ") } ?: ""
+    val where = injury?.let { injuryPlaceLabel(it.region, it.side) } ?: ""
     val message = when (advice.verdict) {
         InjuryVerdict.AVOID -> stringResource(R.string.trx_injury_avoid, where)
         InjuryVerdict.CAUTION -> stringResource(R.string.trx_injury_caution, where)

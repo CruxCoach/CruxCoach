@@ -63,7 +63,7 @@
     <string name="fvp_piece_less">Ein Stück weniger</string>
     <string name="fvp_piece_more">Ein Stück mehr</string>
     <string name="fvp_choose_none">Ohne Nährwerte</string>
-    <string name="fvp_per_100">pro 100\u00A0g: %1$s\u00A0kcal · P %2$s · K %3$s · F %4$s</string>
+    <string name="fvp_per_100">pro 100\u00A0g: %1$s\u00A0kcal · P\u00A0%2$s · K\u00A0%3$s · F\u00A0%4$s</string>
 
     <string name="fvp_error_memory">Dem Handy ging bei der Erkennung der Arbeitsspeicher aus. Schließe andere Apps und versuche es erneut.</string>
     <string name="fvp_error_image">Das Foto konnte nicht gelesen werden.</string>

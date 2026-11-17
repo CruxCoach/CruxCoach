@@ -299,30 +299,7 @@ internal fun BoardSelectionDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.board_selection_dialog_title),
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
-                // FEAT-007 gym search — "Don't know your board?". Shown for every
-                // board (moved out of the Kilter sub-block) so the escape hatch is
-                // always one tap away regardless of the active category.
-                if (onFindViaGym != null) {
-                    TextButton(
-                        onClick = onFindViaGym,
-                        contentPadding = PaddingValues(horizontal = 0.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.settings_board_find_via_gym),
-                            color = OrangeAccent,
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    }
-                }
-            }
-        },
+        title = { BoardSelectionDialogTitle(onFindViaGym) },
         text = {
             Column(
                 modifier = Modifier
@@ -728,6 +705,42 @@ internal fun BoardSelectionDialog(
             },
             onDismiss = { sizeCheck = null },
         )
+    }
+}
+
+/**
+ * "Board auswählen" with "Weiß nicht?" (FEAT-007 gym search) beside it, or under it when both do not fit on one line:
+ * at 320 dp and the largest font the button squeezed the title to "Board / auswähl / en" (RC1 walk).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun BoardSelectionDialogTitle(onFindViaGym: (() -> Unit)?) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.board_selection_dialog_title),
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.testTag("board_selection_title"),
+        )
+        // FEAT-007 gym search — "Don't know your board?". Shown for every
+        // board (moved out of the Kilter sub-block) so the escape hatch is
+        // always one tap away regardless of the active category.
+        if (onFindViaGym != null) {
+            TextButton(
+                onClick = onFindViaGym,
+                contentPadding = PaddingValues(horizontal = 0.dp),
+                modifier = Modifier.testTag("board_selection_find_via_gym"),
+            ) {
+                Text(
+                    stringResource(R.string.settings_board_find_via_gym),
+                    color = OrangeAccent,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
     }
 }
 

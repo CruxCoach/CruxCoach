@@ -27,7 +27,7 @@
     <string name="spray_wall_delete">Delete wall</string>
     <string name="spray_wall_delete_confirm_title">Delete %1$s?</string>
     <string name="spray_wall_delete_confirm_text">This removes the photo, all holds, climbs and their logbook entries from this phone. It can\'t be undone.</string>
-    <string name="spray_wall_delete_public_note">The wall is also withdrawn from Nostr and its photos are deleted from the Blossom servers; copies others already have can stay.</string>
+    <string name="spray_wall_delete_public_note">The wall is also withdrawn from the servers and its photos are deleted there; copies others already have can stay.</string>
 
     <!-- Hold editor -->
     <string name="spray_holds_title">Mark holds</string>

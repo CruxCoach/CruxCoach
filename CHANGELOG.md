@@ -706,6 +706,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   It showed on with "Starts as soon as a board is connected." although sharing starts by
   itself only after that first time. Until then, Settings → Sharing nearby says so under
   "Share the board with other apps".
+- At the largest font, the data export's "None", the LED colour choice, the board picker's
+  title and the unread count in "Bugs and feature requests" no longer break into single
+  letters or get cut off.
+- English texts use sentence case and one spelling (catalogue, favourites, colour, Wi-Fi);
+  the statistics say "Tries" throughout. The German export list says "Begehungen",
+  "Boulderlisten" and "Entwürfe", and "Über CruxCoach" no longer has an English line.
 
 ## [0.2.4] - 2026-10-25
 
