@@ -133,6 +133,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Countdown with beeps and a stopwatch; for Shiny Wall, Kilter, the other
   Aurora boards and MoonBoard (not Quantum). Without a connected board the
   game runs on the screen; games are never logged.
+- Knot, a new wall game for 1 to 8 players: a low field of colour stripes
+  lights up (four colours, three on the MoonBoard). After a beep the phone
+  calls a player, a hand or a foot and a colour ("Player 2 – right hand –
+  blue"), from recordings in English or German that come with the app, so no
+  speech engine is needed; the called holds blink. The field grows with the
+  number of climbers, so they get in each other's way, and stays low; as many
+  climb as the wall is wide (0.8 m each, 4 on a 12 ft board). Whoever comes
+  off taps their name: the last one on the wall wins, solo you count the
+  calls you hold. More players wait in line and step in for whoever comes
+  off; then the most calls held win. Three sliders, harder to the right: the
+  speed (10 to 3 seconds per call, or "Tap for the next call" for someone
+  below the wall), the spacing (close, medium, wide), which sets how far each
+  colour is from a climber, about 50, 75 or 100 cm, with the colours repeating
+  across the field, and the holds per colour (many, normal, few: 4 + 3, 3 + 2
+  or 2 + 1 hand and foot spots of each colour within every climber's reach).
+  The board preview follows the sliders, shows each climber's part and how
+  many holds light. With the board's catalogue, every game draws a fresh field
+  away from the last one's holds ("Draw again" for another), leaves out the
+  hardest hand holds and keeps the colours and the climbers' parts about
+  equally hard. Optional names, a
+  safety hint before the first game and a hint on steep walls. For Kilter,
+  the other Aurora boards and MoonBoard (not Shiny Wall or Quantum).
 - Community: Settings → Community explains the CruxCoach community on Buzz
   (talk to the developers, test new builds first, help shape what comes next)
   and "Join on Buzz" opens community.cruxcoach.org/join in the browser. After a
@@ -573,6 +595,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Quantum four colors with up to 92 LEDs each; Shiny Wall is not supported yet.
 
 ### Fixed
+- The hang timer's spoken countdown can find the phone's text-to-speech engine
+  on Android 11 and newer: the app now declares that it looks for one. Without
+  an engine the timer still beeps and vibrates; no engine is required.
 - Settings → Board catalogues no longer shows loaded catalogues as "not loaded"
   with a download button for the first seconds after opening; the boards show a
   small loading sign until their counts are read.

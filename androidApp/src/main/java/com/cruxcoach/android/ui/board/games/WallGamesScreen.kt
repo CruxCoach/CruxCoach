@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board.games
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import com.cruxcoach.android.ui.common.InfoButton
 import androidx.compose.ui.text.style.Hyphens
@@ -22,7 +23,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -63,6 +66,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -70,6 +74,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -89,6 +94,11 @@ import com.cruxcoach.domain.board.games.EnduranceChallenge
 import com.cruxcoach.domain.board.games.FloorIsLava
 import com.cruxcoach.domain.board.games.GAME_LEVELS
 import com.cruxcoach.domain.board.games.HoldsThief
+import com.cruxcoach.domain.board.games.Knot
+import com.cruxcoach.domain.board.games.KnotColour
+import com.cruxcoach.domain.board.games.KnotHolds
+import com.cruxcoach.domain.board.games.KnotSpacing
+import androidx.compose.ui.graphics.luminance
 import com.cruxcoach.domain.board.games.TraverseGame
 
 /** What the wall games screen asks for: the view model, or a stand-in in the review renders. */
@@ -104,6 +114,17 @@ interface WallGamesActions {
     fun start()
     fun stop()
     fun reset()
+    fun setKnotPlayers(players: Int) {}
+    fun setKnotName(climber: Int, name: String) {}
+    fun setKnotByTap(byTap: Boolean) {}
+    fun setKnotSpacing(spacing: KnotSpacing) {}
+    fun setKnotHolds(holds: KnotHolds) {}
+    fun knotSettingsSettled() {}
+    fun knotDrawAgain() {}
+    fun knotNextCall() {}
+    fun knotSafetySeen() {}
+    fun startKnotCalls() {}
+    fun knotOut(climber: Int) {}
 }
 
 /** Wall games on the active board. */
@@ -222,6 +243,12 @@ internal fun WallGamesContent(
                     }
                 }
             }
+            // Knot shows the call, the climbers and the field.
+            state.game == WallGame.KNOT && state.knot.run.phase != KnotPhase.IDLE -> KnotRunContent(
+                state = state,
+                actions = actions,
+                modifier = Modifier.fillMaxSize().padding(padding),
+            )
             // A game in progress shows only its clock and the wall: the phone lies on the floor.
             state.run.phase != GamePhase.IDLE -> Column(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -241,7 +268,8 @@ internal fun WallGamesContent(
             ) {
                 GamePicker(selected = state.game, onSelect = actions::selectGame)
                 GameSettings(state = state, actions = actions, onChooseClimb = onChooseClimb)
-                GameBoardPreview(state)
+                // Knot shows its field above its sliders.
+                if (state.game != WallGame.KNOT) GameBoardPreview(state)
             }
         }
     }
@@ -253,6 +281,7 @@ private val WallGame.titleRes: Int
         WallGame.ENDURANCE -> R.string.wall_games_endurance
         WallGame.THIEF -> R.string.wall_games_thief
         WallGame.TRAVERSE -> R.string.wall_games_traverse
+        WallGame.KNOT -> R.string.wall_games_knot
     }
 
 private val WallGame.descriptionRes: Int
@@ -261,10 +290,11 @@ private val WallGame.descriptionRes: Int
         WallGame.ENDURANCE -> R.string.wall_games_endurance_desc
         WallGame.THIEF -> R.string.wall_games_thief_desc
         WallGame.TRAVERSE -> R.string.wall_games_traverse_desc
+        WallGame.KNOT -> R.string.wall_games_knot_desc
     }
 
 @StringRes
-private fun levelRes(level: Int): Int = when (level) {
+internal fun levelRes(level: Int): Int = when (level) {
     1 -> R.string.wall_games_level_1
     2 -> R.string.wall_games_level_2
     3 -> R.string.wall_games_level_3
@@ -274,7 +304,7 @@ private fun levelRes(level: Int): Int = when (level) {
 
 /** The app's own selected-chip look (filter screen): the quiet orange container with its label. */
 @Composable
-private fun chipColors() = FilterChipDefaults.filterChipColors(
+internal fun chipColors() = FilterChipDefaults.filterChipColors(
     selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
     selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer,
 )
@@ -286,7 +316,12 @@ private fun GamePicker(selected: WallGame, onSelect: (WallGame) -> Unit) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.wall_games_game), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            InfoButton(stringResource(selected.titleRes), stringResource(selected.descriptionRes))
+            // Knot's rules come with its safety hint, which stays here once its card is gone.
+            val rules = stringResource(selected.descriptionRes)
+            InfoButton(
+                stringResource(selected.titleRes),
+                if (selected == WallGame.KNOT) rules + "\n\n" + stringResource(R.string.knot_safety_text) else rules,
+            )
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             WallGame.entries.forEach { game ->
@@ -326,12 +361,13 @@ private fun GameSettings(state: WallGamesState, actions: WallGamesActions, onCho
             TraverseTempo(state.traverseDifficulty, actions::setTraverseDifficulty)
         }
         WallGame.THIEF -> ThiefControls(state, actions)
+        WallGame.KNOT -> KnotSettings(state, actions)
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LevelPicker(level: Int, interval: String, onLevel: (Int) -> Unit) {
+internal fun LevelPicker(level: Int, interval: String, onLevel: (Int) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(R.string.wall_games_level), style = MaterialTheme.typography.titleSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -501,7 +537,7 @@ private fun ThiefControls(state: WallGamesState, actions: WallGamesActions) {
 
 /** The largest fonts put a row's action under its text, and the bar's buttons above each other. */
 @Composable
-private fun compactLayout(): Boolean = LocalDensity.current.fontScale > 1.3f
+internal fun compactLayout(): Boolean = LocalDensity.current.fontScale > 1.3f
 
 @Composable
 private fun RunPanel(state: WallGamesState) {
@@ -563,7 +599,7 @@ private fun RunPanel(state: WallGamesState) {
  * In dp, so the largest font does not push the wall off the screen; the clock is large already.
  */
 @Composable
-private fun BigText(text: String, maxSize: Dp, modifier: Modifier = Modifier, color: Color = Color.Unspecified) {
+internal fun BigText(text: String, maxSize: Dp, modifier: Modifier = Modifier, color: Color = Color.Unspecified, fill: Boolean = true) {
     val max = with(LocalDensity.current) { maxSize.toSp() }
     BasicText(
         text,
@@ -575,7 +611,7 @@ private fun BigText(text: String, maxSize: Dp, modifier: Modifier = Modifier, co
             color = color.takeOrElse { MaterialTheme.colorScheme.onSurface },
         ),
         autoSize = TextAutoSize.StepBased(minFontSize = 24.sp, maxFontSize = max),
-        modifier = modifier.fillMaxWidth(),
+        modifier = if (fill) modifier.fillMaxWidth() else modifier,
     )
 }
 
@@ -644,9 +680,16 @@ private fun WallStatus(problem: WallSendProblem?, game: WallGame, connected: Boo
 
 /** The wall with the shown holds; [modifier] with a weight lets it fill the height left. */
 @Composable
-private fun GameBoardPreview(state: WallGamesState, modifier: Modifier = Modifier) {
+internal fun GameBoardPreview(state: WallGamesState, modifier: Modifier = Modifier, brackets: List<Triple<Double, Double, String>> = emptyList()) {
     val board = state.board ?: return
     val holds = state.shownHolds
+    // Knot lights spots in colours: the round's field, or before it where the field will be. While the field is on for
+    // the start, the preview follows the settings at once, in the round's colours; the wall follows when they settle.
+    val knot = state.knot
+    val paint = if (state.game != WallGame.KNOT) null
+    else knot.run.field?.let { field -> knot.layout?.takeIf { knot.run.phase == KnotPhase.POSITIONS }?.field(field.colours)?.spots ?: field.spots }
+        ?: knot.previewSpots()
+    val lightScreen = MaterialTheme.colorScheme.surface.luminance() > 0.5f
     // A tall wall at full width would push everything else off screen.
     val screenCap = (LocalConfiguration.current.screenHeightDp * BOARD_MAX_HEIGHT_FRACTION).dp
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
@@ -657,24 +700,52 @@ private fun GameBoardPreview(state: WallGamesState, modifier: Modifier = Modifie
             if (w > 0f && h > 0f) w / h else null
         } ?: MOONBOARD_ASPECT
         val width = minOf(maxWidth, heightCap * aspect)
+        Column(Modifier.width(width)) {
         Box(Modifier.width(width).testTag("wall_games_board")) {
             if (board.brand == BoardBrand.MOONBOARD) {
                 MoonBoardVisualization(
-                    frames = WallGameHolds.moonBoardFrames(holds),
+                    frames = paint?.let(Knot::moonBoardFrames) ?: WallGameHolds.moonBoardFrames(holds),
                     assetState = rememberMoonBoardAsset(board.layoutId),
                     variant = board.moonVariant,
                     modifier = Modifier.fillMaxWidth(),
                 )
             } else {
                 KilterBoardVisualization(
-                    holds = holds,
+                    holds = if (paint != null) emptyList() else holds,
                     placements = board.placements,
                     boardSize = board.boardSize,
                     boardImages = board.boardImages,
                     ledColors = board.ledColors,
+                    // White on a light screen would vanish: it shows light grey there, like a lit white LED in a photo.
+                    paintColors = paint?.mapValues { (_, colour) ->
+                        if (colour == KnotColour.WHITE && lightScreen) LIGHT_SCREEN_WHITE else colour.rgb332
+                    }.orEmpty(),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+        }
+        // Under the picture, a bracket for each climber's part with who starts there ([brackets]: from and to as shares
+        // of its width, and the name).
+        if (brackets.isNotEmpty()) {
+            val colour = MaterialTheme.colorScheme.onSurfaceVariant
+            Box(Modifier.fillMaxWidth().testTag("knot_parts")) {
+                brackets.forEach { (from, to, name) ->
+                    val left = width * from.toFloat().coerceIn(0f, 1f)
+                    val right = width * to.toFloat().coerceIn(0f, 1f)
+                    if (right <= left) return@forEach
+                    Column(Modifier.offset(x = left).width(right - left), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Canvas(Modifier.fillMaxWidth().height(10.dp)) {
+                            val stroke = 1.5.dp.toPx()
+                            val gap = 3.dp.toPx()
+                            drawLine(colour, Offset(gap, 0f), Offset(gap, size.height - stroke), stroke)
+                            drawLine(colour, Offset(gap, size.height - stroke), Offset(size.width - gap, size.height - stroke), stroke)
+                            drawLine(colour, Offset(size.width - gap, size.height - stroke), Offset(size.width - gap, 0f), stroke)
+                        }
+                        Text(name, style = MaterialTheme.typography.labelSmall, color = colour, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
         }
     }
 }
@@ -693,7 +764,7 @@ private fun GameActionBar(
             WallStatus(state.sendProblem, state.game, connected, onConnect = onConnect)
             // Two actions side by side; at the largest font above each other, so no label breaks.
             val buttons: @Composable (Modifier) -> Unit = { slot ->
-                when (state.run.phase) {
+                if (state.game == WallGame.KNOT) KnotButtons(state, actions, slot) else when (state.run.phase) {
                     GamePhase.COUNTDOWN, GamePhase.RUNNING -> Button(
                         onClick = actions::stop,
                         modifier = slot.heightIn(min = 48.dp).testTag("wall_games_stop"),
@@ -735,7 +806,10 @@ private fun GameActionBar(
                     }
                 }
             }
-            if (compactLayout()) {
+            // Knot by tap keeps its two short buttons in one row, so the names stay above the bar.
+            val knotCalls = state.knot.run.phase == KnotPhase.COUNTDOWN || state.knot.run.phase == KnotPhase.RUNNING
+            val oneRow = state.game == WallGame.KNOT && state.knot.run.byTap && knotCalls
+            if (compactLayout() && !oneRow) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) { buttons(Modifier.fillMaxWidth()) }
             } else {
                 Row(
@@ -749,7 +823,7 @@ private fun GameActionBar(
 }
 
 @Composable
-private fun ButtonLabel(res: Int) = Text(stringResource(res), textAlign = TextAlign.Center)
+internal fun ButtonLabel(res: Int) = Text(stringResource(res), textAlign = TextAlign.Center)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -810,3 +884,5 @@ private const val GO_SHOWN_MS = 800L
 private const val TEMPO_STEP = 0.5
 private const val BOARD_MAX_HEIGHT_FRACTION = 0.6f
 private const val MOONBOARD_ASPECT = 0.72f
+/** RGB332 light grey (#B6B6AA). */
+private const val LIGHT_SCREEN_WHITE = 0xB6

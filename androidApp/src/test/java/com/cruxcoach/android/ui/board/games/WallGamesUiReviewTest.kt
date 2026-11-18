@@ -39,6 +39,13 @@ import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.ShinyWallVariant
+import com.cruxcoach.domain.board.games.Knot
+import com.cruxcoach.domain.board.games.KnotCall
+import com.cruxcoach.domain.board.games.KnotColour
+import com.cruxcoach.domain.board.games.KnotField
+import com.cruxcoach.domain.board.games.KnotLimb
+import com.cruxcoach.domain.board.games.KnotHolds
+import com.cruxcoach.domain.board.games.KnotSpacing
 import com.cruxcoach.domain.board.games.WallRows
 import org.junit.Assume
 import org.junit.Before
@@ -326,6 +333,215 @@ class WallGamesUiReviewTest {
     @Test
     fun climbPickerEmpty() = shoot("climb-picker-empty", phoneHeight = false) { ClimbPickerContent(emptyList(), onPick = {}, onBrowse = {}) }
 
+    // ------------------------------------------------------------------ Knot
+
+    private val kilter: WallGameBoard by lazy { loadKilter(sizeId = 10).copy(angle = 40) }
+
+    /** Knot set up on the Kilter 12x12 for [players], as the view model leaves it. */
+    private fun knotIdle(
+        players: Int,
+        safetySeen: Boolean = true,
+        byTap: Boolean = false,
+        spacing: KnotSpacing = KnotSpacing.CLOSE,
+        holds: KnotHolds = KnotHolds.NORMAL,
+    ): WallGamesState {
+        val colours = Knot.colours(BoardBrand.KILTER)!!
+        val max = Knot.maxClimbers(kilter.rows, 0.0254)
+        // As the view model works it out: the nearest holds at close spacing and normal holds.
+        val field = knotField(KnotInput(kilter.rows, minOf(players, max), colours, 0.0254, spacing, holds, emptySet(), null))
+        return WallGamesState(
+            loading = false,
+            board = kilter,
+            game = WallGame.KNOT,
+            knot = KnotState(
+                players = players,
+                names = listOf("Anna", "Benedikt", "", "Dilara", "Emil", "Fritzi", "", "Hannes"),
+                byTap = byTap,
+                colours = colours,
+                maxClimbers = max,
+                layout = field.layout,
+                spacing = field.spacing,
+                spacings = field.spacings,
+                sameReach = field.sameReach,
+                holds = field.holds,
+                holdsOffered = field.holdsOffered,
+                holdsTooMany = field.holdsTooMany,
+                reachM = field.reachM,
+                parts = field.parts,
+                drawn = true,
+                safetySeen = safetySeen,
+            ),
+        )
+    }
+
+    /** Players on parts 0, 1 …, in the order given. */
+    private fun onParts(vararg climbers: KnotClimber): List<KnotClimber> = climbers.mapIndexed { i, c -> c.copy(part = i) }
+
+    private fun knotRun(climbers: Int, byTap: Boolean = false, run: (KnotField) -> KnotRun): WallGamesState {
+        val idle = knotIdle(climbers, byTap = byTap)
+        val field = idle.knot.layout!!.field(Knot.colourOrder(idle.knot.colours!!, 3))
+        return idle.copy(knot = idle.knot.copy(run = run(field)))
+    }
+
+    @Test
+    fun knotFirstVisit() = shoot("knot-first") { Screen(knotIdle(1, safetySeen = false)) }
+
+    @Test
+    fun knotTwo() = shoot("knot-two") { Screen(knotIdle(2)) }
+
+    @Test
+    fun knotTwoEnd() = shoot("knot-two-end", before = toWall) { Screen(knotIdle(2)) }
+
+    @Test
+    fun knotThreeByTap() = shoot("knot-three-by-tap", before = toByTap) { Screen(knotIdle(3, byTap = true)) }
+
+    private val toByTap: () -> Unit = { compose.onNodeWithTag("knot_by_tap").performScrollTo() }
+
+    @Test
+    fun knotWideGreyedOut() = shoot("knot-spacing-greyed", before = toByTap) {
+        val state = knotIdle(3)
+        Screen(state.copy(knot = state.knot.copy(spacing = KnotSpacing.MEDIUM, spacings = setOf(KnotSpacing.CLOSE, KnotSpacing.MEDIUM))))
+    }
+
+    // Setup with the field preview and the three sliders.
+
+    @Test
+    fun knotSetupSliders() = shoot("knot-setup-sliders", before = { compose.onNodeWithTag("knot_holds_note").performScrollTo() }) { Screen(knotIdle(2)) }
+
+    @Test
+    fun knotSetupPreview() = shoot("knot-setup-preview", before = { compose.onNodeWithTag("knot_field_info").performScrollTo() }) { Screen(knotIdle(4)) }
+
+    @Test fun knotHolds2Few() = knotHolds(2, KnotHolds.FEW)
+    @Test fun knotHolds2Normal() = knotHolds(2, KnotHolds.NORMAL)
+    @Test fun knotHolds2Many() = knotHolds(2, KnotHolds.MANY)
+    @Test fun knotHolds4Few() = knotHolds(4, KnotHolds.FEW)
+    @Test fun knotHolds4Normal() = knotHolds(4, KnotHolds.NORMAL)
+    @Test fun knotHolds4Many() = knotHolds(4, KnotHolds.MANY)
+
+    /** The 12x12 preview for [players] at Medium with [holds], with its brackets and line. */
+    private fun knotHolds(players: Int, holds: KnotHolds) = shoot("knot-holds-$players-${holds.name.lowercase()}", phoneHeight = false) {
+        KnotFieldPreview(knotIdle(players, spacing = KnotSpacing.MEDIUM, holds = holds), actions)
+    }
+
+    @Test
+    fun knotShinyWall() = shoot("knot-shiny") { Screen(idle.copy(game = WallGame.KNOT)) }
+
+    @Test
+    fun knotPositions() = shoot("knot-positions") {
+        Screen(knotRun(3) { KnotRun(KnotPhase.POSITIONS, field = it, climbers = List(3) { i -> KnotClimber(part = i) }) })
+    }
+
+    @Test
+    fun knotCountdown() = shoot("knot-countdown") {
+        Screen(knotRun(2) { KnotRun(KnotPhase.COUNTDOWN, field = it, countdown = 4, climbers = List(2) { i -> KnotClimber(part = i) }, callMs = 6_000) })
+    }
+
+    @Test
+    fun knotRunning() = shoot("knot-running") {
+        Screen(
+            knotRun(3) {
+                KnotRun(
+                    KnotPhase.RUNNING, field = it,
+                    // Benedikt came off during this call: his row offers the undo.
+                    climbers = onParts(KnotClimber(held = 6), KnotClimber(out = true, held = 4, outAtCall = 17), KnotClimber(held = 5)),
+                    call = KnotCall(17, climber = 2, limb = KnotLimb.RIGHT_FOOT, colour = KnotColour.MAGENTA),
+                    callMs = 6_000, callLeftMs = 3_900,
+                )
+            },
+        )
+    }
+
+    @Test
+    fun knotRunningByTap() = shoot("knot-running-by-tap") {
+        Screen(
+            knotRun(2, byTap = true) {
+                KnotRun(
+                    KnotPhase.RUNNING, field = it, climbers = onParts(KnotClimber(held = 3), KnotClimber(held = 2)),
+                    call = KnotCall(6, climber = 1, limb = KnotLimb.LEFT_HAND, colour = KnotColour.YELLOW),
+                )
+            },
+        )
+    }
+
+    @Test
+    fun knotRunningSolo() = shoot("knot-running-solo") {
+        Screen(
+            knotRun(1) {
+                KnotRun(
+                    KnotPhase.RUNNING, field = it, climbers = onParts(KnotClimber(held = 11)),
+                    call = KnotCall(12, climber = 0, limb = KnotLimb.LEFT_HAND, colour = KnotColour.WHITE),
+                    callMs = 4_000, callLeftMs = 1_200,
+                )
+            },
+        )
+    }
+
+    @Test
+    fun knotWinner() = shoot("knot-winner") {
+        Screen(
+            knotRun(2) {
+                KnotRun(
+                    KnotPhase.FINISHED, field = it, climbers = onParts(KnotClimber(held = 14), KnotClimber(out = true, held = 13)),
+                    call = KnotCall(28, climber = 1, limb = KnotLimb.LEFT_FOOT, colour = KnotColour.YELLOW), winner = 0,
+                )
+            },
+        )
+    }
+
+    @Test
+    fun knotSoloResult() = shoot("knot-solo-result") {
+        Screen(knotRun(1) { KnotRun(KnotPhase.FINISHED, field = it, climbers = onParts(KnotClimber(out = true, held = 23))) })
+    }
+
+    @Test
+    fun knotStopped() = shoot("knot-stopped") {
+        Screen(knotRun(3) { KnotRun(KnotPhase.FINISHED, field = it, climbers = List(3) { i -> KnotClimber(held = 3 + i, part = i) }, stopped = true) })
+    }
+
+    // The line: more players than the wall takes.
+
+    @Test
+    fun knotLineSetup() = shoot("knot-line-setup") { Screen(knotIdle(6)) }
+
+    @Test
+    fun knotLinePositions() = shoot("knot-line-positions") {
+        Screen(knotRun(6) { KnotRun(KnotPhase.POSITIONS, field = it, climbers = List(6) { i -> KnotClimber(part = i.takeIf { i < 4 }) }) })
+    }
+
+    @Test
+    fun knotLineStepIn() = shoot("knot-line-step-in") {
+        Screen(
+            knotRun(6) {
+                KnotRun(
+                    KnotPhase.RUNNING, field = it,
+                    // Benedikt came off the second part during this call; Emil, next in line, is on his way there.
+                    climbers = listOf(
+                        KnotClimber(held = 5, part = 0),
+                        KnotClimber(out = true, held = 3, outAtCall = 21, part = 1),
+                        KnotClimber(held = 6, part = 2),
+                        KnotClimber(held = 4, part = 3),
+                        KnotClimber(part = 1),
+                        KnotClimber(),
+                    ),
+                    call = KnotCall(21, climber = 3, limb = KnotLimb.LEFT_FOOT, colour = KnotColour.BLUE),
+                    callMs = 6_000, callLeftMs = 4_200, stepIn = 4,
+                )
+            },
+        )
+    }
+
+    @Test
+    fun knotLineResult() = shoot("knot-line-result") {
+        Screen(
+            knotRun(6) {
+                KnotRun(
+                    KnotPhase.FINISHED, field = it,
+                    climbers = listOf(9, 3, 12, 7, 12, 1).mapIndexed { i, held -> KnotClimber(out = true, held = held, part = i % 4) },
+                )
+            },
+        )
+    }
+
     // -------------------------------------------------------------- loading
 
     private fun loadShinyWall(variant: ShinyWallVariant): WallGameBoard {
@@ -358,6 +574,44 @@ class WallGamesUiReviewTest {
                 placements = placements,
                 boardSize = size,
                 shinyVariant = variant,
+            )
+        }
+    }
+
+    /** The Kilter Original holds with an LED on product size [sizeId], from the bundled geometry. */
+    private fun loadKilter(sizeId: Int): WallGameBoard {
+        val file = listOf(
+            File("src/main/assets/board_geometry/kilter.sqlite3"),
+            File("androidApp/src/main/assets/board_geometry/kilter.sqlite3"),
+        ).first { it.exists() }
+        SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            val size = db.rawQuery(
+                "SELECT id, product_id, name, edge_left, edge_right, edge_bottom, edge_top FROM product_sizes WHERE id = ?",
+                arrayOf(sizeId.toString()),
+            ).use { c ->
+                c.moveToFirst()
+                BoardSize(c.getLong(0), c.getLong(1), c.getString(2), c.getLong(3), c.getLong(4), c.getLong(5),
+                    c.getLong(6), null, BoardBrand.KILTER)
+            }
+            val placements = mutableMapOf<Int, BoardPlacement>()
+            val leds = mutableMapOf<Int, Int>()
+            db.rawQuery(
+                "SELECT p.placement_id, p.hole_id, p.set_id, p.x, p.y, l.position FROM placements p JOIN leds l " +
+                    "ON l.hole_id = p.hole_id AND l.board_brand = p.board_brand AND l.product_size_id = ?",
+                arrayOf(sizeId.toString()),
+            ).use { c ->
+                while (c.moveToNext()) {
+                    placements[c.getInt(0)] = BoardPlacement(c.getLong(0), c.getLong(1), c.getLong(2), c.getLong(3), c.getLong(4))
+                    leds[c.getInt(0)] = c.getInt(5)
+                }
+            }
+            return WallGameBoard(
+                brand = BoardBrand.KILTER,
+                layoutId = 1,
+                rows = WallRows.of(WallGameHolds.fromPlacements(placements.values) { true }),
+                placements = placements,
+                boardSize = size,
+                ledMap = leds,
             )
         }
     }

@@ -1,11 +1,13 @@
 package com.cruxcoach.android.ui.board.games
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.lifecycle.SavedStateHandle
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardCleaningState
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.SessionQueueManager
+import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.data.repository.BoardRepository
@@ -18,6 +20,10 @@ import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.ShinyWallVariant
 import com.cruxcoach.domain.board.games.HoldsThief
+import com.cruxcoach.domain.board.games.Knot
+import com.cruxcoach.domain.board.games.KnotColour
+import com.cruxcoach.domain.board.games.KnotHolds
+import com.cruxcoach.domain.board.games.KnotSpacing
 import com.cruxcoach.domain.board.games.WallHold
 import com.cruxcoach.domain.board.games.WallRows
 import com.cruxcoach.android.led.LedAnimationEngine
@@ -25,6 +31,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -65,6 +72,7 @@ class WallGamesViewModelTest {
     private val session = MutableStateFlow(SessionQueueState())
     private lateinit var ble: BoardBleConnection
     private lateinit var repository: BoardRepository
+    private lateinit var voice: KnotVoice
 
     @Before
     fun setUp() {
@@ -77,6 +85,7 @@ class WallGamesViewModelTest {
             coEvery { clearBoard(any()) } returns true
         }
         repository = mockk(relaxed = true)
+        voice = mockk(relaxed = true)
     }
 
     @After
@@ -93,7 +102,8 @@ class WallGamesViewModelTest {
         }
         val queue = mockk<SessionQueueManager>(relaxed = true) { every { state } returns session }
         val ledEffects = mockk<LedAnimationEngine>(relaxed = true)
-        val vm = WallGamesViewModel(SavedStateHandle(args), loader, repository, personal, ble, queue, ledEffects)
+        val prefs = mockk<UserPreferences>(relaxed = true) { every { knotSafetySeen } returns flowOf(true) }
+        val vm = WallGamesViewModel(SavedStateHandle(args), loader, repository, personal, ble, queue, ledEffects, prefs, voice)
         runBlocking { withTimeout(5_000) { vm.state.first { !it.loading } } }
         return vm
     }
@@ -256,6 +266,241 @@ class WallGamesViewModelTest {
         // The waiting hold-thief climb is refused whole, not cut down like lava; the lava screen shows no message.
         coVerify(exactly = 1) { ble.sendMoonBoardClimb(any(), any(), any()) }
         assertNull(awaitState(vm) { it.game == WallGame.LAVA }.sendProblem)
+    }
+
+    // ── Knot ───────────────────────────────────────────────────────────
+
+    /** A Kilter-like 12x12 in inches: 18 columns 8" apart, rows 8" apart from 4" up; LED position = placement id. */
+    private val kilter = WallGameBoard(
+        brand = BoardBrand.KILTER,
+        layoutId = 1,
+        rows = WallRows.of((0 until 18 * 19).map { WallHold(it + 1, 4.0 + (it % 18) * 8.0, 4.0 + (it / 18) * 8.0) }),
+        ledMap = (1..18 * 19).associateWith { it },
+        angle = 40,
+    )
+
+    private fun kilterViewModel(handGrades: Map<Int, Double> = emptyMap()): WallGamesViewModel {
+        connectedBrand.value = BoardBrand.KILTER
+        every { ble.connectedBoard } returns mockk(relaxed = true) { every { apiLevel } returns 3 }
+        coEvery { ble.sendRawLeds(any(), any(), any()) } returns true
+        return viewModel(
+            loader = mockk(relaxed = true) {
+                coEvery { load() } returns WallGameBoardLoad.Ready(kilter)
+                every { knotBigHolds(any()) } returns emptySet()
+                every { knotHandGrades(any()) } returns handGrades
+            },
+        )
+    }
+
+    /** Knot's field, worked out off the main thread, for [climbers] at the wall. */
+    private fun awaitKnot(vm: WallGamesViewModel, climbers: Int = 1): KnotState =
+        awaitState(vm) { !it.knot.pending && it.knot.layout?.climbers == climbers }.knot
+
+    @Test
+    fun knotLightsTheFieldInItsColoursThenCallsAndTheLastOneWins() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        val setup = awaitKnot(vm)
+        assertEquals(4, setup.maxClimbers)
+        assertEquals(1, setup.players)
+        assertTrue(vm.state.value.canStart)
+        // A 40° wall gets the steep hint.
+        assertEquals(40, setup.steepAngle(vm.state.value.board))
+
+        vm.setKnotPlayers(2)
+        vm.setKnotName(0, "Anna")
+        val preview = awaitKnot(vm, 2).previewSpots()!!
+        vm.start()
+        val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }
+        val field = lit.knot.run.field!!
+        // What lights is what the preview showed.
+        assertEquals(preview.keys, field.spots.keys)
+        assertTrue(lit.running)
+        // Each spot goes up in its own colour.
+        val sent = field.spots.entries.sortedBy { it.key }.map { (id, colour) -> id to colour.rgb332 }
+        coVerify(timeout = 5_000) { ble.sendRawLeds(sent, BoardBrand.KILTER, any()) }
+
+        vm.startKnotCalls()
+        assertEquals(KnotPhase.COUNTDOWN, vm.state.value.knot.run.phase)
+        vm.knotOut(0)
+        val over = awaitState(vm) { it.knot.run.phase == KnotPhase.FINISHED }
+        assertEquals(1, over.knot.run.winner)
+        assertTrue(!over.running)
+
+        // Done clears the wall.
+        vm.reset()
+        assertEquals(KnotPhase.IDLE, vm.state.value.knot.run.phase)
+        coVerify(timeout = 5_000) { ble.clearBoard(BoardBrand.KILTER) }
+    }
+
+    @Test
+    fun knotByTapHasNoTimerAndTheSoundSwitchSilencesTheCalls() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        vm.setKnotByTap(true)
+        awaitKnot(vm)
+        vm.start()
+        awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }
+        vm.startKnotCalls()
+        val run = vm.state.value.knot.run
+        assertEquals(KnotPhase.COUNTDOWN, run.phase)
+        assertTrue(run.byTap)
+        // While a round runs, the switch stays as it was.
+        vm.setKnotByTap(false)
+        assertTrue(vm.state.value.knot.byTap)
+        vm.setSoundOn(false)
+        verify { voice.stop() }
+    }
+
+    @Test
+    fun knotSpacingChangesTheFieldAndFallsBackWhenTheWallCannotKeepIt() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        // Solo the 1.2 m field reaches no further at medium or wide: those are greyed out, and wide falls back to close.
+        val solo = awaitKnot(vm)
+        assertEquals(setOf(KnotSpacing.CLOSE), solo.spacings)
+        assertEquals(setOf(KnotSpacing.MEDIUM, KnotSpacing.WIDE), solo.sameReach)
+        vm.setKnotSpacing(KnotSpacing.WIDE)
+        assertEquals(KnotSpacing.CLOSE, awaitState(vm) { !it.knot.pending }.knot.spacing)
+        // Two climbers: three spacings, each reaching further.
+        vm.setKnotPlayers(2)
+        val close = awaitKnot(vm, 2)
+        assertEquals(KnotSpacing.CLOSE, close.spacing)
+        assertEquals(KnotSpacing.entries.toSet(), close.spacings)
+        vm.setKnotSpacing(KnotSpacing.WIDE)
+        val wide = awaitState(vm) { !it.knot.pending && it.knot.spacing == KnotSpacing.WIDE }.knot
+        assertTrue(wide.reachM!! > close.reachM!!)
+        // Fewer, wider stripes; the holds per colour and climber stay, so the climbers share more of them.
+        assertTrue(wide.layout!!.stripes.size < close.layout!!.stripes.size)
+        assertTrue(wide.layout!!.spots.size <= close.layout!!.spots.size)
+        // The field that lights is the one of the chosen spacing.
+        vm.start()
+        val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }
+        assertEquals(wide.layout!!.stripes.flatMap { it.first + it.second }.toSet(), lit.knot.run.field!!.spots.keys)
+    }
+
+    @Test
+    fun knotWithACatalogueDrawsAFreshFieldEveryGameAwayFromTheLastOne() {
+        // Every hold rated, the easier the lower.
+        val vm = kilterViewModel(handGrades = kilter.rows.holds.associate { it.placementId to 10.0 + it.y / 10 })
+        vm.selectGame(WallGame.KNOT)
+        vm.setKnotPlayers(2)
+        // The grades come in after the board: once they're there, the field is drawn instead of the nearest holds.
+        val nearest = Knot.layout(kilter.rows, 2, Knot.colours(BoardBrand.KILTER)!!, 0.0254)!!
+        val shown = awaitState(vm) { !it.knot.pending && it.knot.layout?.climbers == 2 && it.knot.layout != nearest }.knot.layout!!
+        vm.start()
+        // What lights is what the preview showed.
+        assertEquals(shown.spots, awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!.spots.keys)
+        val second = awaitState(vm) { !it.knot.pending && it.knot.layout != shown }.knot.layout!!
+        // The next game gets another field. How far it keeps away from this one depends on the wall: on this even grid
+        // no draw keeps the spacing away from these holds, so the nearest holds light (KnotTest checks real boards).
+        assertTrue(shown.spots != second.spots)
+    }
+
+    @Test
+    fun knotHoldsPerColourChangeTheFieldAndTheWallFollowsWhenASliderIsLetGo() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        vm.setKnotPlayers(2)
+        val normal = awaitKnot(vm, 2)
+        assertEquals(KnotHolds.NORMAL, normal.holds)
+        vm.setKnotHolds(KnotHolds.MANY)
+        val many = awaitState(vm) { !it.knot.pending && it.knot.holds == KnotHolds.MANY }.knot
+        assertTrue(many.layout!!.spots.size > normal.layout!!.spots.size)
+        vm.setKnotHolds(KnotHolds.FEW)
+        val few = awaitState(vm) { !it.knot.pending && it.knot.holds == KnotHolds.FEW }.knot
+        assertTrue(few.layout!!.spots.size < normal.layout!!.spots.size)
+        // With the field on, moving a slider changes the preview; letting go puts it on the wall.
+        vm.start()
+        val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!
+        assertEquals(few.layout!!.spots, lit.spots.keys)
+        vm.setKnotHolds(KnotHolds.NORMAL)
+        awaitState(vm) { !it.knot.pending && it.knot.holds == KnotHolds.NORMAL }
+        assertEquals(lit, vm.state.value.knot.run.field)
+        vm.knotSettingsSettled()
+        val relit = awaitState(vm) { it.knot.run.field != lit }.knot.run.field!!
+        assertEquals(vm.state.value.knot.layout!!.spots, relit.spots.keys)
+        assertEquals(lit.colours, relit.colours)
+    }
+
+    @Test
+    fun knotIsNotOfferedOnAShinyWallAndPutsMorePlayersThanFitInLine() {
+        val vm = viewModel()
+        vm.selectGame(WallGame.KNOT)
+        val shiny = vm.state.value
+        assertNull(shiny.knot.colours)
+        assertNull(shiny.knot.layout)
+        assertTrue(!shiny.canStart)
+
+        val kilterVm = kilterViewModel()
+        kilterVm.selectGame(WallGame.KNOT)
+        kilterVm.setKnotPlayers(6)
+        val six = awaitKnot(kilterVm, 4)
+        assertEquals(6, six.players)
+        assertEquals(4, six.atWall)
+        // Four at the wall on a 12 ft wide field: the colours again and again.
+        assertEquals(4, six.layout!!.climbers)
+        assertTrue(six.layout!!.stripes.size > 4)
+        assertEquals(six.layout!!.spots.size, six.previewSpots()!!.size)
+        kilterVm.setKnotPlayers(12)
+        assertEquals(Knot.MAX_PLAYERS, kilterVm.state.value.knot.players)
+    }
+
+    @Test
+    fun knotCallsTheNextInLineToTheWallWhenSomeoneComesOff() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        vm.setKnotPlayers(5)
+        awaitKnot(vm, 4)
+        vm.start()
+        val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run
+        assertEquals(4, lit.field!!.climbers)
+        assertEquals(listOf(4), lit.line)
+        vm.startKnotCalls()
+        vm.knotOut(2)
+        val run = vm.state.value.knot.run
+        assertEquals(4, run.stepIn)
+        assertEquals(listOf(0, 1, 4, 3), run.onParts)
+        verify { voice.sayToWall(4, any(), any()) }
+        // The second tap of a double tap on that row doesn't put the one stepping in out.
+        vm.knotOut(4)
+        assertTrue(vm.state.value.knot.run.climbers[4].atWall)
+        // Nobody left on the wall or in line: the most calls held win, here nobody held one.
+        listOf(0, 1, 3).forEach(vm::knotOut)
+        SystemClock.sleep(1_100)
+        vm.knotOut(4)
+        val over = awaitState(vm) { it.knot.run.phase == KnotPhase.FINISHED }.knot.run
+        assertNull(over.winner)
+        assertTrue(!over.stopped)
+    }
+
+    @Test
+    fun knotOnAMoonBoardSendsItsThreeColoursAsRoles() {
+        coEvery { ble.sendMoonBoardClimb(any(), any(), any()) } returns true
+        connectedBrand.value = BoardBrand.MOONBOARD
+        val full = moonBoard.copy(rows = WallRows.of(WallGameHolds.moonBoard(moon, emptySet())))
+        val vm = viewModel(loader = mockk(relaxed = true) { coEvery { load() } returns WallGameBoardLoad.Ready(full) })
+        vm.selectGame(WallGame.KNOT)
+        assertEquals(2, vm.state.value.knot.maxClimbers)
+        awaitKnot(vm)
+        vm.start()
+        val field = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!
+        assertEquals(KnotColour.BLUE, field.colours[1])
+        coVerify(timeout = 5_000) { ble.sendMoonBoardClimb(Knot.moonBoardFrames(field.spots), moon, MoonBoardLedMode.BELOW) }
+    }
+
+    @Test
+    fun afterAReconnectTheKnotFieldGoesUpAgain() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        awaitKnot(vm)
+        vm.start()
+        val field = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!
+        val sent = field.spots.entries.sortedBy { it.key }.map { (id, colour) -> id to colour.rgb332 }
+        coVerify(timeout = 5_000, exactly = 1) { ble.sendRawLeds(sent, BoardBrand.KILTER, any()) }
+        connection.value = ConnectionState.CONNECTING
+        connection.value = ConnectionState.CONNECTED
+        coVerify(timeout = 5_000, exactly = 2) { ble.sendRawLeds(sent, BoardBrand.KILTER, any()) }
     }
 
     private fun climb(uuid: String, layoutId: Long, frames: String): ClimbWithStats = mockk(relaxed = true) {

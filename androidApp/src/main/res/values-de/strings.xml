@@ -3067,7 +3067,7 @@
     <string name="whatsnew_024_hint">Außerdem: Ein Board-Wechsel erscheint während eines Katalog-Downloads sofort, und eine Session läuft nach einer Pause weiter.</string>
     <!-- 0.2.5: eine Zeile je Feature; die Release-Vorbereitung ergänzt die anderen und registriert den Dialog. -->
     <string name="whatsnew_025_title">Neu in 0.2.5</string>
-    <string name="whatsnew_025_body">• Training &amp; Ernährung&#160;– ein Coach fürs Training heute, über 200 Übungen und Ernährungsziele.\n• Statistiken&#160;– eine Logbuch-Übersicht, Versuche bis zur Begehung, deine Boards im Vergleich, Session-Rückblicke.\n• Jahresrückblick&#160;– dein Kletterjahr als Seiten zum Teilen, in den Statistiken.\n• Shiny Wall&#160;– wähle deine Shiny Wall in der Board-Auswahl, durchsuche ihre Boulder und lass sie per Bluetooth leuchten. Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten &amp; Importe.\n• Spraywände&#160;– fotografiere deine eigene Wand, und das Handy schlägt die Griffe vor.\n• Wand-Spiele&#160;– Der Boden ist Lava, Ausdauer, Griffdieb und Quergang, aus dem Hauptmenü oder dem Menü eines Boulders („Als Spiel spielen“).\n• Community auf Buzz&#160;– sprich mit den Entwicklern und teste neue Versionen zuerst (Einstellungen → Community).</string>
+    <string name="whatsnew_025_body">• Training &amp; Ernährung&#160;– ein Coach fürs Training heute, über 200 Übungen und Ernährungsziele.\n• Statistiken&#160;– eine Logbuch-Übersicht, Versuche bis zur Begehung, deine Boards im Vergleich, Session-Rückblicke.\n• Jahresrückblick&#160;– dein Kletterjahr als Seiten zum Teilen, in den Statistiken.\n• Shiny Wall&#160;– wähle deine Shiny Wall in der Board-Auswahl, durchsuche ihre Boulder und lass sie per Bluetooth leuchten. Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten &amp; Importe.\n• Spraywände&#160;– fotografiere deine eigene Wand, und das Handy schlägt die Griffe vor.\n• Wand-Spiele&#160;– Der Boden ist Lava, Ausdauer, Griffdieb, Quergang und das Partyspiel Knoten, aus dem Hauptmenü oder dem Menü eines Boulders („Als Spiel spielen“).\n• Community auf Buzz&#160;– sprich mit den Entwicklern und teste neue Versionen zuerst (Einstellungen → Community).</string>
     <string name="whatsnew_025_hint">Außerdem: LED-Effekte für Kilter, PaintBox (Einstellungen → Extras), eine Prüfung der Board-Größe, nach dem Teilen wieder dein eigener Bluetooth-Name und Quantum-Boards als experimentell gekennzeichnet.</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
@@ -3496,6 +3496,96 @@
     <string name="wall_games_no_holds">Die Griffpositionen dieses Boards sind noch nicht auf dem Gerät. Lade zuerst seinen Katalog.</string>
     <string name="wall_games_sound_turn_off">Countdown-Ton ausschalten</string>
     <string name="wall_games_sound_turn_on">Countdown-Ton einschalten</string>
+    <!-- Knoten (#154) -->
+    <string name="wall_games_knot">Knoten</string>
+    <string name="wall_games_knot_desc">Unten an der Wand leuchtet ein Feld aus Farbstreifen. Nach einem Piepton ruft das Handy einen Spieler, eine Hand oder einen Fuß und eine Farbe auf, und diese Griffe blinken: Setz sie auf einen freien Griff dieser Farbe. Pro Griff eine Hand oder ein Fuß; ist keiner dieser Farbe frei, bleib, wo du bist.\n\nWer abfällt, den Boden berührt, einen dunklen Griff nimmt oder nicht rechtzeitig da ist, ist raus und tippt auf seinen Namen. Wer zuletzt an der Wand ist, gewinnt; allein zählst du die Ansagen, die du hältst.\n\nSind mehr Spieler da, als an die Wand passen, warten die anderen in einer Reihe: Wer abfällt, macht Platz für den Nächsten, und wer die meisten Ansagen hält, gewinnt.\n\nMit „Nächste Ansage per Tipp“ ruft jemand unter der Wand die nächste Ansage auf, wenn alle bereit sind, ohne Zeitlimit.</string>
+    <string name="knot_climbers">Spieler</string>
+    <plurals name="knot_line">
+        <item quantity="one">Eine Person an der Wand, die anderen warten in der Reihe.</item>
+        <item quantity="other">%d gleichzeitig an der Wand, die anderen warten in der Reihe.</item>
+    </plurals>
+    <string name="knot_next_up">Als Nächstes: %1$s</string>
+    <string name="knot_to_wall">%1$s: an die Wand</string>
+    <string name="knot_to_wall_for">%1$s: an die Wand, für %2$s</string>
+    <string name="knot_from_left">Von links</string>
+    <string name="knot_tie">Gemeinsam vorn: %1$s</string>
+    <string name="knot_player">Spieler\u00A0%1$d</string>
+    <string name="knot_call_time">%1$s s pro Ansage</string>
+    <string name="knot_steep">Steile Wand (%1$d°): Fang sehr leicht an oder stell die Wand flacher.</string>
+    <string name="knot_safety_title">Bevor ihr spielt</string>
+    <string name="knot_safety_text">Knoten wird tief und eng gespielt. Matten unter das ganze Feld, nichts auf dem Boden unter der Wand und nie mehr Spieler an der Wand, als die App anzeigt.</string>
+    <string name="knot_unsupported_shinywall">Knoten gibt es für die Shiny Wall noch nicht.</string>
+    <string name="knot_unsupported">Für dieses Board gibt es Knoten nicht.</string>
+    <string name="knot_no_field">An dieser Wand sind zu wenige tiefe Griffe für ein Knoten-Feld.</string>
+    <string name="knot_light">Feld einschalten</string>
+    <string name="knot_positions">Startposition einnehmen</string>
+    <string name="knot_positions_solo">Zwei Hände und zwei Füße auf leuchtende Griffe.</string>
+    <string name="knot_part">%1$s: %2$s</string>
+    <string name="knot_part_left">links</string>
+    <string name="knot_part_middle">Mitte</string>
+    <string name="knot_part_right">rechts</string>
+    <plurals name="knot_held_label">
+        <item quantity="one">Ansage gehalten</item>
+        <item quantity="other">Ansagen gehalten</item>
+    </plurals>
+    <string name="knot_call_number">Ansage %1$d</string>
+    <string name="knot_wins">%1$s gewinnt</string>
+    <string name="knot_stopped">Gestoppt</string>
+    <string name="knot_spacing">Abstand</string>
+    <string name="knot_spacing_close">Eng</string>
+    <string name="knot_spacing_medium">Mittel</string>
+    <string name="knot_spacing_wide">Weit</string>
+    <string name="knot_holds">Griffe pro Farbe</string>
+    <string name="knot_holds_many">Viele</string>
+    <string name="knot_holds_normal">Normal</string>
+    <string name="knot_holds_few">Wenige</string>
+    <plurals name="knot_lit">
+        <item quantity="one">%d leuchtender Griff</item>
+        <item quantity="other">%d leuchtende Griffe</item>
+    </plurals>
+    <string name="knot_spacing_cm">Jede Farbe in etwa %1$d\u00A0cm Reichweite</string>
+    <string name="knot_holds_count">%1$d Hand- + %2$d Fußgriffe jeder Farbe pro Spieler</string>
+    <string name="knot_slider_title">%1$s · %2$s</string>
+    <string name="knot_draw_again">Neu auslosen</string>
+    <string name="knot_holds_too_many">%1$s: mehr leuchtende Griffe, als das Board annimmt.</string>
+    <plurals name="knot_holds_no_fit">
+        <item quantity="one">%1$s: passt für %2$d Spieler nicht an diese Wand.</item>
+        <item quantity="other">%1$s: passt für %2$d Spieler nicht an diese Wand.</item>
+    </plurals>
+    <plurals name="knot_spacing_same">
+        <item quantity="one">%1$s: hier keine größere Reichweite für %2$d Spieler.</item>
+        <item quantity="other">%1$s: hier keine größere Reichweite für %2$d Spieler.</item>
+    </plurals>
+    <plurals name="knot_spacing_unavailable">
+        <item quantity="one">%1$s: zu wenige Griffe hier für %2$d Spieler.</item>
+        <item quantity="other">%1$s: zu wenige Griffe hier für %2$d Spieler.</item>
+    </plurals>
+    <string name="knot_by_tap">Nächste Ansage per Tipp</string>
+    <string name="knot_next_call">Weiter</string>
+    <string name="knot_tap_name">Abgefallen? Tipp auf deinen Namen.</string>
+    <string name="knot_numbered">%1$d\u00A0·\u00A0%2$s</string>
+    <string name="knot_by_tap_on">Ohne Zeitlimit: Jemand unter der Wand tippt „Weiter“.</string>
+    <string name="knot_undo">Rückgängig</string>
+    <string name="knot_fell">Abgefallen</string>
+    <string name="knot_steep_action">Auf sehr leicht stellen</string>
+    <plurals name="knot_held_short">
+        <item quantity="one">%d gehalten</item>
+        <item quantity="other">%d gehalten</item>
+    </plurals>
+    <plurals name="knot_out_after">
+        <item quantity="one">raus nach %d</item>
+        <item quantity="other">raus nach %d</item>
+    </plurals>
+    <string name="knot_left_hand">linke Hand</string>
+    <string name="knot_right_hand">rechte Hand</string>
+    <string name="knot_left_foot">linker Fuß</string>
+    <string name="knot_right_foot">rechter Fuß</string>
+    <string name="knot_blue">Blau</string>
+    <string name="knot_yellow">Gelb</string>
+    <string name="knot_magenta">Magenta</string>
+    <string name="knot_white">Weiß</string>
+    <string name="knot_green">Grün</string>
+    <string name="knot_red">Rot</string>
     <!-- Shiny-Wall-Konto (Logbuch-Import, nur lesend) -->
     <string name="shinywall_section_title">Shiny-Wall-Konto</string>
     <string name="shinywall_connect_desc">Übernimmt dein Shiny-Wall-Logbuch (Begehungen und Projekte), deine Favoriten, Listen und eigenen Routen in CruxCoach. Sterne und Kommentare bleiben in Shiny Wall.\n\nNur lesend: CruxCoach ändert nichts an deinem Shiny-Wall-Konto. Nur Standard-Wände.\n\nWas du in CruxCoach löschst, bleibt gelöscht, egal ob Einträge oder Listen. Um alles neu zu importieren, lösche deine Shiny-Wall-Logbuchdaten unter Einstellungen → Lokale Daten löschen.</string>
