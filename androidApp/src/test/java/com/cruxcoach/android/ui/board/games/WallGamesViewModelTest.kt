@@ -22,7 +22,9 @@ import com.cruxcoach.domain.board.ShinyWallVariant
 import com.cruxcoach.domain.board.games.HoldsThief
 import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.KnotColour
+import com.cruxcoach.domain.board.games.KnotDraw
 import com.cruxcoach.domain.board.games.KnotHolds
+import com.cruxcoach.domain.board.games.KnotLayout
 import com.cruxcoach.domain.board.games.KnotSpacing
 import com.cruxcoach.domain.board.games.WallHold
 import com.cruxcoach.domain.board.games.WallRows
@@ -391,6 +393,8 @@ class WallGamesViewModelTest {
         vm.start()
         // What lights is what the preview showed.
         assertEquals(shown.spots, awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!.spots.keys)
+        // The next game's field is drawn once the calls begin.
+        vm.startKnotCalls()
         val second = awaitState(vm) { !it.knot.pending && it.knot.layout != shown }.knot.layout!!
         // The next game gets another field. How far it keeps away from this one depends on the wall: on this even grid
         // no draw keeps the spacing away from these holds, so the nearest holds light (KnotTest checks real boards).
@@ -421,6 +425,83 @@ class WallGamesViewModelTest {
         val relit = awaitState(vm) { it.knot.run.field != lit }.knot.run.field!!
         assertEquals(vm.state.value.knot.layout!!.spots, relit.spots.keys)
         assertEquals(lit.colours, relit.colours)
+    }
+
+    @Test
+    fun knotStartPositionsShowTheLitFieldAndTheNextGameKeepsAwayFromTheOneThatLit() {
+        val vm = kilterViewModel(handGrades = kilter.rows.holds.associate { it.placementId to 10.0 + it.y / 10 })
+        vm.selectGame(WallGame.KNOT)
+        vm.setKnotPlayers(2)
+        val nearest = Knot.layout(kilter.rows, 2, Knot.colours(BoardBrand.KILTER)!!, 0.0254)!!
+        awaitState(vm) { !it.knot.pending && it.knot.layout?.climbers == 2 && it.knot.layout != nearest }
+        vm.start()
+        val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!
+        // At the start positions the preview is the field on the wall, not already the next game's.
+        assertEquals(lit.spots.keys, awaitState(vm) { !it.knot.pending }.knot.layout!!.spots)
+        // Letting go of a slider without a change leaves the wall as it is.
+        vm.knotSettingsSettled()
+        assertEquals(lit, vm.state.value.knot.run.field)
+        // A setting changed there goes on the wall, and the next game keeps away from that field, not from the first.
+        vm.setKnotHolds(KnotHolds.FEW)
+        vm.knotSettingsSettled()
+        val relit = awaitState(vm) { it.knot.run.field != lit }.knot.run.field!!
+        vm.startKnotCalls()
+        awaitState(vm) { it.knot.run.phase == KnotPhase.COUNTDOWN }
+        assertEquals(relit.spots.keys, vm.knotLastSpots)
+    }
+
+    @Test
+    fun knotGoRightAfterASliderStartsOnTheFieldOfThatSlider() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        vm.setKnotPlayers(2)
+        awaitKnot(vm, 2)
+        vm.start()
+        val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!
+        // A tap on a stop and Go at once, before the field for that stop is worked out.
+        vm.setKnotHolds(KnotHolds.FEW)
+        vm.knotSettingsSettled()
+        vm.startKnotCalls()
+        val started = awaitState(vm) { it.knot.run.phase == KnotPhase.COUNTDOWN }.knot.run.field!!
+        val few = Knot.layout(kilter.rows, 2, Knot.colours(BoardBrand.KILTER)!!, 0.0254, holds = KnotHolds.FEW)!!
+        assertTrue(few.spots != lit.spots.keys)
+        assertEquals(few.spots, started.spots.keys)
+        assertEquals(lit.colours, started.colours)
+    }
+
+    @Test
+    fun knotSpeedCanChangeAtTheStartPositionsButNotOnceTheCallsRun() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        awaitKnot(vm)
+        vm.setLevel(1)
+        vm.start()
+        awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }
+        // The speed slider shows at the start positions: it has to work there.
+        vm.setLevel(4)
+        assertEquals(4, vm.state.value.level)
+        vm.startKnotCalls()
+        assertEquals(KnotPhase.COUNTDOWN, vm.state.value.knot.run.phase)
+        assertEquals(Knot.callMs(4), vm.state.value.knot.run.callMs)
+        vm.setLevel(2)
+        assertEquals(4, vm.state.value.level)
+    }
+
+    @Test
+    fun knotLightsADrawnFieldOnlyWhenTheBoardTakesItElseTheNearestHolds() {
+        val colours = Knot.colours(BoardBrand.KILTER)!!
+        val grades = kilter.rows.holds.associate { it.placementId to 10.0 + it.y / 10 }
+        val nearest = KnotSpacing.entries.flatMap { spacing ->
+            KnotHolds.entries.mapNotNull { holds -> Knot.layout(kilter.rows, 2, colours, 0.0254, spacing = spacing, holds = holds) }
+        }.toSet()
+        // A draw that isn't one of the nearest-hold fields: on this even grid some fall back to them.
+        val draw = (1L..64L).map { KnotDraw(it, grades) }.first { Knot.layout(kilter.rows, 2, colours, 0.0254, draw = it) !in nearest }
+        fun field(fits: (KnotLayout) -> Boolean) =
+            knotField(KnotInput(kilter.rows, 2, colours, 0.0254, KnotSpacing.CLOSE, KnotHolds.NORMAL, emptySet(), draw, fits)).layout!!
+        // A board that takes any field lights the drawn one.
+        assertEquals(Knot.layout(kilter.rows, 2, colours, 0.0254, draw = draw), field { true })
+        // One that would refuse the drawn field (more LEDs than it takes) gets the nearest holds, which it takes.
+        assertEquals(Knot.layout(kilter.rows, 2, colours, 0.0254), field { it in nearest })
     }
 
     @Test
@@ -458,7 +539,9 @@ class WallGamesViewModelTest {
         assertEquals(listOf(4), lit.line)
         vm.startKnotCalls()
         vm.knotOut(2)
-        val run = vm.state.value.knot.run
+        // The screen's state follows the round's through a collector: wait for it rather than read it at once (the
+        // release build after #155 once read it before it caught up).
+        val run = awaitState(vm) { it.knot.run.stepIn != null }.knot.run
         assertEquals(4, run.stepIn)
         assertEquals(listOf(0, 1, 4, 3), run.onParts)
         verify { voice.sayToWall(4, any(), any()) }

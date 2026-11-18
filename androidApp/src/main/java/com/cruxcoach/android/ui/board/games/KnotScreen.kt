@@ -92,7 +92,8 @@ internal fun KnotSettings(state: WallGamesState, actions: WallGamesActions) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.testTag("knot_unavailable"),
         )
-        return
+        // Without colours there is nothing to set. Without a field for this many players, fewer may fit: the stepper stays.
+        if (knot.colours == null) return
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // Eight in one row: a stepper, as eight chips would take two rows.
@@ -115,6 +116,7 @@ internal fun KnotSettings(state: WallGamesState, actions: WallGamesActions) {
             )
         }
     }
+    if (unavailable != null) return
     // Solo needs no name: the calls go to the one climber.
     if (knot.players > 1) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

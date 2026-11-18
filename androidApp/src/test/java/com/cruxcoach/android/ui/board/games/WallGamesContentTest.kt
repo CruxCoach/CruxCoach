@@ -10,8 +10,10 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
+import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.WallHold
 import com.cruxcoach.domain.board.games.WallRows
 import org.junit.Assert.assertEquals
@@ -40,6 +42,7 @@ class WallGamesContentTest {
         override fun start() { calls += "start" }
         override fun stop() { calls += "stop" }
         override fun reset() = Unit
+        override fun setKnotPlayers(players: Int) { calls += "players:$players" }
     }
 
     private val board = WallGameBoard(
@@ -110,5 +113,14 @@ class WallGamesContentTest {
         show(idle, connected = false)
         compose.onNodeWithText("Not connected: screen only.").assertIsDisplayed()
         compose.onNodeWithTag("wall_games_start").assertIsDisplayed()
+    }
+
+    @Test fun `knot without a field for this many players keeps the stepper to go back to fewer`() {
+        // The board names Knot's colours, but no field fits two climbers: the stepper must stay, or two is for good.
+        val knot = KnotState(colours = Knot.colours(BoardBrand.KILTER), maxClimbers = 2, players = 2, layout = null, pending = false, safetySeen = true)
+        show(idle.copy(game = WallGame.KNOT, knot = knot))
+        compose.onNodeWithTag("knot_unavailable").assertExists()
+        compose.onNodeWithTag("knot_players_minus").performScrollTo().performClick()
+        assertEquals(listOf("players:1"), calls)
     }
 }
