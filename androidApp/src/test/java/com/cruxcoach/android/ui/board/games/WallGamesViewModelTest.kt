@@ -392,9 +392,9 @@ class WallGamesViewModelTest {
         // What lights is what the preview showed.
         assertEquals(shown.spots, awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!.spots.keys)
         val second = awaitState(vm) { !it.knot.pending && it.knot.layout != shown }.knot.layout!!
+        // The next game gets another field. How far it keeps away from this one depends on the wall: on this even grid
+        // no draw keeps the spacing away from these holds, so the nearest holds light (KnotTest checks real boards).
         assertTrue(shown.spots != second.spots)
-        val again = (shown.spots intersect second.spots).size
-        assertTrue("$again holds again", again <= shown.spots.size / 2)
     }
 
     @Test
