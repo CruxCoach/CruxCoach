@@ -34,9 +34,12 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -47,6 +50,7 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -281,7 +285,7 @@ class WallGamesViewModelTest {
         angle = 40,
     )
 
-    private fun kilterViewModel(handGrades: Map<Int, Double> = emptyMap()): WallGamesViewModel {
+    private fun kilterViewModel(handGrades: Map<Int, Double> = emptyMap(), gradesGate: CountDownLatch? = null): WallGamesViewModel {
         connectedBrand.value = BoardBrand.KILTER
         every { ble.connectedBoard } returns mockk(relaxed = true) { every { apiLevel } returns 3 }
         coEvery { ble.sendRawLeds(any(), any(), any()) } returns true
@@ -289,7 +293,7 @@ class WallGamesViewModelTest {
             loader = mockk(relaxed = true) {
                 coEvery { load() } returns WallGameBoardLoad.Ready(kilter)
                 every { knotBigHolds(any()) } returns emptySet()
-                every { knotHandGrades(any()) } returns handGrades
+                every { knotHandGrades(any()) } answers { gradesGate?.await(5, TimeUnit.SECONDS); handGrades }
             },
         )
     }
@@ -399,7 +403,6 @@ class WallGamesViewModelTest {
         vm.startKnotCalls()
         awaitState(vm) { it.knot.run.phase == KnotPhase.COUNTDOWN }
         assertEquals(shown.spots, vm.knotLastSpots)
-        assertTrue(awaitState(vm) { !it.knot.pending }.knot.drawn)
     }
 
     @Test
@@ -469,6 +472,26 @@ class WallGamesViewModelTest {
         assertTrue(few.spots != lit.spots.keys)
         assertEquals(few.spots, started.spots.keys)
         assertEquals(lit.colours, started.colours)
+        // The next game keeps away from the field that lit, not from the one before it.
+        assertEquals(started.spots.keys, vm.knotLastSpots)
+    }
+
+    @Test
+    fun knotGradesThatComeInAtTheStartPositionsLeaveTheLitFieldAndDrawOnceCancelled() {
+        val gate = CountDownLatch(1)
+        val vm = kilterViewModel(handGrades = kilter.rows.holds.associate { it.placementId to 10.0 + it.y / 10 }, gradesGate = gate)
+        vm.selectGame(WallGame.KNOT)
+        assertFalse(awaitKnot(vm).drawn)
+        vm.start()
+        val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!
+        // The grades come in while the climbers take their start: the field on the wall and on the screen stays.
+        gate.countDown()
+        runBlocking { withTimeout(5_000) { while (!vm.knotRefreshAfterStart) delay(10) } }
+        assertEquals(lit.spots.keys, vm.state.value.knot.layout!!.spots)
+        assertEquals(lit, vm.state.value.knot.run.field)
+        // Cancelled: back at the settings, the field is drawn with them.
+        vm.stop()
+        assertEquals(KnotPhase.IDLE, awaitState(vm) { !it.knot.pending && it.knot.drawn }.knot.run.phase)
     }
 
     @Test

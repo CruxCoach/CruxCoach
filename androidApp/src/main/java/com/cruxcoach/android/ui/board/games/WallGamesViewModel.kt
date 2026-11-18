@@ -224,6 +224,11 @@ class WallGamesViewModel @Inject constructor(
     @VisibleForTesting
     internal var knotLastSpots: Set<Int> = emptySet()
         private set
+    /** Grades or big holds came in while a field was lit for the start: the settings' field follows once it's off. */
+    @VisibleForTesting
+    @Volatile
+    internal var knotRefreshAfterStart = false
+        private set
     /** Works out Knot's field for the settings shown; a newer change cancels it. */
     private var knotJob: Job? = null
     private val runner = WallGameRunner(
@@ -546,8 +551,12 @@ class WallGamesViewModel @Inject constructor(
             if (big.isEmpty() && grades.isEmpty()) return@launch
             knotBigHolds = big
             knotHandGrades = grades
-            // A field already lit for the start stays as the climbers took it; the calls draw the next one with these.
-            if (knotRunner.run.value.phase == KnotPhase.POSITIONS) return@launch
+            // A field already lit for the start stays as the climbers took it; the calls draw the next one with these, or
+            // a Cancel back to the settings does.
+            if (knotRunner.run.value.phase == KnotPhase.POSITIONS) {
+                knotRefreshAfterStart = true
+                return@launch
+            }
             refreshKnot()
         }
     }
@@ -594,6 +603,7 @@ class WallGamesViewModel @Inject constructor(
             knotRunner.start(if (s.knot.byTap) 0 else Knot.callMs(s.level), knotSeeds.nextLong())
             knotLastSpots = field.spots.keys
             knotSeed = knotSeeds.nextLong()
+            knotRefreshAfterStart = false
             refreshKnot()
         }
     }
@@ -667,8 +677,10 @@ class WallGamesViewModel @Inject constructor(
     override fun stop() {
         if (!mutableState.value.running) return
         if (mutableState.value.game == WallGame.KNOT) {
+            val atStart = knotRunner.run.value.phase == KnotPhase.POSITIONS
             voice.stop()
             knotRunner.stop()
+            if (atStart) knotBackFromStart()
             return
         }
         runner.stop()
@@ -678,12 +690,21 @@ class WallGamesViewModel @Inject constructor(
     /** From the result back to the game's settings; clears the wall. */
     override fun reset() {
         if (mutableState.value.game == WallGame.KNOT) {
+            val atStart = knotRunner.run.value.phase == KnotPhase.POSITIONS
             voice.stop()
             knotRunner.reset()
+            if (atStart) knotBackFromStart()
             return
         }
         runner.reset()
         show(emptyList())
+    }
+
+    /** Back to the settings from the start positions: grades that came in meanwhile draw the field from now on. */
+    private fun knotBackFromStart() {
+        if (!knotRefreshAfterStart) return
+        knotRefreshAfterStart = false
+        refreshKnot()
     }
 
     // ── Sending ────────────────────────────────────────────────────────
