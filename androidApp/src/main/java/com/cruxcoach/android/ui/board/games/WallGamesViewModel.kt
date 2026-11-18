@@ -293,7 +293,6 @@ class WallGamesViewModel @Inject constructor(
             mutableState.update {
                 val density = board?.let { b -> thiefStartDensity(b, it.thiefDensity) } ?: it.thiefDensity
                 it.copy(
-                    loading = false,
                     board = board,
                     unavailable = load.takeIf { board == null },
                     thiefDensity = density,
@@ -301,6 +300,8 @@ class WallGamesViewModel @Inject constructor(
                 )
             }
             refreshKnot()
+            // Loaded once Knot's colours and climbers for the board are set too, not a moment before.
+            mutableState.update { it.copy(loading = false) }
             if (board != null && mutableState.value.game == WallGame.KNOT) prepareKnot()
             if (board != null) {
                 if (startClimbUuid != null) {
@@ -504,7 +505,8 @@ class WallGamesViewModel @Inject constructor(
     /** The lit field again, as the settings now give it, in the round's colours. */
     private fun relightKnot() {
         val s = mutableState.value
-        val run = s.knot.run
+        // The round's own state: the screen's copy of it can trail behind a change made a moment ago.
+        val run = knotRunner.run.value
         val field = run.field ?: return
         val layout = s.knot.layout ?: return
         if (run.phase != KnotPhase.POSITIONS) return
@@ -544,6 +546,8 @@ class WallGamesViewModel @Inject constructor(
             if (big.isEmpty() && grades.isEmpty()) return@launch
             knotBigHolds = big
             knotHandGrades = grades
+            // A field already lit for the start stays as the climbers took it; the calls draw the next one with these.
+            if (knotRunner.run.value.phase == KnotPhase.POSITIONS) return@launch
             refreshKnot()
         }
     }
@@ -582,9 +586,11 @@ class WallGamesViewModel @Inject constructor(
         viewModelScope.launch {
             awaitKnotField()
             relightKnot()
+            // The field that is on the wall now, from the round itself: the screen's copy may not have caught up.
+            val run = knotRunner.run.value
+            val field = run.field ?: return@launch
+            if (run.phase != KnotPhase.POSITIONS) return@launch
             val s = mutableState.value
-            val field = s.knot.run.field ?: return@launch
-            if (s.knot.run.phase != KnotPhase.POSITIONS) return@launch
             knotRunner.start(if (s.knot.byTap) 0 else Knot.callMs(s.level), knotSeeds.nextLong())
             knotLastSpots = field.spots.keys
             knotSeed = knotSeeds.nextLong()

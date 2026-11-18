@@ -323,7 +323,7 @@ class WallGamesViewModelTest {
         coVerify(timeout = 5_000) { ble.sendRawLeds(sent, BoardBrand.KILTER, any()) }
 
         vm.startKnotCalls()
-        assertEquals(KnotPhase.COUNTDOWN, vm.state.value.knot.run.phase)
+        awaitState(vm) { it.knot.run.phase == KnotPhase.COUNTDOWN }
         vm.knotOut(0)
         val over = awaitState(vm) { it.knot.run.phase == KnotPhase.FINISHED }
         assertEquals(1, over.knot.run.winner)
@@ -344,8 +344,7 @@ class WallGamesViewModelTest {
         vm.start()
         awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }
         vm.startKnotCalls()
-        val run = vm.state.value.knot.run
-        assertEquals(KnotPhase.COUNTDOWN, run.phase)
+        val run = awaitState(vm) { it.knot.run.phase == KnotPhase.COUNTDOWN }.knot.run
         assertTrue(run.byTap)
         // While a round runs, the switch stays as it was.
         vm.setKnotByTap(false)
@@ -386,19 +385,21 @@ class WallGamesViewModelTest {
         // Every hold rated, the easier the lower.
         val vm = kilterViewModel(handGrades = kilter.rows.holds.associate { it.placementId to 10.0 + it.y / 10 })
         vm.selectGame(WallGame.KNOT)
+        // The grades come in off the main thread; the player count changes once they're there, not at the same time.
+        awaitState(vm) { it.knot.drawn && !it.knot.pending }
         vm.setKnotPlayers(2)
-        // The grades come in after the board: once they're there, the field is drawn instead of the nearest holds.
-        val nearest = Knot.layout(kilter.rows, 2, Knot.colours(BoardBrand.KILTER)!!, 0.0254)!!
-        val shown = awaitState(vm) { !it.knot.pending && it.knot.layout?.climbers == 2 && it.knot.layout != nearest }.knot.layout!!
+        // Once the grades are there, the field is drawn. On this even grid a draw can come out as the nearest holds (the
+        // seed is random), so the flag tells, not the holds.
+        val shown = awaitState(vm) { !it.knot.pending && it.knot.drawn && it.knot.layout?.climbers == 2 }.knot.layout!!
         vm.start()
         // What lights is what the preview showed.
         assertEquals(shown.spots, awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!.spots.keys)
-        // The next game's field is drawn once the calls begin.
+        // The next game's field is drawn once the calls begin, away from this one's holds. How far away depends on the
+        // wall: KnotTest checks that on real boards.
         vm.startKnotCalls()
-        val second = awaitState(vm) { !it.knot.pending && it.knot.layout != shown }.knot.layout!!
-        // The next game gets another field. How far it keeps away from this one depends on the wall: on this even grid
-        // no draw keeps the spacing away from these holds, so the nearest holds light (KnotTest checks real boards).
-        assertTrue(shown.spots != second.spots)
+        awaitState(vm) { it.knot.run.phase == KnotPhase.COUNTDOWN }
+        assertEquals(shown.spots, vm.knotLastSpots)
+        assertTrue(awaitState(vm) { !it.knot.pending }.knot.drawn)
     }
 
     @Test
@@ -431,9 +432,10 @@ class WallGamesViewModelTest {
     fun knotStartPositionsShowTheLitFieldAndTheNextGameKeepsAwayFromTheOneThatLit() {
         val vm = kilterViewModel(handGrades = kilter.rows.holds.associate { it.placementId to 10.0 + it.y / 10 })
         vm.selectGame(WallGame.KNOT)
+        // The grades come in off the main thread; the player count changes once they're there, not at the same time.
+        awaitState(vm) { it.knot.drawn && !it.knot.pending }
         vm.setKnotPlayers(2)
-        val nearest = Knot.layout(kilter.rows, 2, Knot.colours(BoardBrand.KILTER)!!, 0.0254)!!
-        awaitState(vm) { !it.knot.pending && it.knot.layout?.climbers == 2 && it.knot.layout != nearest }
+        awaitState(vm) { !it.knot.pending && it.knot.drawn && it.knot.layout?.climbers == 2 }
         vm.start()
         val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!
         // At the start positions the preview is the field on the wall, not already the next game's.
@@ -481,8 +483,7 @@ class WallGamesViewModelTest {
         vm.setLevel(4)
         assertEquals(4, vm.state.value.level)
         vm.startKnotCalls()
-        assertEquals(KnotPhase.COUNTDOWN, vm.state.value.knot.run.phase)
-        assertEquals(Knot.callMs(4), vm.state.value.knot.run.callMs)
+        assertEquals(Knot.callMs(4), awaitState(vm) { it.knot.run.phase == KnotPhase.COUNTDOWN }.knot.run.callMs)
         vm.setLevel(2)
         assertEquals(4, vm.state.value.level)
     }
