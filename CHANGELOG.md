@@ -142,13 +142,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   climb as the wall is wide (0.8 m each, 4 on a 12 ft board). Whoever comes
   off taps their name: the last one on the wall wins, solo you count the
   calls you hold. More players wait in line and step in for whoever comes
-  off; then the most calls held win. Two difficulties: five levels (10 to 3
-  seconds per call), or "Tap for the next call" for someone below the wall,
-  and the spacing (close, medium, wide), which sets how far each colour is
-  from a climber, about 50, 75 or 100 cm, with the colours repeating across
-  the field. With the board's catalogue, every game draws a fresh field away
-  from the last one's holds, leaves out the hardest hand holds and keeps the
-  colours and the climbers' parts about equally hard. Optional names, a
+  off; then the most calls held win. Three sliders, harder to the right: the
+  speed (10 to 3 seconds per call, or "Tap for the next call" for someone
+  below the wall), the spacing (close, medium, wide), which sets how far each
+  colour is from a climber, about 50, 75 or 100 cm, with the colours repeating
+  across the field, and the holds per colour (many, normal, few: 4 + 3, 3 + 2
+  or 2 + 1 hand and foot spots of each colour within every climber's reach).
+  The board preview follows the sliders, shows each climber's part and how
+  many holds light. With the board's catalogue, every game draws a fresh field
+  away from the last one's holds ("Draw again" for another), leaves out the
+  hardest hand holds and keeps the colours and the climbers' parts about
+  equally hard. Optional names, a
   safety hint before the first game and a hint on steep walls. For Kilter,
   the other Aurora boards and MoonBoard (not Shiny Wall or Quantum).
 - Community: Settings → Community explains the CruxCoach community on Buzz

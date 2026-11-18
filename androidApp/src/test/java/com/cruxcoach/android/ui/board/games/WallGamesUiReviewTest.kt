@@ -44,6 +44,7 @@ import com.cruxcoach.domain.board.games.KnotCall
 import com.cruxcoach.domain.board.games.KnotColour
 import com.cruxcoach.domain.board.games.KnotField
 import com.cruxcoach.domain.board.games.KnotLimb
+import com.cruxcoach.domain.board.games.KnotHolds
 import com.cruxcoach.domain.board.games.KnotSpacing
 import com.cruxcoach.domain.board.games.WallRows
 import org.junit.Assume
@@ -337,9 +338,17 @@ class WallGamesUiReviewTest {
     private val kilter: WallGameBoard by lazy { loadKilter(sizeId = 10).copy(angle = 40) }
 
     /** Knot set up on the Kilter 12x12 for [players], as the view model leaves it. */
-    private fun knotIdle(players: Int, safetySeen: Boolean = true, byTap: Boolean = false): WallGamesState {
+    private fun knotIdle(
+        players: Int,
+        safetySeen: Boolean = true,
+        byTap: Boolean = false,
+        spacing: KnotSpacing = KnotSpacing.CLOSE,
+        holds: KnotHolds = KnotHolds.NORMAL,
+    ): WallGamesState {
         val colours = Knot.colours(BoardBrand.KILTER)!!
         val max = Knot.maxClimbers(kilter.rows, 0.0254)
+        // As the view model works it out: the nearest holds at close spacing and normal holds.
+        val field = knotField(KnotInput(kilter.rows, minOf(players, max), colours, 0.0254, spacing, holds, emptySet(), null))
         return WallGamesState(
             loading = false,
             board = kilter,
@@ -350,8 +359,16 @@ class WallGamesUiReviewTest {
                 byTap = byTap,
                 colours = colours,
                 maxClimbers = max,
-                layout = Knot.layout(kilter.rows, minOf(players, max), colours, 0.0254),
-                spacings = KnotSpacing.entries.toSet(),
+                layout = field.layout,
+                spacing = field.spacing,
+                spacings = field.spacings,
+                sameReach = field.sameReach,
+                holds = field.holds,
+                holdsOffered = field.holdsOffered,
+                holdsTooMany = field.holdsTooMany,
+                reachM = field.reachM,
+                parts = field.parts,
+                drawn = true,
                 safetySeen = safetySeen,
             ),
         )
@@ -384,6 +401,26 @@ class WallGamesUiReviewTest {
     fun knotWideGreyedOut() = shoot("knot-spacing-greyed", before = toByTap) {
         val state = knotIdle(3)
         Screen(state.copy(knot = state.knot.copy(spacing = KnotSpacing.MEDIUM, spacings = setOf(KnotSpacing.CLOSE, KnotSpacing.MEDIUM))))
+    }
+
+    // Setup with the field preview and the three sliders.
+
+    @Test
+    fun knotSetupSliders() = shoot("knot-setup-sliders", before = { compose.onNodeWithTag("knot_holds_note").performScrollTo() }) { Screen(knotIdle(2)) }
+
+    @Test
+    fun knotSetupPreview() = shoot("knot-setup-preview", before = { compose.onNodeWithTag("knot_field_info").performScrollTo() }) { Screen(knotIdle(4)) }
+
+    @Test fun knotHolds2Few() = knotHolds(2, KnotHolds.FEW)
+    @Test fun knotHolds2Normal() = knotHolds(2, KnotHolds.NORMAL)
+    @Test fun knotHolds2Many() = knotHolds(2, KnotHolds.MANY)
+    @Test fun knotHolds4Few() = knotHolds(4, KnotHolds.FEW)
+    @Test fun knotHolds4Normal() = knotHolds(4, KnotHolds.NORMAL)
+    @Test fun knotHolds4Many() = knotHolds(4, KnotHolds.MANY)
+
+    /** The 12x12 preview for [players] at Medium with [holds], with its brackets and line. */
+    private fun knotHolds(players: Int, holds: KnotHolds) = shoot("knot-holds-$players-${holds.name.lowercase()}", phoneHeight = false) {
+        KnotFieldPreview(knotIdle(players, spacing = KnotSpacing.MEDIUM, holds = holds), actions)
     }
 
     @Test

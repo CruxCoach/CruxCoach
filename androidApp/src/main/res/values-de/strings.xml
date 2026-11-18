@@ -3522,7 +3522,23 @@
     <string name="knot_spacing_close">Eng</string>
     <string name="knot_spacing_medium">Mittel</string>
     <string name="knot_spacing_wide">Weit</string>
+    <string name="knot_holds">Griffe pro Farbe</string>
+    <string name="knot_holds_many">Viele</string>
+    <string name="knot_holds_normal">Normal</string>
+    <string name="knot_holds_few">Wenige</string>
+    <plurals name="knot_lit">
+        <item quantity="one">%d leuchtender Griff</item>
+        <item quantity="other">%d leuchtende Griffe</item>
+    </plurals>
     <string name="knot_spacing_cm">Jede Farbe in etwa %1$d\u00A0cm Reichweite</string>
+    <string name="knot_holds_count">%1$d Hand- + %2$d Fußgriffe jeder Farbe pro Spieler</string>
+    <string name="knot_slider_title">%1$s · %2$s</string>
+    <string name="knot_draw_again">Neu auslosen</string>
+    <string name="knot_holds_too_many">%1$s: mehr leuchtende Griffe, als das Board annimmt.</string>
+    <plurals name="knot_holds_no_fit">
+        <item quantity="one">%1$s: passt für %2$d Spieler nicht an diese Wand.</item>
+        <item quantity="other">%1$s: passt für %2$d Spieler nicht an diese Wand.</item>
+    </plurals>
     <plurals name="knot_spacing_same">
         <item quantity="one">%1$s: hier keine größere Reichweite für %2$d Spieler.</item>
         <item quantity="other">%1$s: hier keine größere Reichweite für %2$d Spieler.</item>

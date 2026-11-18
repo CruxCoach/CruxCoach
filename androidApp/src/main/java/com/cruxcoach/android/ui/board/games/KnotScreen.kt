@@ -5,8 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,7 +18,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Switch
 import androidx.compose.material3.LinearProgressIndicator
@@ -28,6 +25,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import com.cruxcoach.domain.board.games.GAME_LEVELS
+import com.cruxcoach.domain.board.games.KnotHolds
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -70,7 +75,6 @@ private fun String.capitalised(): String = replaceFirstChar { if (it.isLowerCase
 // ── Settings ───────────────────────────────────────────────────────────
 
 /** Knot before a round: safety first, then who plays, how fast and how the calls come. */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun KnotSettings(state: WallGamesState, actions: WallGamesActions) {
     val knot = state.knot
@@ -129,15 +133,12 @@ internal fun KnotSettings(state: WallGamesState, actions: WallGamesActions) {
             }
         }
     }
-    KnotSpacingPicker(knot, actions)
+    // The field the settings give, above them, so each slider shows what it changes.
+    KnotFieldPreview(state, actions)
+    KnotSliders(state, actions)
     KnotByTap(knot, actions)
     // The level is the time per call: by tap there is none.
     if (knot.byTap) return
-    LevelPicker(
-        level = state.level,
-        interval = stringResource(R.string.knot_call_time, WallGameFormat.seconds(Knot.callMs(state.level))),
-        onLevel = actions::setLevel,
-    )
     // A warning with its number and the way out at hand: the easiest level.
     val steep = knot.steepAngle(state.board)
     if (steep != null && state.level > 1) {
@@ -183,61 +184,193 @@ private fun KnotSafetyCard(onGotIt: () -> Unit) {
     }
 }
 
-/** How far the climbers reach for the colours; a spacing the wall can't keep playable for this many is greyed out. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * The field as it will light, with a bracket under the picture for each climber's part and a line with what it holds:
+ * lit holds, reach, holds per colour and climber. With the catalogue, "Draw again" gives another field.
+ */
 @Composable
-private fun KnotSpacingPicker(knot: KnotState, actions: WallGamesActions) {
+internal fun KnotFieldPreview(state: WallGamesState, actions: WallGamesActions) {
+    val knot = state.knot
+    val board = state.board ?: return
+    val unit = Knot.metresPerUnit(board.brand) ?: return
+    // Metres along the wall as shares of the picture's width.
+    fun share(m: Double): Double = board.boardSize?.let { size -> (m / unit - size.edgeLeft) / (size.edgeRight - size.edgeLeft).toDouble() }
+        ?: ((m / unit + 0.5) / MOONBOARD_COLUMNS)
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(R.string.knot_spacing), style = MaterialTheme.typography.titleSmall)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            KnotSpacing.entries.forEach { spacing ->
-                FilterChip(
-                    selected = spacing == knot.spacing,
-                    onClick = { actions.setKnotSpacing(spacing) },
-                    enabled = spacing in knot.spacings,
-                    label = { Text(stringResource(spacing.labelRes)) },
-                    colors = chipColors(),
-                    modifier = Modifier.testTag("knot_spacing_${spacing.name.lowercase()}"),
+        // Each part with the player who starts there.
+        val context = LocalContext.current
+        val brackets = if (knot.parts.size > 1) knot.parts.mapIndexed { part, (from, to) ->
+            Triple(share(from), share(to), climberName(context, knot.names, part))
+        } else emptyList()
+        GameBoardPreview(state, brackets = brackets)
+        val layout = knot.layout
+        if (layout != null) {
+            Text(
+                pluralStringResource(R.plurals.knot_lit, layout.spots.size, layout.spots.size),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().testTag("knot_field_info"),
+            )
+        }
+        if (knot.drawn) {
+            TextButton(
+                onClick = actions::knotDrawAgain,
+                enabled = !knot.pending,
+                modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp).testTag("knot_draw_again"),
+            ) { Text(stringResource(R.string.knot_draw_again)) }
+        }
+    }
+}
+
+/** The MoonBoard's columns, for its picture, which has no edges in the board data. */
+private const val MOONBOARD_COLUMNS = 11
+
+/**
+ * Speed, spacing and holds per colour as stepped sliders with a label at every stop, harder to the right. The preview
+ * follows a slider at once; with the field on, the wall follows when it's let go. A step that doesn't fit is greyed,
+ * with the reason below.
+ */
+@Composable
+internal fun KnotSliders(state: WallGamesState, actions: WallGamesActions) {
+    val knot = state.knot
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (!knot.byTap) {
+            KnotStepSlider(
+                title = stringResource(R.string.knot_slider_title, stringResource(R.string.wall_games_level), stringResource(levelRes(state.level))),
+                steps = GAME_LEVELS.toList(),
+                selected = state.level,
+                enabled = { true },
+                label = { stringResource(levelRes(it)) },
+                tag = "knot_level",
+                onChange = actions::setLevel,
+                onSettled = {},
+                note = stringResource(R.string.knot_call_time, WallGameFormat.seconds(Knot.callMs(state.level))),
+            )
+        }
+        KnotStepSlider(
+            title = stringResource(R.string.knot_spacing),
+            steps = KnotSpacing.entries,
+            selected = knot.spacing,
+            enabled = { it in knot.spacings },
+            label = { stringResource(it.labelRes) },
+            tag = "knot_spacing",
+            onChange = actions::setKnotSpacing,
+            onSettled = actions::knotSettingsSettled,
+            note = listOfNotNull(
+                // The reach the field really has, to the nearest 5 cm.
+                stringResource(R.string.knot_spacing_cm, ((knot.reachM ?: knot.spacing.reachM) * 20).roundToInt() * 5),
+                // Two reasons a spacing is greyed out: no further reach than a closer one, or no room for it.
+                knot.sameReach.takeIf { it.isNotEmpty() }?.let { same ->
+                    pluralStringResource(R.plurals.knot_spacing_same, knot.atWall, same.sorted().map { stringResource(it.labelRes) }.joinToString(", "), knot.atWall)
+                },
+                KnotSpacing.entries.filter { it !in knot.spacings && it !in knot.sameReach }.takeIf { it.isNotEmpty() }?.let { greyed ->
+                    pluralStringResource(R.plurals.knot_spacing_unavailable, knot.atWall, greyed.map { stringResource(it.labelRes) }.joinToString(", "), knot.atWall)
+                },
+            ).joinToString("\n").ifEmpty { null },
+        )
+        KnotStepSlider(
+            title = stringResource(R.string.knot_holds),
+            steps = KnotHolds.entries,
+            selected = knot.holds,
+            enabled = { it in knot.holdsOffered },
+            label = { stringResource(it.labelRes) },
+            tag = "knot_holds",
+            onChange = actions::setKnotHolds,
+            onSettled = actions::knotSettingsSettled,
+            note = listOfNotNull(
+                stringResource(R.string.knot_holds_count, knot.holds.hands, knot.holds.feet),
+                knot.holdsTooMany.takeIf { it.isNotEmpty() }?.let { many ->
+                    stringResource(R.string.knot_holds_too_many, many.sorted().map { stringResource(it.labelRes) }.joinToString(", "))
+                },
+                KnotHolds.entries.filter { it !in knot.holdsOffered && it !in knot.holdsTooMany }.takeIf { it.isNotEmpty() }?.let { greyed ->
+                    pluralStringResource(R.plurals.knot_holds_no_fit, knot.atWall, greyed.map { stringResource(it.labelRes) }.joinToString(", "), knot.atWall)
+                },
+            ).joinToString("\n").ifEmpty { null },
+        )
+    }
+}
+
+/**
+ * A stepped slider over [steps] with the [label] of every stop below it. Moving it changes the setting at once
+ * ([onChange], only to a step that's [enabled]); letting go calls [onSettled] and moves back from a greyed stop.
+ */
+@Composable
+private fun <T> KnotStepSlider(
+    title: String,
+    steps: List<T>,
+    selected: T,
+    enabled: (T) -> Boolean,
+    label: @Composable (T) -> String,
+    tag: String,
+    onChange: (T) -> Unit,
+    onSettled: () -> Unit,
+    note: String? = null,
+) {
+    val index = steps.indexOf(selected).coerceAtLeast(0)
+    var position by remember(index) { mutableFloatStateOf(index.toFloat()) }
+    Column {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        Slider(
+            value = position,
+            onValueChange = { value ->
+                position = value
+                val step = steps[value.roundToInt().coerceIn(steps.indices)]
+                if (step != selected && enabled(step)) onChange(step)
+            },
+            onValueChangeFinished = {
+                // A greyed stop doesn't hold: back to the step that's set.
+                position = steps.indexOf(selected).coerceAtLeast(0).toFloat()
+                onSettled()
+            },
+            valueRange = 0f..(steps.size - 1).toFloat(),
+            steps = (steps.size - 2).coerceAtLeast(0),
+            colors = SliderDefaults.colors(thumbColor = CruxCoachDesign.colors.brandAccent, activeTrackColor = CruxCoachDesign.colors.brandAccent),
+            modifier = Modifier.fillMaxWidth().testTag(tag),
+        )
+        // Five stops don't fit a label each at a large font: then the ends only, with the value in the title.
+        val ends = steps.size > 3
+        Row(Modifier.fillMaxWidth()) {
+            steps.forEachIndexed { i, step ->
+                if (ends && i != 0 && i != steps.lastIndex) return@forEachIndexed
+                Text(
+                    label(step),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (step == selected) FontWeight.SemiBold else FontWeight.Normal,
+                    color = when {
+                        !enabled(step) -> MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
+                        step == selected -> MaterialTheme.colorScheme.onSurface
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    textAlign = when (i) {
+                        0 -> TextAlign.Start
+                        steps.lastIndex -> TextAlign.End
+                        else -> TextAlign.Center
+                    },
+                    modifier = Modifier.weight(1f).testTag("${tag}_$i"),
                 )
             }
         }
-        // The reach the field really has, to the nearest 5 cm.
-        val reachCm = ((knot.reachM ?: knot.spacing.reachM) * 20).roundToInt() * 5
-        Text(
-            stringResource(R.string.knot_spacing_cm, reachCm),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        // Two reasons a spacing is greyed out: no room for it, or no further reach than a closer one.
-        if (knot.sameReach.isNotEmpty()) {
+        if (note != null) {
             Text(
-                pluralStringResource(
-                    R.plurals.knot_spacing_same,
-                    knot.atWall,
-                    knot.sameReach.sorted().map { stringResource(it.labelRes) }.joinToString(", "),
-                    knot.atWall,
-                ),
+                note,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag("knot_spacing_same"),
-            )
-        }
-        val greyed = KnotSpacing.entries.filter { it !in knot.spacings && it !in knot.sameReach }
-        if (greyed.isNotEmpty()) {
-            Text(
-                pluralStringResource(
-                    R.plurals.knot_spacing_unavailable,
-                    knot.atWall,
-                    greyed.map { stringResource(it.labelRes) }.joinToString(", "),
-                    knot.atWall,
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag("knot_spacing_unavailable"),
+                modifier = Modifier.padding(top = 4.dp).testTag("${tag}_note"),
             )
         }
     }
 }
+
+/** Material's alpha for disabled content. */
+private const val DISABLED_ALPHA = 0.38f
+
+private val KnotHolds.labelRes: Int
+    get() = when (this) {
+        KnotHolds.MANY -> R.string.knot_holds_many
+        KnotHolds.NORMAL -> R.string.knot_holds_normal
+        KnotHolds.FEW -> R.string.knot_holds_few
+    }
 
 private val KnotSpacing.labelRes: Int
     get() = when (this) {
@@ -333,8 +466,12 @@ internal fun KnotRunContent(state: WallGamesState, actions: WallGamesActions, mo
         if (run.phase == KnotPhase.RUNNING || (run.phase == KnotPhase.FINISHED && run.climbers.size > 1)) {
             KnotClimbers(state.knot, actions)
         }
-        // Where everyone starts; once the calls run, the wall itself shows the field and the screen keeps the call.
-        if (run.phase == KnotPhase.POSITIONS) GameBoardPreview(state)
+        // Where everyone starts, and the settings, which the field follows while it's on; once the calls run, the wall
+        // itself shows the field and the screen keeps the call.
+        if (run.phase == KnotPhase.POSITIONS) {
+            KnotFieldPreview(state, actions)
+            KnotSliders(state, actions)
+        }
     }
 }
 

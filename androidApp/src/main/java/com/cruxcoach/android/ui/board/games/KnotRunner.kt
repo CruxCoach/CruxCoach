@@ -108,23 +108,30 @@ internal class KnotRunner(
     /** When a climber called from the line gets calls: by the round's clock. */
     private val readyAt = mutableMapOf<Int, Long>()
 
-    /** Lights [field] for [players] to take their start positions; those beyond its parts wait in line. */
-    fun light(field: KnotField, players: Int) {
+    /**
+     * Lights [field] for [players] to take their start positions; those beyond its parts wait in line. [singleFoot]:
+     * per part, the colours with one foot spot within reach, which never get both feet of a climber.
+     */
+    fun light(field: KnotField, players: Int, singleFoot: List<Set<KnotColour>> = emptyList()) {
         job?.cancel()
         outAt.clear()
         readyAt.clear()
         clockMs = 0
+        this.singleFoot = singleFoot
         val climbers = List(players) { KnotClimber(part = it.takeIf { it < field.climbers }) }
         mutableRun.value = KnotRun(phase = KnotPhase.POSITIONS, field = field, climbers = climbers)
         onWall(field.spots)
     }
+
+    /** Per part, the colours with only one foot spot within reach (see [KnotCaller]). */
+    private var singleFoot: List<Set<KnotColour>> = emptyList()
 
     /** Everyone is in place: the countdown, then the calls, [callMs] apart (0: by tap), from [seed]. */
     fun start(callMs: Long, seed: Long) {
         val run = mutableRun.value
         val field = run.field ?: return
         if (run.phase != KnotPhase.POSITIONS) return
-        val caller = KnotCaller(seed, field.climbers, field.colours)
+        val caller = KnotCaller(seed, field.climbers, field.colours, singleFoot)
         mutableRun.update { it.copy(phase = KnotPhase.COUNTDOWN, countdown = GAME_COUNTDOWN_SECONDS, callMs = callMs) }
         suspend fun wait(ms: Long) {
             delay(ms)

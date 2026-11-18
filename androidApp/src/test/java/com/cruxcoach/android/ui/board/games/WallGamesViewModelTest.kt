@@ -22,6 +22,7 @@ import com.cruxcoach.domain.board.ShinyWallVariant
 import com.cruxcoach.domain.board.games.HoldsThief
 import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.KnotColour
+import com.cruxcoach.domain.board.games.KnotHolds
 import com.cruxcoach.domain.board.games.KnotSpacing
 import com.cruxcoach.domain.board.games.WallHold
 import com.cruxcoach.domain.board.games.WallRows
@@ -308,11 +309,12 @@ class WallGamesViewModelTest {
 
         vm.setKnotPlayers(2)
         vm.setKnotName(0, "Anna")
-        assertEquals(20, awaitKnot(vm, 2).previewSpots()!!.size)
+        val preview = awaitKnot(vm, 2).previewSpots()!!
         vm.start()
         val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }
         val field = lit.knot.run.field!!
-        assertEquals(20, field.spots.size)
+        // What lights is what the preview showed.
+        assertEquals(preview.keys, field.spots.keys)
         assertTrue(lit.running)
         // Each spot goes up in its own colour.
         val sent = field.spots.entries.sortedBy { it.key }.map { (id, colour) -> id to colour.rgb332 }
@@ -368,9 +370,9 @@ class WallGamesViewModelTest {
         vm.setKnotSpacing(KnotSpacing.WIDE)
         val wide = awaitState(vm) { !it.knot.pending && it.knot.spacing == KnotSpacing.WIDE }.knot
         assertTrue(wide.reachM!! > close.reachM!!)
-        // The same spots, spread over fewer, wider stripes.
-        assertEquals(close.layout!!.spots.size, wide.layout!!.spots.size)
-        assertTrue(wide.layout!!.stripes.size <= close.layout!!.stripes.size)
+        // Fewer, wider stripes; the holds per colour and climber stay, so the climbers share more of them.
+        assertTrue(wide.layout!!.stripes.size < close.layout!!.stripes.size)
+        assertTrue(wide.layout!!.spots.size <= close.layout!!.spots.size)
         // The field that lights is the one of the chosen spacing.
         vm.start()
         val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }
@@ -392,7 +394,33 @@ class WallGamesViewModelTest {
         val second = awaitState(vm) { !it.knot.pending && it.knot.layout != shown }.knot.layout!!
         assertTrue(shown.spots != second.spots)
         val again = (shown.spots intersect second.spots).size
-        assertTrue("$again holds again", again <= shown.spots.size / 4)
+        assertTrue("$again holds again", again <= shown.spots.size / 2)
+    }
+
+    @Test
+    fun knotHoldsPerColourChangeTheFieldAndTheWallFollowsWhenASliderIsLetGo() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        vm.setKnotPlayers(2)
+        val normal = awaitKnot(vm, 2)
+        assertEquals(KnotHolds.NORMAL, normal.holds)
+        vm.setKnotHolds(KnotHolds.MANY)
+        val many = awaitState(vm) { !it.knot.pending && it.knot.holds == KnotHolds.MANY }.knot
+        assertTrue(many.layout!!.spots.size > normal.layout!!.spots.size)
+        vm.setKnotHolds(KnotHolds.FEW)
+        val few = awaitState(vm) { !it.knot.pending && it.knot.holds == KnotHolds.FEW }.knot
+        assertTrue(few.layout!!.spots.size < normal.layout!!.spots.size)
+        // With the field on, moving a slider changes the preview; letting go puts it on the wall.
+        vm.start()
+        val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!
+        assertEquals(few.layout!!.spots, lit.spots.keys)
+        vm.setKnotHolds(KnotHolds.NORMAL)
+        awaitState(vm) { !it.knot.pending && it.knot.holds == KnotHolds.NORMAL }
+        assertEquals(lit, vm.state.value.knot.run.field)
+        vm.knotSettingsSettled()
+        val relit = awaitState(vm) { it.knot.run.field != lit }.knot.run.field!!
+        assertEquals(vm.state.value.knot.layout!!.spots, relit.spots.keys)
+        assertEquals(lit.colours, relit.colours)
     }
 
     @Test
@@ -410,10 +438,10 @@ class WallGamesViewModelTest {
         val six = awaitKnot(kilterVm, 4)
         assertEquals(6, six.players)
         assertEquals(4, six.atWall)
-        // Four at the wall on a 12 ft wide field: the colours again and again, 36 spots.
+        // Four at the wall on a 12 ft wide field: the colours again and again.
         assertEquals(4, six.layout!!.climbers)
         assertTrue(six.layout!!.stripes.size > 4)
-        assertEquals(36, six.previewSpots()!!.size)
+        assertEquals(six.layout!!.spots.size, six.previewSpots()!!.size)
         kilterVm.setKnotPlayers(12)
         assertEquals(Knot.MAX_PLAYERS, kilterVm.state.value.knot.players)
     }

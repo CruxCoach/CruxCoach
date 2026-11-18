@@ -3523,7 +3523,23 @@
     <string name="knot_spacing_close">Close</string>
     <string name="knot_spacing_medium">Medium</string>
     <string name="knot_spacing_wide">Wide</string>
+    <string name="knot_holds">Holds per colour</string>
+    <string name="knot_holds_many">Many</string>
+    <string name="knot_holds_normal">Normal</string>
+    <string name="knot_holds_few">Few</string>
+    <plurals name="knot_lit">
+        <item quantity="one">%d lit hold</item>
+        <item quantity="other">%d lit holds</item>
+    </plurals>
     <string name="knot_spacing_cm">Each colour within about %1$d\u00A0cm</string>
+    <string name="knot_holds_count">%1$d hand + %2$d foot holds of each colour per player</string>
+    <string name="knot_slider_title">%1$s · %2$s</string>
+    <string name="knot_draw_again">Draw again</string>
+    <string name="knot_holds_too_many">%1$s: more lit holds than the board takes.</string>
+    <plurals name="knot_holds_no_fit">
+        <item quantity="one">%1$s: doesn’t fit this wall for %2$d player.</item>
+        <item quantity="other">%1$s: doesn’t fit this wall for %2$d players.</item>
+    </plurals>
     <plurals name="knot_spacing_same">
         <item quantity="one">%1$s: no farther reach here for %2$d player.</item>
         <item quantity="other">%1$s: no farther reach here for %2$d players.</item>

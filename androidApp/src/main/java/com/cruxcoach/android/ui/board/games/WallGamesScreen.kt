@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board.games
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import com.cruxcoach.android.ui.common.InfoButton
 import androidx.compose.ui.text.style.Hyphens
@@ -22,7 +23,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -63,6 +66,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -70,6 +74,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -91,6 +96,7 @@ import com.cruxcoach.domain.board.games.GAME_LEVELS
 import com.cruxcoach.domain.board.games.HoldsThief
 import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.KnotColour
+import com.cruxcoach.domain.board.games.KnotHolds
 import com.cruxcoach.domain.board.games.KnotSpacing
 import androidx.compose.ui.graphics.luminance
 import com.cruxcoach.domain.board.games.TraverseGame
@@ -112,6 +118,9 @@ interface WallGamesActions {
     fun setKnotName(climber: Int, name: String) {}
     fun setKnotByTap(byTap: Boolean) {}
     fun setKnotSpacing(spacing: KnotSpacing) {}
+    fun setKnotHolds(holds: KnotHolds) {}
+    fun knotSettingsSettled() {}
+    fun knotDrawAgain() {}
     fun knotNextCall() {}
     fun knotSafetySeen() {}
     fun startKnotCalls() {}
@@ -259,8 +268,8 @@ internal fun WallGamesContent(
             ) {
                 GamePicker(selected = state.game, onSelect = actions::selectGame)
                 GameSettings(state = state, actions = actions, onChooseClimb = onChooseClimb)
-                // Knot without a field on this board has nothing to show on the wall.
-                if (state.game != WallGame.KNOT || state.knot.layout != null) GameBoardPreview(state)
+                // Knot shows its field above its sliders.
+                if (state.game != WallGame.KNOT) GameBoardPreview(state)
             }
         }
     }
@@ -669,11 +678,15 @@ private fun WallStatus(problem: WallSendProblem?, game: WallGame, connected: Boo
 
 /** The wall with the shown holds; [modifier] with a weight lets it fill the height left. */
 @Composable
-internal fun GameBoardPreview(state: WallGamesState, modifier: Modifier = Modifier) {
+internal fun GameBoardPreview(state: WallGamesState, modifier: Modifier = Modifier, brackets: List<Triple<Double, Double, String>> = emptyList()) {
     val board = state.board ?: return
     val holds = state.shownHolds
-    // Knot lights spots in colours: the round's field, or before it where the field will be.
-    val paint = if (state.game == WallGame.KNOT) state.knot.run.field?.spots ?: state.knot.previewSpots() else null
+    // Knot lights spots in colours: the round's field, or before it where the field will be. While the field is on for
+    // the start, the preview follows the settings at once, in the round's colours; the wall follows when they settle.
+    val knot = state.knot
+    val paint = if (state.game != WallGame.KNOT) null
+    else knot.run.field?.let { field -> knot.layout?.takeIf { knot.run.phase == KnotPhase.POSITIONS }?.field(field.colours)?.spots ?: field.spots }
+        ?: knot.previewSpots()
     val lightScreen = MaterialTheme.colorScheme.surface.luminance() > 0.5f
     // A tall wall at full width would push everything else off screen.
     val screenCap = (LocalConfiguration.current.screenHeightDp * BOARD_MAX_HEIGHT_FRACTION).dp
@@ -685,6 +698,7 @@ internal fun GameBoardPreview(state: WallGamesState, modifier: Modifier = Modifi
             if (w > 0f && h > 0f) w / h else null
         } ?: MOONBOARD_ASPECT
         val width = minOf(maxWidth, heightCap * aspect)
+        Column(Modifier.width(width)) {
         Box(Modifier.width(width).testTag("wall_games_board")) {
             if (board.brand == BoardBrand.MOONBOARD) {
                 MoonBoardVisualization(
@@ -707,6 +721,29 @@ internal fun GameBoardPreview(state: WallGamesState, modifier: Modifier = Modifi
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+        }
+        // Under the picture, a bracket for each climber's part with who starts there ([brackets]: from and to as shares
+        // of its width, and the name).
+        if (brackets.isNotEmpty()) {
+            val colour = MaterialTheme.colorScheme.onSurfaceVariant
+            Box(Modifier.fillMaxWidth().testTag("knot_parts")) {
+                brackets.forEach { (from, to, name) ->
+                    val left = width * from.toFloat().coerceIn(0f, 1f)
+                    val right = width * to.toFloat().coerceIn(0f, 1f)
+                    if (right <= left) return@forEach
+                    Column(Modifier.offset(x = left).width(right - left), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Canvas(Modifier.fillMaxWidth().height(10.dp)) {
+                            val stroke = 1.5.dp.toPx()
+                            val gap = 3.dp.toPx()
+                            drawLine(colour, Offset(gap, 0f), Offset(gap, size.height - stroke), stroke)
+                            drawLine(colour, Offset(gap, size.height - stroke), Offset(size.width - gap, size.height - stroke), stroke)
+                            drawLine(colour, Offset(size.width - gap, size.height - stroke), Offset(size.width - gap, 0f), stroke)
+                        }
+                        Text(name, style = MaterialTheme.typography.labelSmall, color = colour, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
         }
     }
 }
