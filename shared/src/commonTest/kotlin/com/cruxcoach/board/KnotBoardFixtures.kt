@@ -19,6 +19,15 @@ internal object KnotBoardFixtures {
 
     val kilter16x12: WallRows by lazy { parse(KILTER_16X12) }
 
+    /** The Kilter Original screw-ons (set 20) among these holds, from the bundled board geometry; the rest are bolt-ons. */
+    val kilterScrewOns: Set<Int> = (1447..1599).toSet() + (4795..4845)
+
+    /**
+     * Bolt-ons in the 12x12's hand zone that the Kilter catalogue's climbs at 40° use mostly as a foot (in 51 to 55 % of
+     * their climbs), so [com.cruxcoach.domain.board.games.KnotHandGrades.feetOnly] counts them with the feet.
+     */
+    val kilter12x12FeetAt40: Set<Int> = setOf(1150, 1151, 1154, 1208, 1242)
+
     private fun parse(text: String): WallRows = WallRows.of(
         text.trim().split(Regex("\\s+")).map { item ->
             val (id, x, y) = item.split(':').map { it.toInt() }

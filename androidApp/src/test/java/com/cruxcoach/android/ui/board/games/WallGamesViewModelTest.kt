@@ -293,7 +293,7 @@ class WallGamesViewModelTest {
             loader = mockk(relaxed = true) {
                 coEvery { load() } returns WallGameBoardLoad.Ready(kilter)
                 every { knotBigHolds(any()) } returns emptySet()
-                every { knotHandGrades(any()) } answers { gradesGate?.await(5, TimeUnit.SECONDS); handGrades }
+                every { knotCatalogueHolds(any()) } answers { gradesGate?.await(5, TimeUnit.SECONDS); KnotCatalogueHolds(handGrades) }
             },
         )
     }
@@ -367,9 +367,14 @@ class WallGamesViewModelTest {
         assertEquals(setOf(KnotSpacing.MEDIUM, KnotSpacing.WIDE), solo.sameReach)
         vm.setKnotSpacing(KnotSpacing.WIDE)
         assertEquals(KnotSpacing.CLOSE, awaitState(vm) { !it.knot.pending }.knot.spacing)
-        // Two climbers: three spacings, each reaching further.
+        // Two climbers share that 1.2 m field: wide reaches no further than medium.
         vm.setKnotPlayers(2)
-        val close = awaitKnot(vm, 2)
+        val two = awaitKnot(vm, 2)
+        assertEquals(setOf(KnotSpacing.CLOSE, KnotSpacing.MEDIUM), two.spacings)
+        assertEquals(setOf(KnotSpacing.WIDE), two.sameReach)
+        // Three climbers: three spacings, each reaching further.
+        vm.setKnotPlayers(3)
+        val close = awaitKnot(vm, 3)
         assertEquals(KnotSpacing.CLOSE, close.spacing)
         assertEquals(KnotSpacing.entries.toSet(), close.spacings)
         vm.setKnotSpacing(KnotSpacing.WIDE)

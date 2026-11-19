@@ -30,13 +30,15 @@ class KnotTest {
     private val aurora = Knot.colours(BoardBrand.KILTER)!!
     private val moon = Knot.colours(BoardBrand.MOONBOARD)!!
 
-    private class Board(val name: String, val rows: WallRows, val metresPerUnit: Double, val colours: List<KnotColour>)
+    /** A board as the app plays it: Kilter's screw-ons ([feetOnly]) never take a hand spot. */
+    private class Board(val name: String, val rows: WallRows, val metresPerUnit: Double, val colours: List<KnotColour>, val feetOnly: Set<Int> = emptySet())
 
-    private val kilter12x12 = Board("Kilter 12x12", KnotBoardFixtures.kilter12x12, INCH_M, aurora)
-    private val kilter7x10 = Board("Kilter 7x10", KnotBoardFixtures.kilter7x10, INCH_M, aurora)
+    private val screwOns = KnotBoardFixtures.kilterScrewOns
+    private val kilter12x12 = Board("Kilter 12x12", KnotBoardFixtures.kilter12x12, INCH_M, aurora, screwOns)
+    private val kilter7x10 = Board("Kilter 7x10", KnotBoardFixtures.kilter7x10, INCH_M, aurora, screwOns)
     private val moonBoard = Board("MoonBoard", KnotBoardFixtures.moonBoard, MOON_CELL_M, moon)
     private val moonBoardMini = Board("Mini MoonBoard", KnotBoardFixtures.moonBoardMini, MOON_CELL_M, moon)
-    private val kilter16x12 = Board("Kilter 16x12", KnotBoardFixtures.kilter16x12, INCH_M, aurora)
+    private val kilter16x12 = Board("Kilter 16x12", KnotBoardFixtures.kilter16x12, INCH_M, aurora, screwOns)
     private val boards = listOf(kilter7x10, kilter12x12, kilter16x12, moonBoard, moonBoardMini)
 
     private fun layout(
@@ -45,7 +47,7 @@ class KnotTest {
         spacing: KnotSpacing = KnotSpacing.CLOSE,
         draw: KnotDraw? = null,
         holds: KnotHolds = KnotHolds.NORMAL,
-    ): KnotLayout? = Knot.layout(board.rows, climbers, board.colours, board.metresPerUnit, spacing = spacing, draw = draw, holds = holds)
+    ): KnotLayout? = Knot.layout(board.rows, climbers, board.colours, board.metresPerUnit, spacing = spacing, draw = draw, holds = holds, feetOnly = board.feetOnly)
 
     /** Every board with every number of climbers it takes. */
     private val playable = boards.flatMap { board -> (1..Knot.maxClimbers(board.rows, board.metresPerUnit)).map { board to it } }
@@ -67,8 +69,8 @@ class KnotTest {
     }
 
     @Test
-    fun fieldAndSpotsGrowWithTheClimbers() {
-        assertEquals(listOf(1.2, 2.0, 2.8, 3.6, 4.4), (1..5).map { kotlin.math.round(Knot.fieldWidthM(it) * 10) / 10.0 })
+    fun theFieldIsSixtyCentimetresPerClimberAndAtLeastOnePointTwoMetres() {
+        assertEquals(listOf(1.2, 1.2, 1.8, 2.4, 3.0), (1..5).map { kotlin.math.round(Knot.fieldWidthM(it) * 10) / 10.0 })
     }
 
     @Test
@@ -122,7 +124,7 @@ class KnotTest {
 
     /**
      * The fewest hand and foot spots of one colour that a climber of [layout] on [board] has within reach, over every
-     * climber and colour.
+     * climber and colour; hand spots only on holds that aren't [Board.feetOnly].
      */
     private fun coverage(board: Board, layout: KnotLayout, spacing: KnotSpacing): Pair<Int, Int> {
         val (start, width) = fieldOf(board, layout.climbers)
@@ -130,7 +132,7 @@ class KnotTest {
             val middle = start + width / layout.climbers * (part + 0.5)
             board.colours.indices.minOf { colour ->
                 layout.stripes.indices.filter { layout.pattern[it] == colour }
-                    .flatMap { if (hands) layout.stripes[it].first else layout.stripes[it].second }
+                    .flatMap { if (hands) layout.stripes[it].first.filter { id -> id !in board.feetOnly } else layout.stripes[it].second }
                     .count { kotlin.math.abs(xM(board, it) - middle) <= spacing.reachM + maxOf(Knot.REACH_SLACK_M, width / layout.stripes.size / 2) + 1e-9 }
             }
         }
@@ -152,8 +154,9 @@ class KnotTest {
             all.forEach { assertNotNull(board.rows.holdOf(it)) }
         }
         assertTrue(lit > 0)
-        // Normal fits every Kilter board and number of climbers at every spacing; more holds mean more lit.
-        for ((board, climbers) in playable.filter { it.first.colours == aurora }) for (spacing in KnotSpacing.entries) {
+        // Normal fits every Kilter board and number of climbers at medium and wide; more holds mean more lit. Close,
+        // on the narrow field for two, can leave a stripe with a single column of holds.
+        for ((board, climbers) in playable.filter { it.first.colours == aurora }) for (spacing in KnotSpacing.entries - KnotSpacing.CLOSE) {
             val name = "${board.name}, $climbers, $spacing"
             val normal = assertNotNull(layout(board, climbers, spacing, holds = KnotHolds.NORMAL), name).spots.size
             layout(board, climbers, spacing, holds = KnotHolds.FEW)?.let { assertTrue(it.spots.size < normal, "$name: Few") }
@@ -189,16 +192,17 @@ class KnotTest {
                 val xs = (layout(board, climbers, KnotSpacing.WIDE) ?: layout(board, climbers, KnotSpacing.MEDIUM)!!).spots.map { xM(board, it) }
                 val width = xs.max() - xs.min()
                 assertTrue(width <= Knot.fieldWidthM(climbers) + 0.01, "${board.name}, $climbers: $width m wide")
-                assertTrue(width > previous, "${board.name}, $climbers: not wider than for ${climbers - 1}")
+                // One and two climbers share the narrowest field.
+                if (climbers > 2) assertTrue(width > previous, "${board.name}, $climbers: not wider than for ${climbers - 1}")
                 assertTrue(kotlin.math.abs((xs.max() + xs.min()) / 2 - centre) < 0.3, "${board.name}, $climbers: off centre")
                 previous = width
             }
         }
-        // Solo on a big wall is about 1.2 m; three on a 12x12 about 2.8 m.
+        // Solo and two on a big wall are about 1.2 m; three on a 12x12 about 1.8 m.
         val solo = layout(kilter12x12, 1)!!.spots.map { xM(kilter12x12, it) }
         assertTrue(solo.max() - solo.min() in 0.6..1.2)
         val three = layout(kilter12x12, 3)!!.spots.map { xM(kilter12x12, it) }
-        assertTrue(three.max() - three.min() in 2.2..2.8)
+        assertTrue(three.max() - three.min() in 1.3..1.8)
     }
 
     @Test
@@ -241,7 +245,7 @@ class KnotTest {
 
     @Test
     fun layoutTakesColoursFromTheLeftAgainAndAgain() {
-        val layout = layout(kilter7x10, 2)!!
+        val layout = layout(kilter7x10, 2, KnotSpacing.MEDIUM)!!
         val order = Knot.colourOrder(aurora, 3)
         val field = layout.field(order)
         assertEquals(order, field.colours)
@@ -292,7 +296,7 @@ class KnotTest {
             }
             // Wider reaches further wherever the field has room for it. Solo the 1.2 m field keeps every colour close;
             // the MoonBoard's three colours, with blue twice between red and green, come out the same in every spacing.
-            if (climbers >= 2 && board.colours == aurora) {
+            if (climbers >= 2 && board.colours == aurora && reaches.size == KnotSpacing.entries.size) {
                 assertTrue(reaches[0] < reaches[2], "${board.name}, $climbers: close ${reaches[0]}, wide ${reaches[2]}")
             }
         }
@@ -300,14 +304,14 @@ class KnotTest {
 
     @Test
     fun aStripeWithoutHoldsMustNotLeaveAColourOutOfReach() {
-        // Two climbers at Wide on the 12x12: five stripes of 40 cm from about 33 inches on, the colours 0 1 2 3 0. The
+        // Three climbers at Wide on the 12x12: five stripes of 36 cm from about 37 inches on, the colours 0 1 2 3 0. The
         // last stripe loses its hand holds, so the right climber's nearest hand spot of colour 0 lies in the first
         // stripe, more than a metre away.
-        val gap = WallRows.of(kilter12x12.rows.holds.filterNot { it.x in 95.0..112.0 && it.y in 37.0..86.0 })
-        val board = Board("12x12 without hand holds in the last stripe", gap, INCH_M, aurora)
-        assertNotNull(layout(kilter12x12, 2, KnotSpacing.WIDE))
-        assertNull(layout(board, 2, KnotSpacing.WIDE))
-        assertNull(layout(board, 2, KnotSpacing.WIDE, KnotDraw(1, randomGrades)))
+        val gap = WallRows.of(kilter12x12.rows.holds.filterNot { it.x in 90.0..112.0 && it.y in 37.0..92.0 })
+        val board = Board("12x12 without hand holds in the last stripe", gap, INCH_M, aurora, screwOns)
+        assertNotNull(layout(kilter12x12, 3, KnotSpacing.WIDE))
+        assertNull(layout(board, 3, KnotSpacing.WIDE))
+        assertNull(layout(board, 3, KnotSpacing.WIDE, KnotDraw(1, randomGrades)))
         // Every field that does light keeps each colour's hand and foot spots within reach of every climber.
         for ((b, climbers) in playable + (board to 1)) for (spacing in KnotSpacing.entries) {
             val field = layout(b, climbers, spacing) ?: continue
@@ -368,15 +372,16 @@ class KnotTest {
 
     @Test
     fun aDrawGivesAFreshFieldPerSeedAwayFromTheLastOne() {
-        val first = layout(kilter12x12, 2, draw = KnotDraw(1, randomGrades))!!
-        assertEquals(first, layout(kilter12x12, 2, draw = KnotDraw(1, randomGrades)))
-        assertNotEquals(first.spots, layout(kilter12x12, 2, draw = KnotDraw(2, randomGrades))!!.spots)
-        assertNotEquals(layout(kilter12x12, 2)!!.spots, first.spots)
-        // The next game keeps away from this one's holds.
-        val next = layout(kilter12x12, 2, draw = KnotDraw(2, randomGrades, avoid = first.spots))!!
-        assertTrue((next.spots intersect first.spots).size <= first.spots.size / 10, "${(next.spots intersect first.spots).size} again")
+        val medium = KnotSpacing.MEDIUM
+        val first = layout(kilter12x12, 2, medium, KnotDraw(1, randomGrades))!!
+        assertEquals(first, layout(kilter12x12, 2, medium, KnotDraw(1, randomGrades)))
+        assertNotEquals(first.spots, layout(kilter12x12, 2, medium, KnotDraw(2, randomGrades))!!.spots)
+        assertNotEquals(layout(kilter12x12, 2, medium)!!.spots, first.spots)
+        // The next game keeps away from this one's holds, as far as the bolt-ons in the 1.2 m field allow.
+        val next = layout(kilter12x12, 2, medium, KnotDraw(2, randomGrades, avoid = first.spots))!!
+        assertTrue((next.spots intersect first.spots).size <= first.spots.size / 5, "${(next.spots intersect first.spots).size} again")
         // A drawn field keeps the rules of every field.
-        val (hands, feet) = coverage(kilter12x12, next, KnotSpacing.CLOSE)
+        val (hands, feet) = coverage(kilter12x12, next, medium)
         assertTrue(hands >= KnotHolds.NORMAL.hands && feet >= KnotHolds.NORMAL.feet)
     }
 
@@ -401,22 +406,84 @@ class KnotTest {
 
     @Test
     fun theHardestFifthOfTheRatedHandHoldsStaysDarkAndTheColoursAndPartsComeOutAboutEven() {
+        // The screw-ons rated hardest of all: counted with the hand holds, they would fill the hardest fifth.
+        val grades = randomGrades.mapValues { (id, grade) -> if (id in screwOns) 40.0 else grade }
         for (climbers in 1..4) for (seed in 0L until 5L) {
             val name = "$climbers, seed $seed"
             val (start, width) = fieldOf(kilter12x12, climbers)
-            val inField = randomGrades.keys.filter { id ->
-                heightM(kilter12x12, id) in Knot.HANDS_FROM_M..Knot.HANDS_TO_M && xM(kilter12x12, id) in start..start + width
-            }.sortedByDescending { randomGrades.getValue(it) }
+            val inField = grades.keys.filter { id ->
+                id !in screwOns && heightM(kilter12x12, id) in Knot.HANDS_FROM_M..Knot.HANDS_TO_M && xM(kilter12x12, id) in start..start + width
+            }.sortedByDescending { grades.getValue(it) }
             val hardest = inField.take(inField.size / 5).toSet()
-            val drawn = layout(kilter12x12, climbers, KnotSpacing.MEDIUM, KnotDraw(seed, randomGrades))!!
+            val drawn = layout(kilter12x12, climbers, KnotSpacing.MEDIUM, KnotDraw(seed, grades))!!
             // Only where nothing else keeps the spacing: at most one.
             assertTrue(drawn.stripes.flatMap { it.first }.count { it in hardest } <= 1, "$name: the hardest fifth")
-            // Fairer than taking the nearest holds: the colours, and with several climbers the parts, come out closer.
-            val (colours, parts) = spreads(drawn, climbers, randomGrades)
-            val (plainColours, plainParts) = spreads(layout(kilter12x12, climbers, KnotSpacing.MEDIUM)!!, climbers, randomGrades)
+            // About even: the colours, and with several climbers the parts. On the 1.2 m field for one or two, with
+            // bolt-ons only, few hand holds are left to choose from.
+            val (colours, parts) = spreads(drawn, climbers, grades)
+            val (plainColours, plainParts) = spreads(layout(kilter12x12, climbers, KnotSpacing.MEDIUM)!!, climbers, grades)
             println("Knot draw $name: colours ${(colours * 10).toInt() / 10.0} (nearest ${(plainColours * 10).toInt() / 10.0}), parts ${(parts * 10).toInt() / 10.0} (nearest ${(plainParts * 10).toInt() / 10.0})")
-            assertTrue(colours <= 5.0 && parts <= 5.0, "$name: colours $colours, parts $parts apart")
+            assertTrue(colours <= 6.5 && parts <= 5.0, "$name: colours $colours, parts $parts apart")
         }
+    }
+
+    @Test
+    fun handSpotsGoOnHandHoldsOnlyInEveryGame() {
+        // The 12x12 with its catalogue at 40°: neither the screw-ons nor the bolt-ons that are mostly a foot take a hand
+        // spot, and the catalogue rates only the hand holds.
+        val feet = screwOns + KnotBoardFixtures.kilter12x12FeetAt40
+        val board = Board("Kilter 12x12 at 40°", KnotBoardFixtures.kilter12x12, INCH_M, aurora, feet)
+        val grades = randomGrades.filterKeys { it !in feet }
+        var games = 0
+        for (climbers in 1..Knot.maxClimbers(board.rows, INCH_M)) for (spacing in KnotSpacing.entries) for (holds in KnotHolds.entries) {
+            val name = "$climbers, $spacing, $holds"
+            // Without a catalogue the screw-ons stay out all the same.
+            val fields = listOfNotNull(layout(kilter12x12, climbers, spacing, holds = holds)?.let { kilter12x12 to it }).toMutableList()
+            val plain = layout(board, climbers, spacing, holds = holds)
+            if (plain != null) {
+                fields += board to plain
+                // Game after game, each keeping away from the last one's holds.
+                var last = emptySet<Int>()
+                for (seed in 0L until 12L) {
+                    val drawn = assertNotNull(layout(board, climbers, spacing, KnotDraw(seed, grades, last), holds), "$name, seed $seed")
+                    fields += board to drawn
+                    last = drawn.spots
+                }
+            }
+            for ((b, field) in fields) {
+                val hands = field.stripes.flatMap { it.first }
+                assertTrue(hands.none { it in b.feetOnly }, "${b.name}, $name: a hand spot on ${hands.filter { it in b.feetOnly }}")
+                // Every climber has the step's hand holds of each colour within reach.
+                val (h, f) = coverage(b, field, spacing)
+                assertTrue(h >= holds.hands && f >= holds.feet, "${b.name}, $name: $h + $f within reach")
+                games++
+            }
+        }
+        assertTrue(games > 300, "$games fields")
+    }
+
+    @Test
+    fun aHandHoldIsOftenAHandAndNotMostlyAFoot() {
+        val grades = KnotHandGrades(minClimbs = 20)
+        // Hand and foot uses of holds 1 to 6.
+        val uses = mapOf(1 to (25 to 5), 2 to (25 to 26), 3 to (25 to 25), 4 to (10 to 15), 5 to (5 to 3), 6 to (0 to 30))
+        for (climb in 0 until 60) {
+            val frames = uses.entries.joinToString("") { (id, use) ->
+                when {
+                    climb < use.first -> "p${id}r13"
+                    climb < use.first + use.second -> "p${id}r15"
+                    else -> ""
+                }
+            }
+            grades.add(frames, 10.0 + climb % 2)
+        }
+        // A hand in at least 20 climbs and not more often a foot.
+        assertEquals(setOf(1, 3), grades.grades().keys)
+        // Mostly a foot, rarely a hand, or only a foot; hold 5 is in too few climbs to tell.
+        assertEquals(setOf(2, 4, 6), grades.feetOnly())
+        // Kilter's screw-ons never take a hand spot, catalogue or not.
+        assertEquals(setOf(20L), Knot.footSets(BoardBrand.KILTER))
+        listOf(BoardBrand.TENSION, BoardBrand.MOONBOARD, BoardBrand.SHINYWALL).forEach { assertTrue(Knot.footSets(it).isEmpty()) }
     }
 
     /** The smallest distance between two spots of [layout] on [board] of one colour ([sameColour]) or of any. */
@@ -461,6 +528,8 @@ class KnotTest {
         grades.add("p1r13p2r13", 20.0)
         grades.add("h3p13", 25.0)
         assertEquals(mapOf(1 to 15.0), grades.grades())
+        // Hold 2, a hand once and a foot once, is too rarely a hand to count as a hand hold.
+        assertEquals(setOf(2), grades.feetOnly())
         // Aurora's own role numbers and the MoonBoard's count the same way.
         val other = KnotHandGrades(minClimbs = 1)
         other.add("p5r2p6r4", 12.0)

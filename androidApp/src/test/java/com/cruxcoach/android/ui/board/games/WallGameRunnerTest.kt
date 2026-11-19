@@ -132,6 +132,8 @@ class WallGameSenderTest {
 
     private fun holds(vararg ids: Int) = ids.map { BoardHold(it, HoldRole.START) }
 
+    private fun write(ok: Boolean) = if (ok) WallWrite.SENT else WallWrite.FAILED
+
     @Test
     fun aSlowLinkOnlyGetsTheNewestStateNext() = runTest {
         val sent = mutableListOf<List<BoardHold>>()
@@ -143,7 +145,7 @@ class WallGameSenderTest {
                 first = false
                 gate.await()
             }
-            true
+            WallWrite.SENT
         })
         sender.show(holds(1))
         runCurrent()
@@ -158,11 +160,11 @@ class WallGameSenderTest {
     }
 
     @Test
-    fun theSameStateIsNotSentTwiceUnlessForgottenOrFailed() = runTest {
+    fun theSameStateIsNotSentTwiceUnlessForgottenAskedForOrFailed() = runTest {
         val sent = mutableListOf<List<BoardHold>>()
         var ok = true
         val results = mutableListOf<Boolean>()
-        val sender = WallGameSender<List<BoardHold>>(backgroundScope, transmit = { h -> sent += h; ok }, onResult = { results += it })
+        val sender = WallGameSender<List<BoardHold>>(backgroundScope, transmit = { h -> sent += h; write(ok) }, onResult = { results += it })
         sender.show(holds(1))
         runCurrent()
         sender.show(holds(1))
@@ -172,14 +174,25 @@ class WallGameSenderTest {
         sender.show(holds(1))
         runCurrent()
         assertEquals(2, sent.size)
+        // Once more on purpose: the board may have dropped it.
+        sender.show(holds(1), again = true)
+        runCurrent()
+        assertEquals(3, sent.size)
+        sender.show(holds(1))
+        runCurrent()
+        assertEquals(3, sent.size)
 
         ok = false
         sender.show(holds(2))
         runCurrent()
+        // It gave up after its retries; the same state shown again goes out again.
+        advanceTimeBy(WallGameSender.RETRY_MS * WallGameSender.RETRIES)
+        runCurrent()
+        assertEquals(4 + WallGameSender.RETRIES, sent.size)
         sender.show(holds(2))
         runCurrent()
-        assertEquals(4, sent.size)
-        assertEquals(listOf(true, true, false, false), results)
+        assertEquals(5 + WallGameSender.RETRIES, sent.size)
+        assertEquals(List(3) { true } + List(2 + WallGameSender.RETRIES) { false }, results)
     }
 
     @Test
@@ -188,12 +201,101 @@ class WallGameSenderTest {
         var calls = 0
         val sender = WallGameSender<List<BoardHold>>(backgroundScope, transmit = {
             calls++
-            if (calls == 1) error("gatt gone") else true
+            if (calls == 1) error("gatt gone") else WallWrite.SENT
         }, onResult = { results += it })
         sender.show(holds(1))
         runCurrent()
         sender.show(holds(2))
+        advanceTimeBy(WallGameSender.RETRY_MS)
         runCurrent()
         assertEquals(listOf(false, true), results)
+    }
+
+    @Test
+    fun aFailedWriteGoesOutAgainAfterAPauseAFewTimes() = runTest {
+        val sent = mutableListOf<Long>()
+        var failures = 2
+        val sender = WallGameSender<List<BoardHold>>(backgroundScope, transmit = {
+            sent += testScheduler.currentTime
+            write(failures-- <= 0)
+        })
+        sender.show(holds(1))
+        runCurrent()
+        advanceTimeBy(WallGameSender.RETRY_MS - 1)
+        runCurrent()
+        assertEquals(listOf(0L), sent)
+        advanceTimeBy(1 + WallGameSender.RETRY_MS)
+        runCurrent()
+        // The third write went through: no more.
+        assertEquals(listOf(0L, WallGameSender.RETRY_MS, 2 * WallGameSender.RETRY_MS), sent)
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertEquals(3, sent.size)
+
+        // A write that never goes through is tried a few times, then left.
+        val always = mutableListOf<List<BoardHold>>()
+        val failing = WallGameSender<List<BoardHold>>(backgroundScope, transmit = { always += it; WallWrite.FAILED })
+        failing.show(holds(1))
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertEquals(List(1 + WallGameSender.RETRIES) { holds(1) }, always)
+    }
+
+    @Test
+    fun aNewerStateGoesOutInsteadOfTheFailedOne() = runTest {
+        val sent = mutableListOf<Pair<Long, List<BoardHold>>>()
+        val gate = CompletableDeferred<Unit>()
+        val sender = WallGameSender<List<BoardHold>>(backgroundScope, transmit = { h ->
+            sent += testScheduler.currentTime to h
+            if (h == holds(1)) gate.await()
+            write(h != holds(1))
+        })
+        // Shown while the failing write is on the way: it goes out right after, without the pause.
+        sender.show(holds(1))
+        runCurrent()
+        sender.show(holds(1, 2))
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(listOf(0L to holds(1), 0L to holds(1, 2)), sent)
+        // Shown during the pause after a failure: it goes out instead of the retry.
+        sender.show(holds(1))
+        runCurrent()
+        advanceTimeBy(100)
+        sender.show(holds(1, 3))
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertEquals(listOf(holds(1), holds(1, 2), holds(1), holds(1, 3)), sent.map { it.second })
+        assertEquals(WallGameSender.RETRY_MS, sent.last().first)
+    }
+
+    @Test
+    fun aRefusedWriteIsNotTriedAgain() = runTest {
+        val sent = mutableListOf<List<BoardHold>>()
+        val sender = WallGameSender<List<BoardHold>>(backgroundScope, transmit = { sent += it; WallWrite.REFUSED })
+        sender.show(holds(1))
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertEquals(listOf(holds(1)), sent)
+        // Not on the wall: shown again, it goes out again.
+        sender.show(holds(1))
+        runCurrent()
+        assertEquals(2, sent.size)
+    }
+
+    @Test
+    fun askedForAgainWhileAWriteIsOnTheWayTheStateGoesOutOnceMore() = runTest {
+        val sent = mutableListOf<List<BoardHold>>()
+        val gate = CompletableDeferred<Unit>()
+        val sender = WallGameSender<List<BoardHold>>(backgroundScope, transmit = { h ->
+            sent += h
+            if (sent.size == 1) gate.await()
+            WallWrite.SENT
+        })
+        sender.show(holds(1))
+        runCurrent()
+        sender.show(holds(1), again = true)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(listOf(holds(1), holds(1)), sent)
     }
 }
