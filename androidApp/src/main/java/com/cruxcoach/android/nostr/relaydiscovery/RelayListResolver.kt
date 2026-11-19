@@ -82,7 +82,11 @@ class RelayListResolver @Inject constructor(
         }
         killSwitchLogged = false
 
-        val cached = cache.read()
+        // A saved list keeps the defaults of the build that saved it for up to a
+        // day (longer while refreshes fail); swap retired ones before anything uses it.
+        val cached = cache.read()?.let { saved ->
+            saved.withCurrentDefaults().also { if (it !== saved) cache.write(it) }
+        }
         if (cached != null && !cache.isStale()) {
             logResolverCurrent("cache", cached)
             notifyPoolIfChanged(cached)
@@ -261,4 +265,21 @@ class RelayListResolver @Inject constructor(
     companion object {
         private const val TAG = "Nip65Discovery"
     }
+}
+
+/**
+ * This list with [defaults] in place of default relays the build no longer
+ * ships (e.g. wellorder and oxtr, retired in 0.2.5). Relays from the user's own
+ * NIP-65 list stay as they are, also when one names a retired default; a list
+ * without retired defaults comes back unchanged (the same instance).
+ */
+internal fun ResolvedRelayList.withCurrentDefaults(
+    defaults: List<RelayConfig> = NostrConfig.DEFAULT_RELAYS,
+): ResolvedRelayList {
+    val current = defaults.map { it.url }.toSet()
+    if (relays.none { it.source == RelaySource.DEFAULT && it.url !in current }) return this
+    val kept = relays.filter { it.source != RelaySource.DEFAULT || it.url in current }
+    val present = kept.map { it.url }.toSet()
+    val added = defaults.filter { it.url !in present }.map { it.copy(source = RelaySource.DEFAULT) }
+    return copy(relays = kept + added)
 }

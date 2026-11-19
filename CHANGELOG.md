@@ -765,6 +765,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and feature requests, the report lists and the crash report, press and hold a text to
   select it, with Copy and Select all. Web links in it (http and https) open in the browser.
   A tap on a card still opens it or marks an announcement read.
+- The default relays use nostr.mom and offchain.pub instead of nostr-pub.wellorder.net and
+  nostr.oxtr.dev, which no longer answer; messages to and from the developer and bug and
+  crash reports had only two working relays left. The saved relay list swaps them too;
+  relays from your own relay list stay as they are.
 
 ## [0.2.4] - 2026-10-25
 

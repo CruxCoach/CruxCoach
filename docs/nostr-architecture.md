@@ -116,12 +116,17 @@ Zwei getrennte Listen, beide in `NostrConfig.kt` einkompiliert:
 wss://relay.damus.io
 wss://nos.lol                ← das einzige Relay, das Community-Climbs empirisch langfristig hält
 wss://relay.primal.net
-wss://nostr-pub.wellorder.net
-wss://nostr.oxtr.dev
+wss://nostr.mom
+wss://offchain.pub
 ```
 
 Wird zur Laufzeit **additiv** mit der NIP-65-Liste des Users gemergt (§9) — die
-Defaults verschwinden also nie.
+Defaults verschwinden also nie. 0.2.5 ersetzt `nostr-pub.wellorder.net` (seit 06.11.2026 down)
+und `nostr.oxtr.dev` (502 seit 19.11.2026) durch `nostr.mom` und `offchain.pub`: beide laufen
+mit strfry und hielten frische Kind-1059-Wraps. Eine gespeicherte Liste (bis zu einem Tag alt,
+länger, solange die Aktualisierung scheitert) tauscht beim Lesen Defaults, die der Build nicht
+mehr kennt, gegen die aktuellen; Relays aus der NIP-65-Liste des Users bleiben, auch wenn sie
+ein altes Default nennen (`withCurrentDefaults` in `RelayListResolver.kt`).
 
 **`MANIFEST_RELAYS`** — ausschließlich für Katalog-Manifeste:
 

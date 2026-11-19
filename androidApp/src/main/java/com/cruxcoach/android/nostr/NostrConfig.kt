@@ -14,19 +14,24 @@ object NostrConfig {
 
     // Community-climb publish + live-subscribe set. nos.lol is the relay that
     // empirically RETAINS one-time community-climb Kind-30078 events long-term
-    // (damus/primal age them out); wellorder + oxtr are added for redundancy
-    // so a community climb never depends on a single relay surviving. wellorder
-    // is the same retention-friendly operator we already trust for the manifest.
+    // (damus/primal age them out); the last two are added for redundancy so a
+    // community climb never depends on a single relay surviving.
     // Probed 2026-06-05: community-climb events were on nos.lol only.
     // relay.snort.social replaced by nostr.oxtr.dev on 2026-08-05: snort had
     // stopped answering entirely (no WebSocket, no HTTP), so it was not a
     // fifth relay, it was a timeout on every fetch that looked like one.
+    // wellorder (down since 2026-11-06) and oxtr (502 since 2026-11-19) were
+    // replaced by nostr.mom and offchain.pub for 0.2.5: with damus answering
+    // about every second request with 503, NIP-17 gift wraps were left with
+    // nos.lol and primal. Both new relays run strfry and stored fresh kind
+    // 1059 wraps in a read-only check on 2026-11-19. Saved relay lists swap
+    // retired defaults on read (withCurrentDefaults in RelayListResolver.kt).
     val DEFAULT_RELAYS = listOf(
         RelayConfig(url = "wss://relay.damus.io"),
         RelayConfig(url = "wss://nos.lol"),
         RelayConfig(url = "wss://relay.primal.net"),
-        RelayConfig(url = "wss://nostr-pub.wellorder.net"),
-        RelayConfig(url = "wss://nostr.oxtr.dev")
+        RelayConfig(url = "wss://nostr.mom"),
+        RelayConfig(url = "wss://offchain.pub")
     )
 
     /**
