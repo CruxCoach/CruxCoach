@@ -100,6 +100,8 @@ data class KnotState(
     val holdsOffered: Set<KnotHolds> = emptySet(),
     /** Steps that would light more holds than the board takes in the app. */
     val holdsTooMany: Set<KnotHolds> = emptySet(),
+    /** Steps that fit, but on which this spacing reaches no farther than a closer one. */
+    val holdsSameReach: Set<KnotHolds> = emptySet(),
     /** Each climber's part of the field, from and to in metres along the wall, left to right. */
     val parts: List<Pair<Double, Double>> = emptyList(),
     /** The field is drawn from the catalogue's ratings, so "Draw again" gives another one. */
@@ -469,6 +471,7 @@ class WallGamesViewModel @Inject constructor(
             mutableState.update {
                 it.copy(knot = it.knot.copy(spacing = field.spacing, spacings = field.spacings, sameReach = field.sameReach,
                     holds = field.holds, holdsOffered = field.holdsOffered, holdsTooMany = field.holdsTooMany,
+                    holdsSameReach = field.holdsSameReach,
                     layout = field.layout, reachM = field.reachM, parts = field.parts, drawn = input.draw != null, pending = false))
             }
             then()
@@ -863,6 +866,7 @@ internal class KnotFieldResult(
     val holds: KnotHolds,
     val holdsOffered: Set<KnotHolds>,
     val holdsTooMany: Set<KnotHolds>,
+    val holdsSameReach: Set<KnotHolds>,
     val layout: KnotLayout?,
     val reachM: Double?,
     val parts: List<Pair<Double, Double>>,
@@ -915,6 +919,7 @@ internal fun knotField(input: KnotInput): KnotFieldResult {
     // A step of holds on which this spacing is no step of its own would drop the spacing: greyed out as well.
     val holdsOffered = KnotHolds.entries.filter { spacing in spacingsFor(it).first }.toSet()
     val holdsTooMany = KnotHolds.entries.filter { plain.getValue(spacing).getValue(it)?.let(::tooMany) == true }.toSet()
+    val holdsSameReach = KnotHolds.entries.filter { fits(spacing, it) && it !in holdsOffered }.toSet()
     val plainMs = SystemClock.elapsedRealtime() - started
     val nearest = plain.getValue(spacing).getValue(holds)
     // A drawn field can fill a spot the nearest holds left out: what lights must fit the board too, or the nearest holds
@@ -929,6 +934,6 @@ internal fun knotField(input: KnotInput): KnotFieldResult {
         "${if (input.draw != null) "drawn" else "nearest"} in ${SystemClock.elapsedRealtime() - started} ms (settings $plainMs ms)")
     val (start, width) = layout?.let { Knot.fieldSpan(input.rows, it, input.unit) } ?: Knot.fieldSpan(input.rows, input.atWall, input.unit)
     val parts = List(input.atWall) { start + width / input.atWall * it to start + width / input.atWall * (it + 1) }
-    return KnotFieldResult(spacing, offered, sameReach, holds, holdsOffered, holdsTooMany, layout,
+    return KnotFieldResult(spacing, offered, sameReach, holds, holdsOffered, holdsTooMany, holdsSameReach, layout,
         layout?.let { Knot.handReach(input.rows, it, input.unit) }, parts)
 }

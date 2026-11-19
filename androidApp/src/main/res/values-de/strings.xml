@@ -3552,6 +3552,10 @@
         <item quantity="one">%1$s: passt für %2$d Spieler nicht an diese Wand.</item>
         <item quantity="other">%1$s: passt für %2$d Spieler nicht an diese Wand.</item>
     </plurals>
+    <plurals name="knot_holds_same_reach">
+        <item quantity="one">%1$s: %2$s reicht hier für %3$d Spieler nicht weiter.</item>
+        <item quantity="other">%1$s: %2$s reicht hier für %3$d Spieler nicht weiter.</item>
+    </plurals>
     <plurals name="knot_spacing_same">
         <item quantity="one">%1$s: hier keine größere Reichweite für %2$d Spieler.</item>
         <item quantity="other">%1$s: hier keine größere Reichweite für %2$d Spieler.</item>

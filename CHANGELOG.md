@@ -599,8 +599,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   it is too narrow for the colours to spread (solo about 1.2, 1.8 and 2.4 m),
   until the colours really are farther apart than at the closer spacing; a
   spacing is greyed out only when the wall has no room for it. A slider's
-  thumb no longer jumps back: it stops at the nearest step on offer, and a
-  slider with only one step on offer is shown disabled with the reason.
+  thumb no longer jumps back: it stops at the nearest step on offer, goes on
+  past a greyed step the way the finger moves (or a key or screen reader
+  steps) and stays put while the finger rests over one; a slider with only
+  one step on offer is shown disabled with the reason, and a holds step
+  greyed because the spacing would reach no farther says so.
 - Knot: the field is narrower, 0.6 m per climber and at least 1.2 m (1.2 m
   for one or two climbers, 1.8 m for three), so the climbers get in each
   other's way; where it doesn't fit in the middle of the wall, it moves up to
