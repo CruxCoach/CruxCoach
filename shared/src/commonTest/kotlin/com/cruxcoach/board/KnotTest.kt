@@ -127,7 +127,7 @@ class KnotTest {
      * climber and colour; hand spots only on holds that aren't [Board.feetOnly].
      */
     private fun coverage(board: Board, layout: KnotLayout, spacing: KnotSpacing): Pair<Int, Int> {
-        val (start, width) = fieldOf(board, layout.climbers, layout.offsetM)
+        val (start, width) = fieldOf(board, layout)
         fun least(hands: Boolean): Int = (0 until layout.climbers).minOf { part ->
             val middle = start + width / layout.climbers * (part + 0.5)
             board.colours.indices.minOf { colour ->
@@ -188,9 +188,12 @@ class KnotTest {
             val centre = (left + right) / 2
             var previous = 0.0
             for (climbers in 1..Knot.maxClimbers(board.rows, board.metresPerUnit)) {
-                val xs = (layout(board, climbers, KnotSpacing.WIDE) ?: layout(board, climbers, KnotSpacing.MEDIUM)!!).spots.map { xM(board, it) }
+                val field = layout(board, climbers, KnotSpacing.CLOSE) ?: layout(board, climbers, KnotSpacing.MEDIUM)!!
+                val xs = field.spots.map { xM(board, it) }
                 val width = xs.max() - xs.min()
-                assertTrue(width <= Knot.fieldWidthM(climbers) + 0.01, "${board.name}, $climbers: $width m wide")
+                assertTrue(width <= field.widthM + 0.01, "${board.name}, $climbers: $width m wide")
+                // Close lies on the field the climbers' number gives.
+                if (layout(board, climbers, KnotSpacing.CLOSE) != null) assertTrue(field.widthM <= Knot.fieldWidthM(climbers) + 1e-9, "${board.name}, $climbers")
                 // One and two climbers share the narrowest field.
                 if (climbers > 2) assertTrue(width > previous, "${board.name}, $climbers: not wider than for ${climbers - 1}")
                 assertTrue(kotlin.math.abs((xs.max() + xs.min()) / 2 - centre) < 0.3, "${board.name}, $climbers: off centre")
@@ -214,7 +217,7 @@ class KnotTest {
             val (hands, feet) = coverage(board, moved, KnotSpacing.CLOSE)
             assertTrue(hands >= KnotHolds.NORMAL.hands && feet >= KnotHolds.NORMAL.feet, "${board.name}: $hands + $feet within reach")
             // The spots and the climbers' parts move with it.
-            val (start, width) = Knot.fieldSpan(board.rows, 2, board.metresPerUnit, moved.offsetM)
+            val (start, width) = Knot.fieldSpan(board.rows, moved, board.metresPerUnit)
             moved.spots.forEach { assertTrue(xM(board, it) in start - 1e-9..start + width + 1e-9, "${board.name}: spot outside the field") }
         }
         // Where the middle fits, the field stays there.
@@ -294,7 +297,8 @@ class KnotTest {
     private fun reachOf(board: Board, climbers: Int, layout: KnotLayout): Pair<Double, Double> {
         val left = board.rows.holds.minOf { it.x } * board.metresPerUnit
         val right = board.rows.holds.maxOf { it.x } * board.metresPerUnit
-        val width = minOf(Knot.fieldWidthM(climbers), right - left + 0.2)
+        val width = layout.widthM
+        assertTrue(width <= right - left + 0.2 + 1e-9, "${board.name}, $climbers: a field $width m wide")
         val spots = layout.stripes.indices.flatMap { i -> layout.stripes[i].first.map { xM(board, it) to layout.pattern[i] } }
         return Knot.reach((left + right) / 2 - width / 2 + layout.offsetM, width, climbers, spots, board.colours.size)
     }
@@ -311,12 +315,40 @@ class KnotTest {
                 assertTrue(span <= spacing.spanM + 0.2, "$name: two farthest $span m apart")
                 farthest
             }
-            // Wider reaches further wherever the field has room for it. Solo the 1.2 m field keeps every colour close;
-            // the MoonBoard's three colours, with blue twice between red and green, come out the same in every spacing.
-            if (climbers >= 2 && board.colours == aurora && reaches.size == KnotSpacing.entries.size) {
+            // Wider reaches further wherever the wall has room for it.
+            if (board.colours == aurora && reaches.size == KnotSpacing.entries.size) {
                 assertTrue(reaches[0] < reaches[2], "${board.name}, $climbers: close ${reaches[0]}, wide ${reaches[2]}")
             }
         }
+    }
+
+    @Test
+    fun everySpacingIsAStepWhereTheWallHasRoom() {
+        for ((board, climbers) in playable) {
+            val fields = Knot.spacingLayouts(board.rows, climbers, board.colours, board.metresPerUnit, feetOnly = board.feetOnly).let { by -> KnotSpacing.entries.map { by[it] } }
+            val close = fields[0] ?: continue
+            // Close keeps its field; medium and wide widen it where the stripes have no room to spread otherwise.
+            val room = (board.rows.holds.maxOf { it.x } - board.rows.holds.minOf { it.x }) * board.metresPerUnit + 0.2
+            assertEquals(minOf(Knot.fieldWidthM(climbers), room), close.widthM, 1e-9)
+            val reaches = fields.map { field -> field?.let { Knot.handReach(board.rows, it, board.metresPerUnit) } }
+            println("Knot steps ${board.name}, $climbers: widths ${fields.map { it?.widthM }}, reaches ${reaches.map { r -> r?.let { (it * 100).toInt() } }} cm")
+            fields.zipWithNext().forEach { (a, b) -> if (a != null && b != null) assertTrue(b.widthM >= a.widthM - 1e-9, "${board.name}, $climbers: narrower") }
+            // On the 12 and 16 ft Kilter boards every spacing reaches clearly farther than the closer one.
+            if (board == kilter12x12 || board == kilter16x12) {
+                val all = reaches.map { assertNotNull(it, "${board.name}, $climbers") }
+                all.zipWithNext().forEach { (a, b) -> assertTrue(b >= a + Knot.REACH_STEP_M - 1e-9, "${board.name}, $climbers: reaches $all") }
+            }
+        }
+        // Solo and two on a big wall: Close stays 1.2 m, medium and wide spread the colours on a wider field.
+        val solo = Knot.spacingLayouts(kilter12x12.rows, 1, aurora, INCH_M, feetOnly = screwOns)
+        assertEquals(1.2, solo.getValue(KnotSpacing.CLOSE)!!.widthM, 1e-9)
+        assertTrue(solo.getValue(KnotSpacing.WIDE)!!.widthM > solo.getValue(KnotSpacing.MEDIUM)!!.widthM)
+        assertTrue(Knot.spacingLayouts(kilter12x12.rows, 2, aurora, INCH_M, feetOnly = screwOns).getValue(KnotSpacing.WIDE)!!.widthM > 1.2)
+        // A drawn field on a spacing's width keeps that width, and so its reach.
+        val wide = solo.getValue(KnotSpacing.WIDE)!!
+        val drawn = Knot.layout(kilter12x12.rows, 1, aurora, INCH_M, spacing = KnotSpacing.WIDE, draw = KnotDraw(1, randomGrades), feetOnly = screwOns, widthM = wide.widthM)!!
+        assertEquals(wide.widthM, drawn.widthM, 1e-9)
+        assertTrue(drawn.spots != wide.spots)
     }
 
     @Test
@@ -334,7 +366,7 @@ class KnotTest {
             val field = layout(b, climbers, spacing) ?: continue
             val left = b.rows.holds.minOf { it.x } * b.metresPerUnit
             val right = b.rows.holds.maxOf { it.x } * b.metresPerUnit
-            val width = minOf(Knot.fieldWidthM(climbers), right - left + 0.2)
+            val width = field.widthM
             for (hands in listOf(true, false)) {
                 val spots = field.stripes.indices.flatMap { i -> (if (hands) field.stripes[i].first else field.stripes[i].second).map { xM(b, it) to field.pattern[i] } }
                 val (farthest, _) = Knot.reach((left + right) / 2 - width / 2 + field.offsetM, width, climbers, spots, b.colours.size)
@@ -369,17 +401,16 @@ class KnotTest {
     /** Hand grades for the 12x12, from 10 to 30 at random. */
     private val randomGrades = kotlin.random.Random(7).let { random -> kilter12x12.rows.holds.associate { it.placementId to 10.0 + random.nextDouble() * 20 } }
 
-    /** Where the field of [climbers] on [board] begins, [offsetM] right of the middle, and how wide it is. */
-    private fun fieldOf(board: Board, climbers: Int, offsetM: Double): Pair<Double, Double> {
+    /** Where [layout]'s field on [board] begins and how wide it is: centred on the wall, then moved by its offset. */
+    private fun fieldOf(board: Board, layout: KnotLayout): Pair<Double, Double> {
         val left = board.rows.holds.minOf { it.x } * board.metresPerUnit
         val right = board.rows.holds.maxOf { it.x } * board.metresPerUnit
-        val width = minOf(Knot.fieldWidthM(climbers), right - left + 0.2)
-        return (left + right) / 2 - width / 2 + offsetM to width
+        return (left + right) / 2 - layout.widthM / 2 + layout.offsetM to layout.widthM
     }
 
     /** How far apart the easiest and hardest colour, and the easiest and hardest climber's part, are on average. */
     private fun spreads(layout: KnotLayout, climbers: Int, grades: Map<Int, Double>): Pair<Double, Double> {
-        val (start, width) = fieldOf(kilter12x12, climbers, layout.offsetM)
+        val (start, width) = fieldOf(kilter12x12, layout)
         val colours = aurora.indices.map { colour -> layout.handSpots(colour).map { grades.getValue(it) }.average() }
         val parts = layout.stripes.flatMap { it.first }
             .groupBy({ ((xM(kilter12x12, it) - start) / (width / climbers)).toInt().coerceIn(0, climbers - 1) }, { grades.getValue(it) })
@@ -428,7 +459,7 @@ class KnotTest {
         for (climbers in 1..4) for (seed in 0L until 5L) {
             val name = "$climbers, seed $seed"
             val drawn = layout(kilter12x12, climbers, KnotSpacing.MEDIUM, KnotDraw(seed, grades))!!
-            val (start, width) = fieldOf(kilter12x12, climbers, drawn.offsetM)
+            val (start, width) = fieldOf(kilter12x12, drawn)
             val inField = grades.keys.filter { id ->
                 id !in screwOns && heightM(kilter12x12, id) in Knot.HANDS_FROM_M..Knot.HANDS_TO_M && xM(kilter12x12, id) in start..start + width
             }.sortedByDescending { grades.getValue(it) }
@@ -653,7 +684,7 @@ class KnotTest {
             for (field in fields) {
                 val name = "${board.name}, $climbers, $spacing, $holds"
                 val flagged = Knot.singleFootColours(board.rows, field, board.metresPerUnit, spacing)
-                val (start, width) = fieldOf(board, climbers, field.offsetM)
+                val (start, width) = fieldOf(board, field)
                 val limit = spacing.reachM + maxOf(Knot.REACH_SLACK_M, width / field.stripes.size / 2) + 1e-9
                 for (part in 0 until climbers) {
                     val middle = start + width / climbers * (part + 0.5)

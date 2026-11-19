@@ -23,6 +23,7 @@ import com.cruxcoach.domain.board.games.HoldsThief
 import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.KnotColour
 import com.cruxcoach.domain.board.games.KnotDraw
+import com.cruxcoach.domain.board.games.KnotField
 import com.cruxcoach.domain.board.games.KnotHolds
 import com.cruxcoach.domain.board.games.KnotLayout
 import com.cruxcoach.domain.board.games.KnotSpacing
@@ -361,17 +362,38 @@ class WallGamesViewModelTest {
     fun knotSpacingChangesTheFieldAndFallsBackWhenTheWallCannotKeepIt() {
         val vm = kilterViewModel()
         vm.selectGame(WallGame.KNOT)
-        // Solo the 1.2 m field reaches no further at medium or wide: those are greyed out, and wide falls back to close.
-        val solo = awaitKnot(vm)
-        assertEquals(setOf(KnotSpacing.CLOSE), solo.spacings)
-        assertEquals(setOf(KnotSpacing.MEDIUM, KnotSpacing.WIDE), solo.sameReach)
-        vm.setKnotSpacing(KnotSpacing.WIDE)
-        assertEquals(KnotSpacing.CLOSE, awaitState(vm) { !it.knot.pending }.knot.spacing)
-        // Two climbers share that 1.2 m field: wide reaches no further than medium.
-        vm.setKnotPlayers(2)
-        val two = awaitKnot(vm, 2)
-        assertEquals(setOf(KnotSpacing.CLOSE, KnotSpacing.MEDIUM), two.spacings)
-        assertEquals(setOf(KnotSpacing.WIDE), two.sameReach)
+        // Solo and two on the 1.2 m field: medium and wide widen it, so every spacing reaches farther than the one before.
+        for (players in 1..2) {
+            vm.setKnotPlayers(players)
+            val close = awaitKnot(vm, players)
+            assertEquals(KnotSpacing.CLOSE, close.spacing)
+            assertEquals("$players", KnotSpacing.entries.toSet(), close.spacings)
+            assertTrue(close.sameReach.isEmpty())
+            var closer = close
+            for (spacing in listOf(KnotSpacing.MEDIUM, KnotSpacing.WIDE)) {
+                vm.setKnotSpacing(spacing)
+                val field = awaitState(vm) { !it.knot.pending && it.knot.spacing == spacing }.knot
+                assertTrue("$players, $spacing: ${field.reachM} after ${closer.reachM}", field.reachM!! >= closer.reachM!! + 0.05)
+                closer = field
+            }
+            // The brackets span the field that lights.
+            assertEquals(closer.parts.last().second - closer.parts.first().first, closer.layout!!.widthM, 1e-9)
+            vm.setKnotSpacing(KnotSpacing.CLOSE)
+            awaitState(vm) { !it.knot.pending && it.knot.spacing == KnotSpacing.CLOSE }
+        }
+        // A wall without room to widen the field: on a narrow strip, solo, only the closer spacings are on offer, and wide
+        // falls back to the closest.
+        val narrow = kilter.copy(rows = WallRows.of(kilter.rows.holds.filter { it.x <= 4.0 + 8.0 * 6 }))
+        val strip = viewModel(loader = mockk(relaxed = true) {
+            coEvery { load() } returns WallGameBoardLoad.Ready(narrow)
+            every { knotBigHolds(any()) } returns emptySet()
+            every { knotCatalogueHolds(any()) } returns KnotCatalogueHolds()
+        })
+        strip.selectGame(WallGame.KNOT)
+        val onStrip = awaitKnot(strip)
+        assertTrue(onStrip.spacings.size < KnotSpacing.entries.size)
+        strip.setKnotSpacing(KnotSpacing.WIDE)
+        assertEquals(onStrip.spacings.min(), awaitState(strip) { !it.knot.pending }.knot.spacing)
         // Three climbers: three spacings, each reaching further.
         vm.setKnotPlayers(3)
         val close = awaitKnot(vm, 3)
@@ -380,9 +402,7 @@ class WallGamesViewModelTest {
         vm.setKnotSpacing(KnotSpacing.WIDE)
         val wide = awaitState(vm) { !it.knot.pending && it.knot.spacing == KnotSpacing.WIDE }.knot
         assertTrue(wide.reachM!! > close.reachM!!)
-        // Fewer, wider stripes; the holds per colour and climber stay, so the climbers share more of them.
-        assertTrue(wide.layout!!.stripes.size < close.layout!!.stripes.size)
-        assertTrue(wide.layout!!.spots.size <= close.layout!!.spots.size)
+        assertTrue(wide.layout!!.spots.size <= close.layout!!.spots.size + 4)
         // The field that lights is the one of the chosen spacing.
         vm.start()
         val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }
@@ -458,6 +478,42 @@ class WallGamesViewModelTest {
         vm.startKnotCalls()
         awaitState(vm) { it.knot.run.phase == KnotPhase.COUNTDOWN }
         assertEquals(relit.spots.keys, vm.knotLastSpots)
+    }
+
+    @Test
+    fun knotAtTheStartPositionsEveryControlOnScreenChangesTheWall() {
+        val vm = kilterViewModel(handGrades = kilter.rows.holds.associate { it.placementId to 10.0 + it.y / 10 })
+        vm.selectGame(WallGame.KNOT)
+        awaitState(vm) { it.knot.drawn && !it.knot.pending }
+        vm.setKnotPlayers(2)
+        awaitState(vm) { !it.knot.pending && it.knot.drawn && it.knot.layout?.climbers == 2 }
+        vm.start()
+        var lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!
+        fun onWall(field: KnotField) = field.spots.entries.sortedBy { it.key }.map { (id, colour) -> id to colour.rgb332 }
+        coVerify(timeout = 5_000) { ble.sendRawLeds(onWall(lit), BoardBrand.KILTER, any()) }
+        // Each control the start positions show: let go of it, and the wall takes the field the preview shows.
+        val controls = listOf<Pair<String, () -> Unit>>(
+            "spacing" to { vm.setKnotSpacing(KnotSpacing.WIDE); vm.knotSettingsSettled() },
+            "holds" to { vm.setKnotHolds(KnotHolds.FEW); vm.knotSettingsSettled() },
+            "draw again" to vm::knotDrawAgain,
+        )
+        for ((name, use) in controls) {
+            use()
+            val before = lit
+            lit = awaitState(vm) { !it.knot.pending && it.knot.run.field != before }.knot.run.field!!
+            assertEquals(name, vm.state.value.knot.layout!!.spots, lit.spots.keys)
+            assertEquals(name, before.colours, lit.colours)
+            coVerify(timeout = 5_000) { ble.sendRawLeds(onWall(lit), BoardBrand.KILTER, any()) }
+            // The drawn field lies on the field its spacing was offered on.
+            val spacing = vm.state.value.knot.spacing
+            val offeredOn = Knot.spacingLayouts(kilter.rows, 2, Knot.colours(BoardBrand.KILTER)!!, 0.0254, holds = vm.state.value.knot.holds).getValue(spacing)!!
+            assertEquals(name, offeredOn.widthM, vm.state.value.knot.layout!!.widthM, 1e-9)
+        }
+        assertEquals(KnotSpacing.WIDE, vm.state.value.knot.spacing)
+        // The speed slider sets the speed of the calls that follow.
+        vm.setLevel(5)
+        vm.startKnotCalls()
+        assertEquals(Knot.callMs(5), awaitState(vm) { it.knot.run.phase == KnotPhase.COUNTDOWN }.knot.run.callMs)
     }
 
     @Test

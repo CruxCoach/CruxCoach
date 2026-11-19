@@ -62,6 +62,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.KnotColour
 import com.cruxcoach.domain.board.games.KnotSpacing
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import java.util.Locale
 
@@ -295,10 +296,11 @@ internal fun KnotSliders(state: WallGamesState, actions: WallGamesActions) {
 
 /**
  * A stepped slider over [steps] with the [label] of every stop below it. Moving it changes the setting at once
- * ([onChange], only to a step that's [enabled]); letting go calls [onSettled] and moves back from a greyed stop.
+ * ([onChange]); the thumb only goes to steps that are [enabled] and stops at the nearest of them, so it never springs
+ * back. Letting go calls [onSettled]. With one step on offer the slider is disabled; the [note] gives the reason.
  */
 @Composable
-private fun <T> KnotStepSlider(
+internal fun <T> KnotStepSlider(
     title: String,
     steps: List<T>,
     selected: T,
@@ -311,20 +313,21 @@ private fun <T> KnotStepSlider(
 ) {
     val index = steps.indexOf(selected).coerceAtLeast(0)
     var position by remember(index) { mutableFloatStateOf(index.toFloat()) }
+    val offered = steps.indices.filter { enabled(steps[it]) }
     Column {
         Text(title, style = MaterialTheme.typography.titleSmall)
         Slider(
             value = position,
             onValueChange = { value ->
-                position = value
-                val step = steps[value.roundToInt().coerceIn(steps.indices)]
-                if (step != selected && enabled(step)) onChange(step)
+                // A greyed stop doesn't take the thumb: it stays on the nearest step on offer. Between two as near, the
+                // one in the direction it moves, so a step by key or by a screen reader's swipe passes a greyed stop.
+                val nearest = offered.minWithOrNull(compareBy<Int>({ abs(it - value) }, { if (value > index) -it else it })) ?: return@Slider
+                position = if (value.roundToInt() in offered) value else nearest.toFloat()
+                val step = steps[nearest]
+                if (step != selected) onChange(step)
             },
-            onValueChangeFinished = {
-                // A greyed stop doesn't hold: back to the step that's set.
-                position = steps.indexOf(selected).coerceAtLeast(0).toFloat()
-                onSettled()
-            },
+            onValueChangeFinished = onSettled,
+            enabled = offered.size > 1,
             valueRange = 0f..(steps.size - 1).toFloat(),
             steps = (steps.size - 2).coerceAtLeast(0),
             colors = SliderDefaults.colors(thumbColor = CruxCoachDesign.colors.brandAccent, activeTrackColor = CruxCoachDesign.colors.brandAccent),
