@@ -595,6 +595,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Quantum four colors with up to 92 LEDs each; Shiny Wall is not supported yet.
 
 ### Fixed
+- Knot: every spacing is a real step. Medium and Wide widen the field where
+  it is too narrow for the colours to spread (solo about 1.2, 1.8 and 2.4 m),
+  until the colours really are farther apart than at the closer spacing; a
+  spacing is greyed out only when the wall has no room for it. A slider's
+  thumb no longer jumps back: it stops at the nearest step on offer, and a
+  slider with only one step on offer is shown disabled with the reason.
 - Knot: the field is narrower, 0.6 m per climber and at least 1.2 m (1.2 m
   for one or two climbers, 1.8 m for three), so the climbers get in each
   other's way; where it doesn't fit in the middle of the wall, it moves up to
