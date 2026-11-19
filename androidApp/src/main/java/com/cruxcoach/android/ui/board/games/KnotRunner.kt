@@ -85,14 +85,17 @@ data class KnotRun(
  * the most calls held wins.
  *
  * The wall goes to [onWall] (spot → colour; empty clears it), each new call
- * to [onCall], and beeps to [onBeep]. Time comes from coroutine delays, so
- * tests run it on virtual time.
+ * to [onCall], and beeps to [onBeep]. [AGAIN_MS] after each blink the wall's
+ * state goes to [onWallAgain] once more, to be sent even if the wall took it:
+ * a board that missed the last frame of a blink would keep the called holds
+ * dark. Time comes from coroutine delays, so tests run it on virtual time.
  */
 internal class KnotRunner(
     private val scope: CoroutineScope,
     /** Monotonic milliseconds, for telling a second tap on a name from a double tap. */
     private val now: () -> Long,
     private val onWall: (Map<Int, KnotColour>) -> Unit,
+    private val onWallAgain: (Map<Int, KnotColour>) -> Unit = {},
     private val onCall: (KnotCall) -> Unit = {},
     private val onBeep: (GameBeep) -> Unit = {},
     private val onStepIn: (Int) -> Unit = {},
@@ -122,6 +125,9 @@ internal class KnotRunner(
         mutableRun.value = KnotRun(phase = KnotPhase.POSITIONS, field = field, climbers = climbers)
         onWall(field.spots)
     }
+
+    /** The wall once more [AGAIN_MS] after a blink, unless the next blink starts first. */
+    private var again: Job? = null
 
     /** Per part, the colours with only one foot spot within reach (see [KnotCaller]). */
     private var singleFoot: List<Set<KnotColour>> = emptyList()
@@ -167,6 +173,7 @@ internal class KnotRunner(
                 var spent = lead
                 // The called spots blink: dark, lit, dark, lit … then stay lit.
                 val dark = field.without(call.colour, hands = call.limb.isHand)
+                again?.cancel()
                 repeat(BLINKS) {
                     onWall(dark)
                     wait(BLINK_MS)
@@ -174,6 +181,11 @@ internal class KnotRunner(
                     wait(BLINK_MS)
                     spent += 2 * BLINK_MS
                     mutableRun.update { it.copy(callLeftMs = (callMs - spent).coerceAtLeast(0)) }
+                }
+                // A child of the round: it ends with it.
+                again = launch {
+                    delay(AGAIN_MS)
+                    onWallAgain(field.spots)
                 }
                 if (callMs <= 0) {
                     // Taps before the call has blinked don't count: a double tap must not skip a call.
@@ -297,6 +309,8 @@ internal class KnotRunner(
                 }
             }
             onWall(emptyMap())
+            delay(AGAIN_MS)
+            onWallAgain(emptyMap())
         }
     }
 
@@ -307,6 +321,8 @@ internal class KnotRunner(
         const val BLINK_MS = 250L
         /** The blink starts this long after its call, with the voice. */
         const val BLINK_LEAD_MS = 250L
+        /** The wall's state goes out once more this long after a blink. */
+        const val AGAIN_MS = 500L
         /** A second tap on a name within this time is the same tap. */
         const val DOUBLE_TAP_MS = 1_000L
         /** Time for the next in line to get to the wall and into position before their first call. */

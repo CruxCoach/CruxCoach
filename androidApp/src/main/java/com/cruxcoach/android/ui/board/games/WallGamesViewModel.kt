@@ -206,6 +206,7 @@ class WallGamesViewModel @Inject constructor(
         scope = viewModelScope,
         now = SystemClock::elapsedRealtime,
         onWall = ::showKnot,
+        onWallAgain = { showKnot(it, again = true) },
         onCall = ::announce,
         onBeep = { if (mutableState.value.soundOn) sounds.play(it) },
         onStepIn = ::announceStepIn,
@@ -215,6 +216,8 @@ class WallGamesViewModel @Inject constructor(
     private var knotBigHolds: Set<Int>? = null
     /** Hand holds rated from the catalogue; with them each game draws a fresh field, without them it is always the same. */
     private var knotHandGrades: Map<Int, Double> = emptyMap()
+    /** Holds the catalogue's climbs use as feet: never a hand spot. */
+    private var knotCatalogueFeet: Set<Int> = emptySet()
     private val knotSeeds = Random(Random.nextLong())
     /**
      * The draw of the next game's field, which the preview shows, and the spots of the last game as they lit when its
@@ -459,7 +462,8 @@ class WallGamesViewModel @Inject constructor(
         mutableState.update { it.copy(knot = it.knot.copy(colours = colours, maxClimbers = max, players = count, spacing = spacing, holds = holds, pending = true)) }
         val fitsBoard = knotFitsBoard(board)
         val input = KnotInput(board.rows, minOf(count, max.coerceAtLeast(1)), colours, unit, spacing, holds, knotBigHolds.orEmpty(),
-            knotHandGrades.takeIf { it.isNotEmpty() }?.let { KnotDraw(knotSeed, it, knotLastSpots) }, fitsBoard)
+            knotHandGrades.takeIf { it.isNotEmpty() }?.let { KnotDraw(knotSeed, it, knotLastSpots) }, fitsBoard,
+            WallGameHolds.knotFootSetHolds(board) + knotCatalogueFeet)
         knotJob = viewModelScope.launch {
             val field = withContext(Dispatchers.Default) { knotField(input) }
             mutableState.update {
@@ -536,21 +540,23 @@ class WallGamesViewModel @Inject constructor(
         return { layout -> MoonBoardFrameEncoder.fits(Knot.moonBoardFrames(layout.field(colours).spots), variant, board.moonLedMode) }
     }
 
-    /** Looks once for the board's big holds. */
+    /** Looks once for the board's big holds and what its catalogue says about the holds. */
     private fun prepareKnot() {
         val board = mutableState.value.board ?: return
         if (knotBigHolds != null) return
         knotBigHolds = emptySet()
         viewModelScope.launch {
-            val (big, grades) = withContext(Dispatchers.IO) {
+            val (big, catalogue) = withContext(Dispatchers.IO) {
                 val started = SystemClock.elapsedRealtime()
-                val grades = runCatching { loader.knotHandGrades(board) }.getOrDefault(emptyMap())
-                Log.i(TAG, "Knot grades: ${grades.size} hand holds rated from the catalogue in ${SystemClock.elapsedRealtime() - started} ms")
-                runCatching { loader.knotBigHolds(board) }.getOrDefault(emptySet()) to grades
+                val catalogue = runCatching { loader.knotCatalogueHolds(board) }.getOrDefault(KnotCatalogueHolds())
+                Log.i(TAG, "Knot grades: ${catalogue.handGrades.size} hand holds rated, ${catalogue.feetOnly.size} only for feet, " +
+                    "from the catalogue in ${SystemClock.elapsedRealtime() - started} ms")
+                runCatching { loader.knotBigHolds(board) }.getOrDefault(emptySet()) to catalogue
             }
-            if (big.isEmpty() && grades.isEmpty()) return@launch
+            if (big.isEmpty() && catalogue == KnotCatalogueHolds()) return@launch
             knotBigHolds = big
-            knotHandGrades = grades
+            knotHandGrades = catalogue.handGrades
+            knotCatalogueFeet = catalogue.feetOnly
             // A field already lit for the start stays as the climbers took it; the calls draw the next one with these, or
             // a Cancel back to the settings does.
             if (knotRunner.run.value.phase == KnotPhase.POSITIONS) {
@@ -717,14 +723,15 @@ class WallGamesViewModel @Inject constructor(
 
     private fun show(holds: List<BoardHold>) = sender.show(WallState(mutableState.value.game, holds))
 
-    private fun showKnot(spots: Map<Int, KnotColour>) {
+    /** [again]: even if the wall took these spots last, for a frame the board may have dropped. */
+    private fun showKnot(spots: Map<Int, KnotColour>, again: Boolean = false) {
         knotWall = spots
-        sender.show(WallState(WallGame.KNOT, emptyList(), spots))
+        sender.show(WallState(WallGame.KNOT, emptyList(), spots), again)
     }
 
-    private suspend fun transmit(state: WallState): Boolean {
+    private suspend fun transmit(state: WallState): WallWrite {
         val holds = state.holds
-        val board = mutableState.value.board ?: return false
+        val board = mutableState.value.board ?: return WallWrite.REFUSED
         val session = sessionQueueManager.state.value
         val problem = when {
             session.isActive || session.isConnecting -> WallSendProblem.SESSION
@@ -736,7 +743,7 @@ class WallGamesViewModel @Inject constructor(
         }
         if (problem != null) {
             mutableState.update { it.copy(sendProblem = problem) }
-            return false
+            return WallWrite.REFUSED
         }
         val sendProblem = if (state.paint != null) {
             sendKnotToBoard(ble, board, state.paint).also { problem ->
@@ -749,7 +756,12 @@ class WallGamesViewModel @Inject constructor(
         }
         // The answer for a game the user has left since doesn't speak for the one on screen.
         mutableState.update { if (it.game == state.game) it.copy(sendProblem = sendProblem) else it }
-        return sendProblem == null
+        return when (sendProblem) {
+            null -> WallWrite.SENT
+            // Only a write that broke off on the way is worth another try.
+            WallSendProblem.FAILED -> WallWrite.FAILED
+            else -> WallWrite.REFUSED
+        }
     }
 
     override fun onCleared() {
@@ -839,6 +851,8 @@ internal class KnotInput(
     val draw: KnotDraw?,
     /** Whether a field fits what the board takes in the app besides [KNOT_MAX_LIT] (one frame on the MoonBoard). */
     val fitsBoard: (KnotLayout) -> Boolean = { true },
+    /** Holds that never take a hand spot: the board's foot sets and the catalogue's foot holds. */
+    val feetOnly: Set<Int> = emptySet(),
 )
 
 /** Knot's field worked out from a [KnotInput]: the settings it ended up with and the ones on offer. */
@@ -870,9 +884,10 @@ private val HOLDS_FALLBACK = listOf(KnotHolds.NORMAL, KnotHolds.FEW, KnotHolds.M
  * falls back: holds to Normal, then Few, then Many; spacing to the closest that fits.
  */
 internal fun knotField(input: KnotInput): KnotFieldResult {
+    val started = SystemClock.elapsedRealtime()
     // Whether a setting fits and what it changes don't depend on the draw: the plain fields tell.
     val plain = KnotSpacing.entries.associateWith { spacing ->
-        KnotHolds.entries.associateWith { holds -> Knot.layout(input.rows, input.atWall, input.colours, input.unit, input.bigHolds, spacing, holds = holds) }
+        KnotHolds.entries.associateWith { holds -> Knot.layout(input.rows, input.atWall, input.colours, input.unit, input.bigHolds, spacing, holds = holds, feetOnly = input.feetOnly) }
     }
     fun tooMany(layout: KnotLayout) = layout.spots.size > KNOT_MAX_LIT || !input.fitsBoard(layout)
     fun fits(spacing: KnotSpacing, holds: KnotHolds) = plain.getValue(spacing).getValue(holds)?.let { !tooMany(it) } == true
@@ -890,17 +905,19 @@ internal fun knotField(input: KnotInput): KnotFieldResult {
     val spacing = input.spacing.takeIf { it in offered } ?: offered.minOrNull() ?: KnotSpacing.CLOSE
     val holdsOffered = KnotHolds.entries.filter { fits(spacing, it) }.toSet()
     val holdsTooMany = KnotHolds.entries.filter { plain.getValue(spacing).getValue(it)?.let(::tooMany) == true }.toSet()
-    val started = SystemClock.elapsedRealtime()
+    val plainMs = SystemClock.elapsedRealtime() - started
     val nearest = plain.getValue(spacing).getValue(holds)
     // A drawn field can fill a spot the nearest holds left out: what lights must fit the board too, or the nearest holds
     // light.
     val layout = if (!fits(spacing, holds)) null
     else if (input.draw == null) nearest
-    else Knot.layout(input.rows, input.atWall, input.colours, input.unit, input.bigHolds, spacing, input.draw, holds)
+    else Knot.layout(input.rows, input.atWall, input.colours, input.unit, input.bigHolds, spacing, input.draw, holds, input.feetOnly)
         ?.takeUnless(::tooMany) ?: nearest
-    // How long a field takes, and whether it was drawn, to check on a phone with a real catalogue.
-    Log.i("WallGames", "Knot field: ${layout?.spots?.size ?: 0} spots for ${input.atWall}, $spacing, $holds, ${if (input.draw != null) "drawn" else "nearest"} in ${SystemClock.elapsedRealtime() - started} ms")
-    val (start, width) = Knot.fieldSpan(input.rows, input.atWall, input.unit)
+    // How long a field takes (the plain fields for every setting, then the draw), and whether it was drawn, to check on
+    // a phone with a real catalogue.
+    Log.i("WallGames", "Knot field: ${layout?.spots?.size ?: 0} spots for ${input.atWall}, $spacing, $holds, " +
+        "${if (input.draw != null) "drawn" else "nearest"} in ${SystemClock.elapsedRealtime() - started} ms (settings $plainMs ms)")
+    val (start, width) = Knot.fieldSpan(input.rows, input.atWall, input.unit, layout?.offsetM ?: 0.0)
     val parts = List(input.atWall) { start + width / input.atWall * it to start + width / input.atWall * (it + 1) }
     return KnotFieldResult(spacing, offered, sameReach, holds, holdsOffered, holdsTooMany, layout,
         layout?.let { Knot.handReach(input.rows, it, input.unit) }, parts)

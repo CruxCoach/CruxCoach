@@ -15,6 +15,7 @@ import com.cruxcoach.domain.board.MoonBoardHoldSets
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.ShinyWallVariant
+import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.KnotHandGrades
 import com.cruxcoach.domain.board.games.WallHold
 import com.cruxcoach.domain.board.games.WallRows
@@ -52,12 +53,22 @@ sealed interface WallGameBoardLoad {
     data object NoHolds : WallGameBoardLoad
 }
 
+/** What Knot learns from a board's catalogue: the hand holds with their ratings, and holds only for feet. */
+data class KnotCatalogueHolds(val handGrades: Map<Int, Double> = emptyMap(), val feetOnly: Set<Int> = emptySet())
+
 /** Pure conversions between a board's own hold data and [WallHold]s. */
 internal object WallGameHolds {
 
     /** Placements that [keep] accepts, at their stored positions. */
     fun fromPlacements(placements: Collection<BoardPlacement>, keep: (BoardPlacement) -> Boolean): List<WallHold> =
         placements.filter(keep).map { WallHold(it.placementId.toInt(), it.x.toDouble(), it.y.toDouble()) }
+
+    /** [board]'s holds of the sets that never take a Knot hand spot ([Knot.footSets]), catalogue or not. */
+    fun knotFootSetHolds(board: WallGameBoard): Set<Int> {
+        val sets = Knot.footSets(board.brand)
+        if (sets.isEmpty()) return emptySet()
+        return board.placements.values.filter { it.setId in sets }.mapTo(mutableSetOf()) { it.placementId.toInt() }
+    }
 
     /** True when [placement] lies on the board size [size] (edges exclusive, like the LED map). */
     fun onBoard(placement: BoardPlacement, size: BoardSize?): Boolean =
@@ -148,14 +159,15 @@ class WallGameBoardLoader @Inject constructor(
     }
 
     /**
-     * Knot's ratings of [board]'s hand holds from its catalogue at the board's angle ([KnotHandGrades]); empty
-     * without a catalogue or an angle. Reads every graded climb once: call on IO.
+     * What Knot learns about [board]'s holds from its catalogue at the board's angle ([KnotHandGrades]): the hand
+     * holds with their ratings and the holds only for feet. Empty without a catalogue or an angle. Reads every graded
+     * climb once: call on IO.
      */
-    fun knotHandGrades(board: WallGameBoard): Map<Int, Double> {
-        val angle = board.angle ?: return emptyMap()
+    fun knotCatalogueHolds(board: WallGameBoard): KnotCatalogueHolds {
+        val angle = board.angle ?: return KnotCatalogueHolds()
         val grades = KnotHandGrades()
         boardRepository.forEachGradedFrames(board.layoutId.toInt(), board.brand.wireValue, angle, minAscensionists = 1, grades::add)
-        return grades.grades()
+        return KnotCatalogueHolds(grades.grades(), grades.feetOnly())
     }
 
     private suspend fun loadMoonBoard(layoutId: Long): WallGameBoardLoad {

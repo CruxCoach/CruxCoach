@@ -33,6 +33,8 @@ class KnotRunnerTest {
 
     private class Log {
         val walls = mutableListOf<Map<Int, KnotColour>>()
+        /** What goes out once more after a blink, with its time. */
+        val again = mutableListOf<Pair<Long, Map<Int, KnotColour>>>()
         val calls = mutableListOf<KnotCall>()
         val beeps = mutableListOf<GameBeep>()
         val stepIns = mutableListOf<Int>()
@@ -42,10 +44,16 @@ class KnotRunnerTest {
         scope = backgroundScope,
         now = { testScheduler.currentTime },
         onWall = { log.walls += it },
+        onWallAgain = { log.again += testScheduler.currentTime to it },
         onCall = { log.calls += it },
         onBeep = { log.beeps += it },
         onStepIn = { log.stepIns += it },
     )
+
+    private companion object {
+        const val LOST_FAILED = "failed"
+        const val LOST_DROPPED = "dropped"
+    }
 
     @Test
     fun theFieldStaysLitThroughStartAndCountdownThenCallsComeOnTime() = runTest {
@@ -105,6 +113,174 @@ class KnotRunnerTest {
     }
 
     @Test
+    fun halfASecondAfterEveryBlinkTheLitFieldGoesOutOnceMore() = runTest {
+        val log = Log()
+        val runner = runner(log)
+        runner.light(field, players = 2)
+        runner.start(callMs = 4_000, seed = 1)
+        // The first call after the countdown at 5 s blinks from 5.5 to 7 s, the second from 9.25 to 10.75 s.
+        advanceTimeBy(7_499)
+        runCurrent()
+        assertTrue(log.again.isEmpty())
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(listOf(7_500L to field.spots), log.again)
+        advanceTimeBy(11_250 - 7_500)
+        runCurrent()
+        assertEquals(listOf(7_500L to field.spots, 11_250L to field.spots), log.again)
+        // Nothing else in between: the wall stays as the blink left it.
+        assertEquals(field.spots, log.walls.last())
+    }
+
+    @Test
+    fun aRoundThatEndsRightAfterABlinkSendsNoLitFieldAfterIt() = runTest {
+        val log = Log()
+        val runner = runner(log)
+        runner.light(field, players = 2)
+        runner.start(callMs = 4_000, seed = 1)
+        // Stopped 100 ms after the first call's blink: the field's second send, due at 7.5 s, never comes; the dark wall
+        // goes out once more half a second after the end blink instead.
+        advanceTimeBy(7_100)
+        runCurrent()
+        runner.stop()
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertEquals(listOf(7_100L + 1_500 + 500 to emptyMap<Int, KnotColour>()), log.again)
+
+        // Back to the settings right after a blink: nothing more goes out.
+        val after = Log()
+        val again = runner(after)
+        again.light(field, players = 2)
+        again.start(callMs = 4_000, seed = 1)
+        advanceTimeBy(7_100)
+        runCurrent()
+        again.reset()
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertTrue(after.again.isEmpty())
+        assertEquals(emptyMap<Int, KnotColour>(), after.walls.last())
+    }
+
+    @Test
+    fun byTapTheNextBlinkIsNotCutByTheLastOnesSecondSend() = runTest {
+        val log = Log()
+        val runner = runner(log)
+        runner.light(field, players = 2)
+        runner.start(callMs = 0, seed = 8)
+        // The first call blinks from 5.5 to 7 s; while the wall waits for a tap, the field goes out again at 7.5 s.
+        advanceTimeBy(8_000)
+        runCurrent()
+        assertEquals(listOf(7_500L to field.spots), log.again)
+        // A tap right after the next blink: the blink after it starts before that blink's second send was due.
+        runner.next()
+        advanceTimeBy(250 + 1_500 + 100)
+        runCurrent()
+        runner.next()
+        runCurrent()
+        val tapped = testScheduler.currentTime
+        advanceTimeBy(250 + 1_500 - 1)
+        runCurrent()
+        // Only the first call's second send so far: the second call's was cut by the third call's blink.
+        assertEquals(1, log.again.size)
+        advanceTimeBy(1 + 500)
+        runCurrent()
+        assertEquals(listOf(7_500L to field.spots, tapped + 250 + 1_500 + 500 to field.spots), log.again)
+    }
+
+    /**
+     * A board behind the app's [WallGameSender]: [lose] says, by write number (from 1), which writes fail ([LOST_FAILED])
+     * or go through without the wall taking them ([LOST_DROPPED]).
+     */
+    private class FakeBoard(val lose: (Int) -> String?) {
+        var shows: Map<Int, KnotColour> = emptyMap()
+        var writes = 0
+
+        fun transmit(spots: Map<Int, KnotColour>): WallWrite {
+            writes++
+            return when (lose(writes)) {
+                LOST_FAILED -> WallWrite.FAILED
+                LOST_DROPPED -> WallWrite.SENT
+                else -> {
+                    shows = spots
+                    WallWrite.SENT
+                }
+            }
+        }
+    }
+
+    private fun TestScope.runnerOn(board: FakeBoard): KnotRunner {
+        val sender = WallGameSender<Map<Int, KnotColour>>(backgroundScope, transmit = { board.transmit(it) })
+        return KnotRunner(
+            scope = backgroundScope,
+            now = { testScheduler.currentTime },
+            onWall = { sender.show(it) },
+            onWallAgain = { sender.show(it, again = true) },
+        )
+    }
+
+    @Test
+    fun theWallEndsLitWhenTheBoardDropsTheLastFrameOfABlink() = runTest {
+        // Write 1 lights the field, writes 2 to 7 are the first call's blink from 5.5 s: 7 is the lit field at 6.75 s.
+        val board = FakeBoard { if (it == 7) LOST_DROPPED else null }
+        val runner = runnerOn(board)
+        runner.light(field, players = 1)
+        runner.start(callMs = 4_000, seed = 2)
+        advanceTimeBy(7_100)
+        runCurrent()
+        // The write went out, but the wall missed it: the called spots are dark.
+        assertEquals(7, board.writes)
+        assertTrue(board.shows.size < field.spots.size)
+        advanceTimeBy(400)
+        runCurrent()
+        assertEquals(field.spots, board.shows)
+    }
+
+    @Test
+    fun theWallEndsLitWhenTheLastWriteOfABlinkFails() = runTest {
+        val board = FakeBoard { if (it == 7) LOST_FAILED else null }
+        val runner = runnerOn(board)
+        runner.light(field, players = 1)
+        runner.start(callMs = 4_000, seed = 2)
+        advanceTimeBy(6_800)
+        runCurrent()
+        assertTrue(board.shows.size < field.spots.size)
+        // Tried again after a short pause, before the blink's second send.
+        advanceTimeBy(WallGameSender.RETRY_MS)
+        runCurrent()
+        assertEquals(8, board.writes)
+        assertEquals(field.spots, board.shows)
+    }
+
+    @Test
+    fun theWallEndsDarkWhenTheBoardDropsTheClearAfterTheEndBlink() = runTest {
+        val board = FakeBoard { null }
+        lateinit var runner: KnotRunner
+        var clears = 0
+        val sender = WallGameSender<Map<Int, KnotColour>>(backgroundScope, transmit = { spots ->
+            // After the round the wall goes dark four times: three in the blink, then for good. The board misses that last one.
+            val lost = spots.isEmpty() && runner.run.value.phase == KnotPhase.FINISHED && ++clears == 4
+            if (lost) WallWrite.SENT else board.transmit(spots)
+        })
+        runner = KnotRunner(
+            scope = backgroundScope,
+            now = { testScheduler.currentTime },
+            onWall = { sender.show(it) },
+            onWallAgain = { sender.show(it, again = true) },
+        )
+        runner.light(field, players = 1)
+        runner.start(callMs = 3_000, seed = 4)
+        advanceTimeBy(5_000 + 3_000)
+        runCurrent()
+        runner.out(0)
+        advanceTimeBy(1_500)
+        runCurrent()
+        assertEquals(field.spots, board.shows)
+        advanceTimeBy(500)
+        runCurrent()
+        assertEquals(emptyMap<Int, KnotColour>(), board.shows)
+    }
+
+    @Test
     fun theLastClimberOnTheWallWinsAndTheFieldBlinksBeforeTheWallClears() = runTest {
         val log = Log()
         val runner = runner(log)
@@ -133,6 +309,8 @@ class KnotRunnerTest {
         runCurrent()
         val end = log.walls.drop(before)
         assertEquals(listOf(emptyMap<Int, KnotColour>(), field.spots, emptyMap(), field.spots, emptyMap(), field.spots, emptyMap()), end)
+        // Half a second after the end blink the dark wall goes out once more.
+        assertEquals(emptyMap<Int, KnotColour>(), log.again.last().second)
         // No more calls after the end.
         val calls = log.calls.size
         advanceTimeBy(10_000)

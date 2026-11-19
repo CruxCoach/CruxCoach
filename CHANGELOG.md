@@ -595,6 +595,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Quantum four colors with up to 92 LEDs each; Shiny Wall is not supported yet.
 
 ### Fixed
+- Knot: the field is narrower, 0.6 m per climber and at least 1.2 m (1.2 m
+  for one or two climbers, 1.8 m for three), so the climbers get in each
+  other's way; where it doesn't fit in the middle of the wall, it moves up to
+  10 cm to one side. Hand spots go on hand holds only: never on Kilter's
+  screw-ons, and with the board's catalogue never on a hold its climbs use
+  mostly as a foot or rarely as a hand. The called holds no longer stay dark
+  when the board misses the end of a blink: half a second after every blink
+  the field goes out once more, a write that fails is tried again, and after
+  the end blink the wall is sent dark once more.
 - Knot, at the start positions: the screen shows the field that is lit, not
   already the next game's; the speed slider works there; "Go" right after a
   slider starts on that slider's field; and the next game keeps away from the

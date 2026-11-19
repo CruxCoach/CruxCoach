@@ -130,45 +130,86 @@ internal class WallGameRunner(
 }
 
 /**
+ * How a write of a wall state went: [SENT]; [FAILED] on the way, worth
+ * another try; [REFUSED] before it started (another session holds the board,
+ * no connection, more holds than the board shows), which another try won't
+ * change.
+ */
+internal enum class WallWrite { SENT, FAILED, REFUSED }
+
+/**
  * Sends wall states one at a time, newest first: while a write is on the
  * way, further states replace each other and only the latest goes out next.
  * A fast game can therefore never queue up writes behind a slow link. A state
- * equal to the last one the wall took is not sent again.
+ * equal to the last one the wall took is not sent again, unless [show] asks
+ * for it. A failed write goes out again after [RETRY_MS], up to [RETRIES]
+ * times, while no newer state waits.
  *
  * [transmit] runs non-cancellable: leaving the screen must not cut a
  * multi-chunk write in half.
  */
 internal class WallGameSender<T>(
     scope: CoroutineScope,
-    private val transmit: suspend (T) -> Boolean,
+    private val transmit: suspend (T) -> WallWrite,
     private val onResult: (Boolean) -> Unit = {},
 ) {
     private val pending = Channel<T>(Channel.CONFLATED)
     private var lastSent: T? = null
+    /** The next state goes out even if the wall took it last. */
+    private var again = false
 
     init {
         scope.launch {
-            for (state in pending) {
-                if (state == lastSent) continue
-                val ok = try {
-                    withContext(NonCancellable) { transmit(state) }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    false
+            for (newest in pending) {
+                var state = newest
+                var retries = 0
+                while (state != lastSent || again) {
+                    again = false
+                    val write = try {
+                        withContext(NonCancellable) { transmit(state) }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        WallWrite.FAILED
+                    }
+                    val ok = write == WallWrite.SENT
+                    lastSent = if (ok) state else null
+                    onResult(ok)
+                    if (write != WallWrite.FAILED || retries == RETRIES) break
+                    // A newer state goes instead, at once and with its own retries; else this one again after a pause.
+                    val newer = pending.tryReceive().getOrNull() ?: run {
+                        delay(RETRY_MS)
+                        pending.tryReceive().getOrNull()
+                    }
+                    if (newer != null) {
+                        state = newer
+                        retries = 0
+                    } else {
+                        retries++
+                    }
                 }
-                lastSent = if (ok) state else null
-                onResult(ok)
             }
         }
     }
 
-    fun show(state: T) {
+    /**
+     * Puts [state] on the wall. [again]: even if the wall took it last, for a write the board may have dropped
+     * although it went out.
+     */
+    fun show(state: T, again: Boolean = false) {
+        if (again) this.again = true
         pending.trySend(state)
     }
 
     /** Forget what the wall shows, e.g. after reconnecting, so the next state is sent again. */
     fun forget() {
         lastSent = null
+    }
+
+    companion object {
+        /** A failed write goes out again after this pause … */
+        const val RETRY_MS = 200L
+        /** … at most this many times. */
+        const val RETRIES = 3
     }
 }
