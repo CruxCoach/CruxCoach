@@ -38,6 +38,7 @@ import com.cruxcoach.android.data.UserPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.random.Random
+import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -215,9 +216,19 @@ class WallGamesViewModel @Inject constructor(
     /** Hand holds rated from the catalogue; with them each game draws a fresh field, without them it is always the same. */
     private var knotHandGrades: Map<Int, Double> = emptyMap()
     private val knotSeeds = Random(Random.nextLong())
-    /** The draw of the next game's field, which the preview shows, and the spots of the last one, which it avoids. */
+    /**
+     * The draw of the next game's field, which the preview shows, and the spots of the last game as they lit when its
+     * calls began, which it avoids.
+     */
     private var knotSeed = knotSeeds.nextLong()
-    private var knotLastSpots: Set<Int> = emptySet()
+    @VisibleForTesting
+    internal var knotLastSpots: Set<Int> = emptySet()
+        private set
+    /** Grades or big holds came in while a field was lit for the start: the settings' field follows once it's off. */
+    @VisibleForTesting
+    @Volatile
+    internal var knotRefreshAfterStart = false
+        private set
     /** Works out Knot's field for the settings shown; a newer change cancels it. */
     private var knotJob: Job? = null
     private val runner = WallGameRunner(
@@ -287,7 +298,6 @@ class WallGamesViewModel @Inject constructor(
             mutableState.update {
                 val density = board?.let { b -> thiefStartDensity(b, it.thiefDensity) } ?: it.thiefDensity
                 it.copy(
-                    loading = false,
                     board = board,
                     unavailable = load.takeIf { board == null },
                     thiefDensity = density,
@@ -295,6 +305,8 @@ class WallGamesViewModel @Inject constructor(
                 )
             }
             refreshKnot()
+            // Loaded once Knot's colours and climbers for the board are set too, not a moment before.
+            mutableState.update { it.copy(loading = false) }
             if (board != null && mutableState.value.game == WallGame.KNOT) prepareKnot()
             if (board != null) {
                 if (startClimbUuid != null) {
@@ -330,7 +342,9 @@ class WallGamesViewModel @Inject constructor(
     }
 
     override fun setLevel(level: Int) {
-        if (mutableState.value.running) return
+        val s = mutableState.value
+        // Knot's speed counts from the first call: its slider still works while the field is lit for the start.
+        if (s.running && !(s.game == WallGame.KNOT && s.knot.run.phase == KnotPhase.POSITIONS)) return
         mutableState.update { it.copy(level = level.coerceIn(GAME_LEVELS)) }
     }
 
@@ -471,8 +485,17 @@ class WallGamesViewModel @Inject constructor(
     override fun knotSettingsSettled() {
         if (mutableState.value.knot.run.phase != KnotPhase.POSITIONS) return
         viewModelScope.launch {
-            knotJob?.join()
+            awaitKnotField()
             relightKnot()
+        }
+    }
+
+    /** Waits until the field for the settings shown is worked out, also when a newer change took over meanwhile. */
+    private suspend fun awaitKnotField() {
+        while (true) {
+            val job = knotJob ?: return
+            job.join()
+            if (knotJob === job) return
         }
     }
 
@@ -487,7 +510,8 @@ class WallGamesViewModel @Inject constructor(
     /** The lit field again, as the settings now give it, in the round's colours. */
     private fun relightKnot() {
         val s = mutableState.value
-        val run = s.knot.run
+        // The round's own state: the screen's copy of it can trail behind a change made a moment ago.
+        val run = knotRunner.run.value
         val field = run.field ?: return
         val layout = s.knot.layout ?: return
         if (run.phase != KnotPhase.POSITIONS) return
@@ -527,6 +551,12 @@ class WallGamesViewModel @Inject constructor(
             if (big.isEmpty() && grades.isEmpty()) return@launch
             knotBigHolds = big
             knotHandGrades = grades
+            // A field already lit for the start stays as the climbers took it; the calls draw the next one with these, or
+            // a Cancel back to the settings does.
+            if (knotRunner.run.value.phase == KnotPhase.POSITIONS) {
+                knotRefreshAfterStart = true
+                return@launch
+            }
             refreshKnot()
         }
     }
@@ -555,10 +585,27 @@ class WallGamesViewModel @Inject constructor(
         mutableState.update { it.copy(knot = it.knot.copy(safetySeen = true)) }
     }
 
-    /** Everyone has taken their start: the countdown, then the calls. */
+    /**
+     * Everyone has taken their start: the countdown, then the calls. A setting changed at the start positions goes on
+     * the wall first, so the round runs on the field the screen shows. From here on the next game's field is drawn,
+     * away from this one's holds as they lit.
+     */
     override fun startKnotCalls() {
-        val s = mutableState.value
-        knotRunner.start(if (s.knot.byTap) 0 else Knot.callMs(s.level), knotSeeds.nextLong())
+        if (mutableState.value.knot.run.phase != KnotPhase.POSITIONS) return
+        viewModelScope.launch {
+            awaitKnotField()
+            relightKnot()
+            // The field that is on the wall now, from the round itself: the screen's copy may not have caught up.
+            val run = knotRunner.run.value
+            val field = run.field ?: return@launch
+            if (run.phase != KnotPhase.POSITIONS) return@launch
+            val s = mutableState.value
+            knotRunner.start(if (s.knot.byTap) 0 else Knot.callMs(s.level), knotSeeds.nextLong())
+            knotLastSpots = field.spots.keys
+            knotSeed = knotSeeds.nextLong()
+            knotRefreshAfterStart = false
+            refreshKnot()
+        }
     }
 
     override fun knotOut(climber: Int) {
@@ -574,10 +621,7 @@ class WallGamesViewModel @Inject constructor(
         val order = Knot.colourOrder(colours, knotSeeds.nextLong())
         knotRunner.light(layout.field(order), s.knot.players, singleFoot(s, layout, order))
         Log.i(TAG, "Knot game: ${layout.spots.size} spots, ${(layout.spots intersect knotLastSpots).size} of them also in the last game")
-        // The next game gets a fresh field, away from this one's holds.
-        knotLastSpots = layout.spots
-        knotSeed = knotSeeds.nextLong()
-        refreshKnot()
+        // The preview keeps showing this field at the start positions; the next game's is drawn once the calls begin.
     }
 
     /** A short beep, so the climbers listen, then the call. The sound switch silences both. */
@@ -606,7 +650,7 @@ class WallGamesViewModel @Inject constructor(
         if (s.game == WallGame.KNOT) {
             // The field for the settings shown, once it's worked out.
             viewModelScope.launch {
-                knotJob?.join()
+                awaitKnotField()
                 lightKnot(mutableState.value)
             }
             return
@@ -633,8 +677,10 @@ class WallGamesViewModel @Inject constructor(
     override fun stop() {
         if (!mutableState.value.running) return
         if (mutableState.value.game == WallGame.KNOT) {
+            val atStart = knotRunner.run.value.phase == KnotPhase.POSITIONS
             voice.stop()
             knotRunner.stop()
+            if (atStart) knotBackFromStart()
             return
         }
         runner.stop()
@@ -644,12 +690,21 @@ class WallGamesViewModel @Inject constructor(
     /** From the result back to the game's settings; clears the wall. */
     override fun reset() {
         if (mutableState.value.game == WallGame.KNOT) {
+            val atStart = knotRunner.run.value.phase == KnotPhase.POSITIONS
             voice.stop()
             knotRunner.reset()
+            if (atStart) knotBackFromStart()
             return
         }
         runner.reset()
         show(emptyList())
+    }
+
+    /** Back to the settings from the start positions: grades that came in meanwhile draw the field from now on. */
+    private fun knotBackFromStart() {
+        if (!knotRefreshAfterStart) return
+        knotRefreshAfterStart = false
+        refreshKnot()
     }
 
     // ── Sending ────────────────────────────────────────────────────────
@@ -836,9 +891,13 @@ internal fun knotField(input: KnotInput): KnotFieldResult {
     val holdsOffered = KnotHolds.entries.filter { fits(spacing, it) }.toSet()
     val holdsTooMany = KnotHolds.entries.filter { plain.getValue(spacing).getValue(it)?.let(::tooMany) == true }.toSet()
     val started = SystemClock.elapsedRealtime()
+    val nearest = plain.getValue(spacing).getValue(holds)
+    // A drawn field can fill a spot the nearest holds left out: what lights must fit the board too, or the nearest holds
+    // light.
     val layout = if (!fits(spacing, holds)) null
-    else if (input.draw == null) plain.getValue(spacing).getValue(holds)
+    else if (input.draw == null) nearest
     else Knot.layout(input.rows, input.atWall, input.colours, input.unit, input.bigHolds, spacing, input.draw, holds)
+        ?.takeUnless(::tooMany) ?: nearest
     // How long a field takes, and whether it was drawn, to check on a phone with a real catalogue.
     Log.i("WallGames", "Knot field: ${layout?.spots?.size ?: 0} spots for ${input.atWall}, $spacing, $holds, ${if (input.draw != null) "drawn" else "nearest"} in ${SystemClock.elapsedRealtime() - started} ms")
     val (start, width) = Knot.fieldSpan(input.rows, input.atWall, input.unit)

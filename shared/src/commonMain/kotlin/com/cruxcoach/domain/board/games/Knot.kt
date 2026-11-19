@@ -272,8 +272,8 @@ object Knot {
      * then the one whose colours and climbers' parts come closest to equally good.
      *
      * Null when [climbers] don't fit ([maxClimbers]) or when, from the middle of a climber's part, a colour has fewer
-     * than [holds] hand or foot spots within the spacing's reach ([REACH_SLACK_M] beyond it at most): the wall can't
-     * fit that step.
+     * than [holds] hand or foot spots within the spacing's reach ([reachLimitM]: half a stripe or [REACH_SLACK_M] beyond
+     * it, whichever is more): the wall can't fit that step.
      */
     fun layout(
         rows: WallRows,
@@ -310,7 +310,7 @@ object Knot {
             return own.filter { abs(stripeMiddle(it) - middle) <= spacing.reachM + ROUNDING }.ifEmpty { listOf(own.minBy { abs(stripeMiddle(it) - middle) }) }
         }
         // A spot anywhere in a stripe within reach counts: half a stripe, or the slack, beyond the reach.
-        val reachLimit = spacing.reachM + maxOf(REACH_SLACK_M, stripeWidth / 2)
+        val reachLimit = reachLimitM(spacing, stripeWidth)
 
         /**
          * Spots per stripe so that every climber has [per] of each colour within reach: a climber short of them gets them in
@@ -513,24 +513,33 @@ object Knot {
 
     /**
      * For each climber's part of [layout] on [rows] at [spacing]: the colours (as [layout]'s pattern numbers) that have
-     * only one foot spot within reach. Both of a climber's feet are never called to such a colour.
+     * only one foot spot within reach, by the same [reachLimitM] that [layout] counts a climber's spots with. Both of a
+     * climber's feet are never called to such a colour.
      */
     fun singleFootColours(rows: WallRows, layout: KnotLayout, metresPerUnit: Double, spacing: KnotSpacing): List<Set<Int>> {
         val left = rows.holds.minOf { it.x } * metresPerUnit
         val right = rows.holds.maxOf { it.x } * metresPerUnit
         val width = minOf(fieldWidthM(layout.climbers), right - left + EDGE_M)
         val start = (left + right) / 2 - width / 2
+        val limit = reachLimitM(spacing, width / layout.stripes.size.coerceAtLeast(1))
         val feet = layout.stripes.indices.flatMap { i -> layout.stripes[i].second.map { rows.holdOf(it)!!.x * metresPerUnit to layout.pattern[i] } }
         return List(layout.climbers) { part ->
             val middle = start + width / layout.climbers * (part + 0.5)
-            feet.filter { abs(it.first - middle) <= spacing.reachM + REACH_SLACK_M }.groupingBy { it.second }.eachCount()
+            feet.filter { abs(it.first - middle) <= limit + ROUNDING }.groupingBy { it.second }.eachCount()
                 .filterValues { it == 1 }.keys
         }
     }
 
     /**
-     * How far beyond its spacing's reach a colour may sit from the middle of a climber's part before the field doesn't
-     * count as playable: the spots lie anywhere in their stripes, not at the stripes' middles.
+     * How far from the middle of a climber's part a spot still counts as within [spacing]'s reach, in stripes
+     * [stripeWidthM] wide: the reach is measured at the stripes' middles, and a spot lies anywhere in its stripe, so half
+     * a stripe beyond it, at least [REACH_SLACK_M].
+     */
+    fun reachLimitM(spacing: KnotSpacing, stripeWidthM: Double): Double = spacing.reachM + maxOf(REACH_SLACK_M, stripeWidthM / 2)
+
+    /**
+     * How far beyond its spacing's reach a colour may sit from the middle of a climber's part, at least, before the field
+     * doesn't count as playable (see [reachLimitM]).
      */
     const val REACH_SLACK_M = 0.15
 

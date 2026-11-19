@@ -595,6 +595,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Quantum four colors with up to 92 LEDs each; Shiny Wall is not supported yet.
 
 ### Fixed
+- Knot, at the start positions: the screen shows the field that is lit, not
+  already the next game's; the speed slider works there; "Go" right after a
+  slider starts on that slider's field; and the next game keeps away from the
+  field as it lit. A colour's only foot hold within a climber's reach never
+  gets both feet, a drawn field never lights more holds than the board takes,
+  and the number of players stays adjustable when no field fits.
 - The hang timer's spoken countdown can find the phone's text-to-speech engine
   on Android 11 and newer: the app now declares that it looks for one. Without
   an engine the timer still beeps and vibrates; no engine is required.

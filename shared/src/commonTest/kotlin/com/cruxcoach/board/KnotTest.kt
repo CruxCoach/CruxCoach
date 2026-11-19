@@ -557,6 +557,32 @@ class KnotTest {
     }
 
     @Test
+    fun aColoursOnlyFootSpotWithinReachIsKnownAsSuch() {
+        // A climber's foot spots count as within reach as far as the field counts them, half a stripe beyond the reach
+        // included: a colour with one foot spot there is one for both feet, on the nearest holds and drawn fields alike.
+        var single = 0
+        for ((board, climbers) in playable) for (spacing in KnotSpacing.entries) for (holds in KnotHolds.entries) {
+            val grades = kotlin.random.Random(climbers).let { random -> board.rows.holds.associate { it.placementId to 10.0 + random.nextDouble() * 20 } }
+            val fields = listOfNotNull(layout(board, climbers, spacing, holds = holds), layout(board, climbers, spacing, KnotDraw(3, grades), holds))
+            for (field in fields) {
+                val name = "${board.name}, $climbers, $spacing, $holds"
+                val flagged = Knot.singleFootColours(board.rows, field, board.metresPerUnit, spacing)
+                val (start, width) = fieldOf(board, climbers)
+                val limit = spacing.reachM + maxOf(Knot.REACH_SLACK_M, width / field.stripes.size / 2) + 1e-9
+                for (part in 0 until climbers) {
+                    val middle = start + width / climbers * (part + 0.5)
+                    for (colour in board.colours.indices) {
+                        val feet = field.footSpots(colour).count { kotlin.math.abs(xM(board, it) - middle) <= limit }
+                        if (feet == 1) single++
+                        assertEquals(feet == 1, colour in flagged[part], "$name, part $part: colour $colour has $feet foot spots within reach")
+                    }
+                }
+            }
+        }
+        assertTrue(single > 0)
+    }
+
+    @Test
     fun callsComeFromTheSeedAndUseEveryLimbAndColour() {
         fun calls(seed: Long) = KnotCaller(seed, 2, aurora).let { c -> (1..200).map { c.next(setOf(0, 1))!! } }
         assertEquals(calls(42), calls(42))
