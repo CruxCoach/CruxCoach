@@ -884,6 +884,7 @@ private val HOLDS_FALLBACK = listOf(KnotHolds.NORMAL, KnotHolds.FEW, KnotHolds.M
  * falls back: holds to Normal, then Few, then Many; spacing to the closest that fits.
  */
 internal fun knotField(input: KnotInput): KnotFieldResult {
+    val started = SystemClock.elapsedRealtime()
     // Whether a setting fits and what it changes don't depend on the draw: the plain fields tell.
     val plain = KnotSpacing.entries.associateWith { spacing ->
         KnotHolds.entries.associateWith { holds -> Knot.layout(input.rows, input.atWall, input.colours, input.unit, input.bigHolds, spacing, holds = holds, feetOnly = input.feetOnly) }
@@ -904,7 +905,7 @@ internal fun knotField(input: KnotInput): KnotFieldResult {
     val spacing = input.spacing.takeIf { it in offered } ?: offered.minOrNull() ?: KnotSpacing.CLOSE
     val holdsOffered = KnotHolds.entries.filter { fits(spacing, it) }.toSet()
     val holdsTooMany = KnotHolds.entries.filter { plain.getValue(spacing).getValue(it)?.let(::tooMany) == true }.toSet()
-    val started = SystemClock.elapsedRealtime()
+    val plainMs = SystemClock.elapsedRealtime() - started
     val nearest = plain.getValue(spacing).getValue(holds)
     // A drawn field can fill a spot the nearest holds left out: what lights must fit the board too, or the nearest holds
     // light.
@@ -912,9 +913,11 @@ internal fun knotField(input: KnotInput): KnotFieldResult {
     else if (input.draw == null) nearest
     else Knot.layout(input.rows, input.atWall, input.colours, input.unit, input.bigHolds, spacing, input.draw, holds, input.feetOnly)
         ?.takeUnless(::tooMany) ?: nearest
-    // How long a field takes, and whether it was drawn, to check on a phone with a real catalogue.
-    Log.i("WallGames", "Knot field: ${layout?.spots?.size ?: 0} spots for ${input.atWall}, $spacing, $holds, ${if (input.draw != null) "drawn" else "nearest"} in ${SystemClock.elapsedRealtime() - started} ms")
-    val (start, width) = Knot.fieldSpan(input.rows, input.atWall, input.unit)
+    // How long a field takes (the plain fields for every setting, then the draw), and whether it was drawn, to check on
+    // a phone with a real catalogue.
+    Log.i("WallGames", "Knot field: ${layout?.spots?.size ?: 0} spots for ${input.atWall}, $spacing, $holds, " +
+        "${if (input.draw != null) "drawn" else "nearest"} in ${SystemClock.elapsedRealtime() - started} ms (settings $plainMs ms)")
+    val (start, width) = Knot.fieldSpan(input.rows, input.atWall, input.unit, layout?.offsetM ?: 0.0)
     val parts = List(input.atWall) { start + width / input.atWall * it to start + width / input.atWall * (it + 1) }
     return KnotFieldResult(spacing, offered, sameReach, holds, holdsOffered, holdsTooMany, layout,
         layout?.let { Knot.handReach(input.rows, it, input.unit) }, parts)

@@ -597,7 +597,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - Knot: the field is narrower, 0.6 m per climber and at least 1.2 m (1.2 m
   for one or two climbers, 1.8 m for three), so the climbers get in each
-  other's way. Hand spots go on hand holds only: never on Kilter's
+  other's way; where it doesn't fit in the middle of the wall, it moves up to
+  10 cm to one side. Hand spots go on hand holds only: never on Kilter's
   screw-ons, and with the board's catalogue never on a hold its climbs use
   mostly as a foot or rarely as a hand. The called holds no longer stay dark
   when the board misses the end of a blink: half a second after every blink

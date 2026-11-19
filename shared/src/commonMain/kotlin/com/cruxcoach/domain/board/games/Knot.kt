@@ -6,6 +6,7 @@ import com.cruxcoach.domain.board.HoldRole
 import kotlin.math.hypot
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /**
@@ -68,12 +69,15 @@ data class KnotField(val climbers: Int, val stripes: List<KnotStripe>) {
  * Where a field's spots sit, before the round gives the stripes their
  * colours: stripes from left to right, each with hand and foot spots.
  * [pattern] says which colour of a round's order each stripe takes (0 for
- * the first …): the colours repeat across the field.
+ * the first …): the colours repeat across the field. [offsetM]: how far the
+ * field sits right of the wall's middle (left when negative), see
+ * [Knot.FIELD_SHIFT_M].
  */
 data class KnotLayout(
     val climbers: Int,
     val stripes: List<Pair<List<Int>, List<Int>>>,
     val pattern: List<Int> = stripes.indices.toList(),
+    val offsetM: Double = 0.0,
 ) {
     /** This layout lit with [order]: each stripe in the colour its [pattern] picks. */
     fun field(order: List<KnotColour>): KnotField {
@@ -267,8 +271,9 @@ object Knot {
     private const val ROUNDING = 1e-9
 
     /**
-     * The field for [climbers] on [rows] at [spacing]: stripes side by side in [colours], centred on the wall and
-     * [fieldWidthM] wide in all (the whole wall when it is narrower), as many as [stripeCount] says. Every climber gets
+     * The field for [climbers] on [rows] at [spacing]: stripes side by side in [colours], centred on the wall (up to
+     * [FIELD_SHIFT_M] to one side where it doesn't fit there) and [fieldWidthM] wide in all (the whole wall when it is
+     * narrower), as many as [stripeCount] says. Every climber gets
      * [holds] hand spots (from [HANDS_FROM_M] to [HANDS_TO_M]) and foot spots (up to [FEET_TO_M]) of each colour within
      * the spacing's reach of the middle of their part; neighbours share the stripes between them. The spots of a stripe
      * sit at evenly spread heights. Spots of one colour keep [SPOT_SPACING_M] from each other where the wall allows,
@@ -285,9 +290,10 @@ object Knot {
      * hold farthest from the others. Of [DRAWS] such fields the one with the fewest spots too close to another wins,
      * then the one whose colours and climbers' parts come closest to equally good.
      *
-     * Null when [climbers] don't fit ([maxClimbers]) or when, from the middle of a climber's part, a colour has fewer
-     * than [holds] hand or foot spots within the spacing's reach ([reachLimitM]: half a stripe or [REACH_SLACK_M] beyond
-     * it, whichever is more): the wall can't fit that step.
+     * Null when [climbers] don't fit ([maxClimbers]) or when, wherever the field sits within [FIELD_SHIFT_M] of the
+     * middle, from the middle of a climber's part a colour has fewer than [holds] hand or foot spots within the
+     * spacing's reach ([reachLimitM]: half a stripe or [REACH_SLACK_M] beyond it, whichever is more): the wall can't fit
+     * that step.
      */
     fun layout(
         rows: WallRows,
@@ -301,15 +307,31 @@ object Knot {
         feetOnly: Set<Int> = emptySet(),
     ): KnotLayout? {
         if (climbers !in PLAYERS || colours.isEmpty() || climbers > maxClimbers(rows, metresPerUnit)) return null
+        // In the middle of the wall where it fits; else a little to one side, where the stripe edges fall otherwise
+        // between the columns of holds.
+        return fieldOffsets(rows, climbers, metresPerUnit).firstNotNullOfOrNull { offset ->
+            layoutAt(rows, climbers, colours, metresPerUnit, bigHolds, spacing, draw, holds, feetOnly, offset)
+        }
+    }
+
+    /** [layout] with the field [offset] right of the wall's middle. */
+    private fun layoutAt(
+        rows: WallRows,
+        climbers: Int,
+        colours: List<KnotColour>,
+        metresPerUnit: Double,
+        bigHolds: Set<Int>,
+        spacing: KnotSpacing,
+        draw: KnotDraw?,
+        holds: KnotHolds,
+        feetOnly: Set<Int>,
+        offset: Double,
+    ): KnotLayout? {
         val wall = rows.holds
         val lowest = wall.minOf { it.y }
         fun heightM(hold: WallHold) = LOWEST_ROW_M + (hold.y - lowest) * metresPerUnit
         fun xM(hold: WallHold) = hold.x * metresPerUnit
-        val left = wall.minOf { it.x } * metresPerUnit
-        val right = wall.maxOf { it.x } * metresPerUnit
-        // A field wider than the wall takes the whole wall; the outer holds sit half a grid inside its edges.
-        val width = minOf(fieldWidthM(climbers), right - left + EDGE_M)
-        val start = (left + right) / 2 - width / 2
+        val (start, width) = fieldSpan(rows, climbers, metresPerUnit, offset)
         val count = stripeCount(width, climbers, colours, spacing)
         val pattern = pattern(colours, count)
         val stripeWidth = width / count
@@ -507,7 +529,20 @@ object Knot {
                 )
                 ?: plain
         }
-        return chosen?.let { KnotLayout(climbers, it, pattern) }
+        return chosen?.let { KnotLayout(climbers, it, pattern, offset) }
+    }
+
+    /**
+     * Where the field for [climbers] on [rows] may sit, right of the wall's middle: there first, then up to
+     * [FIELD_SHIFT_M] to either side in steps of [SHIFT_STEP_M], as long as it stays on the wall. A field that takes the
+     * whole wall stays where it is.
+     */
+    private fun fieldOffsets(rows: WallRows, climbers: Int, metresPerUnit: Double): List<Double> {
+        val left = rows.holds.minOf { it.x } * metresPerUnit
+        val right = rows.holds.maxOf { it.x } * metresPerUnit
+        val room = (right - left + EDGE_M - fieldWidthM(climbers)) / 2
+        val steps = (1..(FIELD_SHIFT_M / SHIFT_STEP_M).roundToInt()).map { it * SHIFT_STEP_M }.filter { it <= room + ROUNDING }
+        return listOf(0.0) + steps.flatMap { listOf(it, -it) }
     }
 
     /**
@@ -515,19 +550,21 @@ object Knot {
      * the colours' nearest hand spots ([reach] over the field as [layout] lays it out).
      */
     fun handReach(rows: WallRows, layout: KnotLayout, metresPerUnit: Double): Double {
-        val left = rows.holds.minOf { it.x } * metresPerUnit
-        val right = rows.holds.maxOf { it.x } * metresPerUnit
-        val width = minOf(fieldWidthM(layout.climbers), right - left + EDGE_M)
+        val (start, width) = fieldSpan(rows, layout.climbers, metresPerUnit, layout.offsetM)
         val spots = layout.stripes.indices.flatMap { i -> layout.stripes[i].first.map { rows.holdOf(it)!!.x * metresPerUnit to layout.pattern[i] } }
-        return reach((left + right) / 2 - width / 2, width, layout.climbers, spots, layout.pattern.maxOrNull()?.plus(1) ?: 0).first
+        return reach(start, width, layout.climbers, spots, layout.pattern.maxOrNull()?.plus(1) ?: 0).first
     }
 
-    /** Where the field for [climbers] on [rows] begins and how wide it is, in metres, as [layout] lays it out. */
-    fun fieldSpan(rows: WallRows, climbers: Int, metresPerUnit: Double): Pair<Double, Double> {
+    /**
+     * Where the field for [climbers] on [rows] begins and how wide it is, in metres, as [layout] lays it out: centred on
+     * the wall, moved by [offsetM] ([KnotLayout.offsetM]). A field wider than the wall takes the whole wall; the outer
+     * holds sit half a grid inside its edges.
+     */
+    fun fieldSpan(rows: WallRows, climbers: Int, metresPerUnit: Double, offsetM: Double = 0.0): Pair<Double, Double> {
         val left = rows.holds.minOf { it.x } * metresPerUnit
         val right = rows.holds.maxOf { it.x } * metresPerUnit
         val width = minOf(fieldWidthM(climbers), right - left + EDGE_M)
-        return (left + right) / 2 - width / 2 to width
+        return (left + right) / 2 - width / 2 + offsetM to width
     }
 
     /**
@@ -536,10 +573,7 @@ object Knot {
      * climber's feet are never called to such a colour.
      */
     fun singleFootColours(rows: WallRows, layout: KnotLayout, metresPerUnit: Double, spacing: KnotSpacing): List<Set<Int>> {
-        val left = rows.holds.minOf { it.x } * metresPerUnit
-        val right = rows.holds.maxOf { it.x } * metresPerUnit
-        val width = minOf(fieldWidthM(layout.climbers), right - left + EDGE_M)
-        val start = (left + right) / 2 - width / 2
+        val (start, width) = fieldSpan(rows, layout.climbers, metresPerUnit, layout.offsetM)
         val limit = reachLimitM(spacing, width / layout.stripes.size.coerceAtLeast(1))
         val feet = layout.stripes.indices.flatMap { i -> layout.stripes[i].second.map { rows.holdOf(it)!!.x * metresPerUnit to layout.pattern[i] } }
         return List(layout.climbers) { part ->
@@ -571,6 +605,12 @@ object Knot {
 
     /** Room beyond the outer holds when a field takes the whole wall. */
     private const val EDGE_M = 0.2
+    /**
+     * How far a field may move from the wall's middle when it doesn't fit there. With stripes about as wide as two columns
+     * of holds, the centred field can put a column on a stripe's edge and leave the stripe next to it a single column.
+     */
+    const val FIELD_SHIFT_M = 0.1
+    private const val SHIFT_STEP_M = 0.0125
     /** A big hold this much farther from its target still wins. */
     private const val BIG_HOLD_BONUS_M = 0.1
     /** In a draw, a big hold is this many times as likely as another. */
