@@ -10,8 +10,10 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertRangeInfoEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.ui.theme.CruxCoachTheme
 import org.junit.Assert.assertEquals
@@ -77,7 +79,42 @@ class KnotStepSliderTest {
     }
 
     @Test
-    fun aGreyedStopInTheMiddleIsSkipped() {
+    fun aFingerOverTheGreyedMiddleKeepsTheThumbAndCrossesItTheWayItMoves() {
+        val slider = Slider("close")
+        show(slider, onOffer = setOf("close", "wide"))
+        val node = compose.onNodeWithTag("slider")
+        // Down at the left end and into the middle third: on to wide, once, however long the finger rests and wobbles.
+        node.performTouchInput {
+            // The node reaches past the window's edges (the thumb's room): touch well inside them.
+            down(Offset(width * 0.1f, centerY))
+            moveTo(Offset(width * 0.5f, centerY))
+            repeat(20) {
+                moveBy(Offset(3f, 0f))
+                moveBy(Offset(-3f, 0f))
+            }
+        }
+        compose.waitForIdle()
+        assertEquals(listOf("wide"), slider.changes)
+        node.assertRangeInfoEquals(ProgressBarRangeInfo(2f, 0f..2f, 1))
+        // Over to the right end and back into the middle: on to close, once.
+        node.performTouchInput {
+            moveTo(Offset(width * 0.9f, centerY))
+            moveTo(Offset(width * 0.5f, centerY))
+            repeat(20) {
+                moveBy(Offset(3f, 0f))
+                moveBy(Offset(-3f, 0f))
+            }
+            up()
+        }
+        compose.waitForIdle()
+        assertEquals(listOf("wide", "close"), slider.changes)
+        assertEquals("close", slider.selected)
+        assertEquals(1, slider.settled)
+        node.assertRangeInfoEquals(ProgressBarRangeInfo(0f, 0f..2f, 1))
+    }
+
+    @Test
+    fun aGreyedStopInTheMiddleIsPassedByKeyOrScreenReader() {
         val slider = Slider("close")
         show(slider, onOffer = setOf("close", "wide"))
         // One step up, as a key or a screen reader moves it, onto the greyed middle: on to the next step on offer that way.

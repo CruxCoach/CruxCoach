@@ -3556,6 +3556,10 @@
         <item quantity="one">%1$s: doesn’t fit this wall for %2$d player.</item>
         <item quantity="other">%1$s: doesn’t fit this wall for %2$d players.</item>
     </plurals>
+    <plurals name="knot_holds_same_reach">
+        <item quantity="one">%1$s: %2$s reaches no farther here for %3$d player.</item>
+        <item quantity="other">%1$s: %2$s reaches no farther here for %3$d players.</item>
+    </plurals>
     <plurals name="knot_spacing_same">
         <item quantity="one">%1$s: no farther reach here for %2$d player.</item>
         <item quantity="other">%1$s: no farther reach here for %2$d players.</item>

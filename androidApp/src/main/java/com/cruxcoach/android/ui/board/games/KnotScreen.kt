@@ -28,6 +28,11 @@ import androidx.compose.material3.Surface
 import com.cruxcoach.domain.board.games.GAME_LEVELS
 import com.cruxcoach.domain.board.games.KnotHolds
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
@@ -62,7 +67,6 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.KnotColour
 import com.cruxcoach.domain.board.games.KnotSpacing
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import java.util.Locale
 
@@ -286,7 +290,13 @@ internal fun KnotSliders(state: WallGamesState, actions: WallGamesActions) {
                 knot.holdsTooMany.takeIf { it.isNotEmpty() }?.let { many ->
                     stringResource(R.string.knot_holds_too_many, many.sorted().map { stringResource(it.labelRes) }.joinToString(", "))
                 },
-                KnotHolds.entries.filter { it !in knot.holdsOffered && it !in knot.holdsTooMany }.takeIf { it.isNotEmpty() }?.let { greyed ->
+                knot.holdsSameReach.takeIf { it.isNotEmpty() }?.let { same ->
+                    pluralStringResource(
+                        R.plurals.knot_holds_same_reach, knot.atWall, same.sorted().map { stringResource(it.labelRes) }.joinToString(", "),
+                        stringResource(knot.spacing.labelRes), knot.atWall,
+                    )
+                },
+                KnotHolds.entries.filter { it !in knot.holdsOffered && it !in knot.holdsTooMany && it !in knot.holdsSameReach }.takeIf { it.isNotEmpty() }?.let { greyed ->
                     pluralStringResource(R.plurals.knot_holds_no_fit, knot.atWall, greyed.map { stringResource(it.labelRes) }.joinToString(", "), knot.atWall)
                 },
             ).joinToString("\n").ifEmpty { null },
@@ -314,24 +324,56 @@ internal fun <T> KnotStepSlider(
     val index = steps.indexOf(selected).coerceAtLeast(0)
     var position by remember(index) { mutableFloatStateOf(index.toFloat()) }
     val offered = steps.indices.filter { enabled(steps[it]) }
+    val finger = remember { SliderFinger() }
+    val thumb by rememberUpdatedState(index)
     Column {
         Text(title, style = MaterialTheme.typography.titleSmall)
         Slider(
             value = position,
             onValueChange = { value ->
-                // A greyed stop doesn't take the thumb: it stays on the nearest step on offer. Between two as near, the
-                // one in the direction it moves, so a step by key or by a screen reader's swipe passes a greyed stop.
-                val nearest = offered.minWithOrNull(compareBy<Int>({ abs(it - value) }, { if (value > index) -it else it })) ?: return@Slider
-                position = if (value.roundToInt() in offered) value else nearest.toFloat()
-                val step = steps[nearest]
-                if (step != selected) onChange(step)
+                // Where the move is and where it comes from: a finger by the stops it crosses, a key press or a screen
+                // reader's step from the thumb. Not from the step the thumb went to: over a greyed stop, which the
+                // slider reports on every move, that would flip the thumb back and forth.
+                val stop = finger.stop ?: value.roundToInt()
+                val from = if (finger.stop != null) finger.from ?: index else index
+                // A greyed stop doesn't take the thumb: on to the next step on offer the way the move goes, else back to
+                // the nearest one. A finger resting there leaves it where it went.
+                val target = when {
+                    stop in offered -> stop
+                    stop > from -> offered.firstOrNull { it > stop } ?: offered.lastOrNull { it < stop }
+                    else -> offered.lastOrNull { it < stop } ?: offered.firstOrNull { it > stop }
+                } ?: return@Slider
+                position = target.toFloat()
+                if (steps[target] != selected) onChange(steps[target])
             },
-            onValueChangeFinished = onSettled,
+            onValueChangeFinished = {
+                // The move is over; the slider may hand on a drag's last steps after the finger has lifted, so only now.
+                finger.stop = null
+                finger.from = null
+                onSettled()
+            },
             enabled = offered.size > 1,
             valueRange = 0f..(steps.size - 1).toFloat(),
             steps = (steps.size - 2).coerceAtLeast(0),
             colors = SliderDefaults.colors(thumbColor = CruxCoachDesign.colors.brandAccent, activeTrackColor = CruxCoachDesign.colors.brandAccent),
-            modifier = Modifier.fillMaxWidth().testTag(tag),
+            modifier = Modifier.fillMaxWidth().testTag(tag).pointerInput(steps.size) {
+                // Follows the finger without taking its events from the slider: which stop it is over, and the one before.
+                fun stopAt(x: Float) = (x / size.width * (steps.size - 1)).roundToInt().coerceIn(steps.indices)
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    finger.from = thumb
+                    finger.stop = stopAt(down.position.x)
+                    while (true) {
+                        val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id }
+                        if (change == null || !change.pressed) break
+                        val stop = stopAt(change.position.x)
+                        if (stop != finger.stop) {
+                            finger.from = finger.stop
+                            finger.stop = stop
+                        }
+                    }
+                }
+            },
         )
         // Five stops don't fit a label each at a large font: then the ends only, with the value in the title.
         val ends = steps.size > 3
@@ -365,6 +407,12 @@ internal fun <T> KnotStepSlider(
             )
         }
     }
+}
+
+/** Which of a [KnotStepSlider]'s stops a finger on it is over ([stop]), and the one it came from ([from]); null without one. */
+private class SliderFinger {
+    var stop: Int? = null
+    var from: Int? = null
 }
 
 /** Material's alpha for disabled content. */
