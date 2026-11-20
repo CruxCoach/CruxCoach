@@ -765,10 +765,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and feature requests, the report lists and the crash report, press and hold a text to
   select it, with Copy and Select all. Web links in it (http and https) open in the browser.
   A tap on a card still opens it or marks an announcement read.
-- The default relays use nostr.mom and offchain.pub instead of nostr-pub.wellorder.net and
-  nostr.oxtr.dev, which no longer answer; messages to and from the developer and bug and
-  crash reports had only two working relays left. The saved relay list swaps them too;
-  relays from your own relay list stay as they are.
+- The default relays use nostr.mom and purplerelay.com instead of
+  nostr-pub.wellorder.net and nostr.oxtr.dev, which no longer answer; messages to and from
+  the developer and bug and crash reports had only two working relays left. The saved relay
+  list swaps them too; relays from your own relay list stay as they are.
+- A crash report is cut to fit one message (about 12 KB; the start and the end of the
+  stack trace stay), so it reaches every relay: relay.primal.net refuses larger messages,
+  and a very large report could not be sent at all.
 
 ## [0.2.4] - 2026-10-25
 

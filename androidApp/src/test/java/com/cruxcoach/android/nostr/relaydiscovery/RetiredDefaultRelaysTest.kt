@@ -35,11 +35,11 @@ class RetiredDefaultRelaysTest {
     )
 
     @Test
-    fun `the defaults take nostr mom and offchain pub instead of wellorder and oxtr`() {
+    fun `the defaults take nostr mom and purplerelay instead of wellorder and oxtr`() {
         val urls = NostrConfig.DEFAULT_RELAYS.map { it.url }
 
         assertEquals(
-            listOf("wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://nostr.mom", "wss://offchain.pub"),
+            listOf("wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://nostr.mom", "wss://purplerelay.com"),
             urls,
         )
         NostrConfig.DEFAULT_RELAYS.forEach { assertTrue(it.url, it.read && it.write) }
@@ -67,7 +67,7 @@ class RetiredDefaultRelaysTest {
         assertEquals(
             listOf(
                 "wss://my.relay.example.com", wellorder,
-                "wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://nostr.mom", "wss://offchain.pub",
+                "wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://nostr.mom", "wss://purplerelay.com",
             ),
             fixed.relays.map { it.url },
         )

@@ -21,17 +21,21 @@ object NostrConfig {
     // stopped answering entirely (no WebSocket, no HTTP), so it was not a
     // fifth relay, it was a timeout on every fetch that looked like one.
     // wellorder (down since 2026-11-06) and oxtr (502 since 2026-11-19) were
-    // replaced by nostr.mom and offchain.pub for 0.2.5: with damus answering
-    // about every second request with 503, NIP-17 gift wraps were left with
-    // nos.lol and primal. Both new relays run strfry and stored fresh kind
-    // 1059 wraps in a read-only check on 2026-11-19. Saved relay lists swap
+    // replaced by nostr.mom and purplerelay.com for 0.2.5: with damus
+    // answering about every second request with 503, NIP-17 gift wraps were
+    // left with nos.lol and primal. Both new relays run strfry and, on
+    // 2026-11-20, stored a short gift wrap and one of crash-report size
+    // (27.8 KB), also dated 2 days back (nostr.mom refuses wraps dated older
+    // than about 26 days). Not offchain.pub, nor nostr.bitcoiner.social above
+    // about 4 KB: they refuse events from keys outside their web of trust,
+    // which a gift wrap's one-off key always is. Saved relay lists swap
     // retired defaults on read (withCurrentDefaults in RelayListResolver.kt).
     val DEFAULT_RELAYS = listOf(
         RelayConfig(url = "wss://relay.damus.io"),
         RelayConfig(url = "wss://nos.lol"),
         RelayConfig(url = "wss://relay.primal.net"),
         RelayConfig(url = "wss://nostr.mom"),
-        RelayConfig(url = "wss://offchain.pub")
+        RelayConfig(url = "wss://purplerelay.com")
     )
 
     /**
