@@ -43,6 +43,8 @@ class BoardPickerReselectTest {
     private fun chooseBoard(current: String, label: String) {
         compose.onNodeWithText(current).performClick()
         compose.onNode(hasText(label) and hasAnyAncestor(isPopup())).performClick()
+        // The list closes on a choice: without this, a tap that missed would pass as "nothing changed".
+        compose.onNode(isPopup()).assertDoesNotExist()
     }
 
     @Test fun `choosing the chosen board again keeps the version below it`() {

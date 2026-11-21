@@ -42,7 +42,8 @@ internal class BrowserTour(context: Context) {
 /**
  * The main menu's swipe and tap-beside gestures. While the tour runs, a swipe from the edge must
  * not pull the menu over a spotlight; an open menu still closes the usual ways. With the gestures
- * off altogether, a menu opened during an unfinished tour only closed with Back or an entry.
+ * off altogether, a menu opened from the logo while no spotlight covered it (a tour left at a
+ * climb-page step keeps its step) only closed with Back or an entry.
  */
 internal fun menuGesturesEnabled(menuOpen: Boolean, step: TourStep): Boolean =
     menuOpen || step == TourStep.INACTIVE || step == TourStep.DONE

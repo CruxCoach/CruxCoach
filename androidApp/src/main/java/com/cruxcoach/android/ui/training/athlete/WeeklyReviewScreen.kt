@@ -83,11 +83,6 @@ data class WeeklyReviewState(
 )
 
 /**
- * The weekly look back (a weekly report, climber version): what happened,
- * which structures carried the load, where strength went — kept separate from
- * the fast logging screens on purpose.
- */
-/**
  * The trend weight's change over the week from [start] to [end], or null when no weigh-in falls
  * after the week's first day: both ends are then the same older value, and the review read
  * "Trend weight: 0 kg this week" for a week without any weighing.
@@ -99,6 +94,11 @@ internal fun weekTrendChange(trend: List<TrendWeight.Point>, start: LocalDate, e
     return after - before
 }
 
+/**
+ * The weekly look back (a weekly report, climber version): what happened,
+ * which structures carried the load, where strength went — kept separate from
+ * the fast logging screens on purpose.
+ */
 @HiltViewModel
 class WeeklyReviewViewModel @Inject constructor(
     private val service: AthleteService,

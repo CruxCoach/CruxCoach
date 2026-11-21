@@ -609,7 +609,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   17, 2026"); they were German in English too.
 - Year in review: the note on the share sheet no longer says the image
   carries "nothing else" than your numbers; it names what the switches below
-  it add (your name, problem names, exact dates).
+  it add (your name, problem names, the exact days of your climbs).
 - Weekly review: a week without a weigh-in no longer reads "Trend weight:
   0 kg this week"; the line is left out.
 - Injuries: the pause rows write their dates like the injury card above

@@ -5,8 +5,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The main menu's gestures were off for the whole tour, so a menu opened during it (the tour's
- * logbook step asks for exactly that) did not close with a tap beside it or a swipe.
+ * The main menu's gestures were off for the whole tour. The logo opens the menu whenever no
+ * spotlight covers it (back on the list at a climb-page step, or with a tour left unfinished), and
+ * that menu did not close with a tap beside it or a swipe.
  */
 class MenuGesturesDuringTourTest {
     private val outsideTheTour = setOf(TourStep.INACTIVE, TourStep.DONE)
