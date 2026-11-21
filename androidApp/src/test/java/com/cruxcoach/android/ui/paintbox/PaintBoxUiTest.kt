@@ -25,6 +25,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -105,13 +106,16 @@ class PaintBoxUiTest {
             boardSize = BoardSize(10, 1, "Test", 0, 100, 0, 100, null),
             placements = mapOf(1 to BoardPlacement(1, 1, 1, 30, 30)),
         ))
+        // Atomic like the view model's own updates: the preview runs on a Default thread (unconfined effects)
+        // while the gesture writes on the test thread, and a read-then-write could put an old transform back.
         every { vm.imageTransform(any()) } answers {
-            state.value = state.value.copy(imageImport = state.value.imageImport!!.copy(transform = firstArg(), ready = false))
+            val transform = firstArg<PaintImageTransform>()
+            state.update { it.copy(imageImport = it.imageImport!!.copy(transform = transform, ready = false)) }
         }
         every { vm.imagePreview(any(), any()) } answers {
-            if (state.value.imageImport === firstArg<PaintImageSession>()) {
-                state.value = state.value.copy(imageImport = state.value.imageImport!!.copy(colors = secondArg(), ready = true))
-            }
+            val source = firstArg<PaintImageSession>()
+            val colors = secondArg<Map<Int, Int>>()
+            state.update { if (it.imageImport !== source) it else it.copy(imageImport = source.copy(colors = colors, ready = true)) }
         }
         compose.setContent { MaterialTheme { PaintImageEditor(state.collectAsState().value, vm) } }
         compose.onNodeWithTag("paintbox_image_canvas").performTouchInput {
