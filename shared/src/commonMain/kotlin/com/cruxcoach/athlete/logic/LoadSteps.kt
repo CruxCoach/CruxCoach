@@ -38,10 +38,23 @@ object LoadSteps {
      * climber under 18 or in the first year, and not in the return ramp after a break. [returnState] is asked last;
      * a return ramp that could not be worked out counts as one (fail closed, owner 2026-11-06).
      */
-    fun mayStepUp(comeback: Boolean, openInjury: Boolean, coach: CoachProfile, returnState: () -> Result<ReturnState?>): Boolean {
-        if (comeback || openInjury) return false
-        if (coach.ageBand == AgeBand.UNDER_16 || coach.ageBand == AgeBand.Y16_17 || coach.experience == ExperienceBand.UNDER_1) return false
-        return returnState().fold(onSuccess = { it == null }, onFailure = { false })
+    fun mayStepUp(comeback: Boolean, openInjury: Boolean, coach: CoachProfile, returnState: () -> Result<ReturnState?>): Boolean =
+        steps(comeback, openInjury, coach, returnState = returnState) == NextTargets.Steps.FULL
+
+    /**
+     * How far the plan may move from one training to the next ([NextTargets.Steps]): not at all in a comeback
+     * session, never upwards with an open injury, in the return ramp or in a lighter week ([lightWeek]: deload, taper
+     * – fewer sets at the same numbers), body-weight work only for a climber under 18 or in the first year. The same
+     * fail-closed reading as [mayStepUp].
+     */
+    fun steps(
+        comeback: Boolean, openInjury: Boolean, coach: CoachProfile, lightWeek: Boolean = false, returnState: () -> Result<ReturnState?>,
+    ): NextTargets.Steps = when {
+        comeback -> NextTargets.Steps.OFF
+        openInjury || lightWeek -> NextTargets.Steps.CAREFUL
+        returnState().fold(onSuccess = { it != null }, onFailure = { true }) -> NextTargets.Steps.CAREFUL
+        coach.ageBand == AgeBand.UNDER_16 || coach.ageBand == AgeBand.Y16_17 || coach.experience == ExperienceBand.UNDER_1 -> NextTargets.Steps.GENTLE
+        else -> NextTargets.Steps.FULL
     }
 
     /** Strength work that may step up after an easy training: loaded, not finger work. */

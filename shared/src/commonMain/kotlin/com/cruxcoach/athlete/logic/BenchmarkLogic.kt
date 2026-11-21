@@ -4,6 +4,7 @@ import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.model.Benchmark
+import com.cruxcoach.athlete.model.BenchmarkSource
 import com.cruxcoach.athlete.model.ExerciseSet
 import com.cruxcoach.athlete.model.Grip
 import com.cruxcoach.athlete.model.RoutineItem
@@ -31,6 +32,12 @@ data class Capacity(
     val fromOtherSide: Boolean = false,
     /** A careful start guess ([StartEstimate]), not a logged or entered value. */
     val estimated: Boolean = false,
+    /**
+     * When the athlete said so (epoch ms): a value they entered, estimated or tested, or a load they lowered by hand
+     * ([OwnLoads]). Null for what the coach learned from trainings. A newer word of the athlete wins over the last
+     * training ([NextTargets]).
+     */
+    val statedAt: Long? = null,
 )
 
 /**
@@ -161,7 +168,10 @@ object BenchmarkMath {
      * which today's plan would be 5 reps at +20 kg (RIR 2), a hang the
      * capacity it would be planned at, reps and holds the maximum they are 70 % of.
      */
-    fun capacity(def: ExerciseDefinition, b: Benchmark, bodyweightKg: Double?): Capacity? {
+    fun capacity(def: ExerciseDefinition, b: Benchmark, bodyweightKg: Double?): Capacity? =
+        measured(def, b, bodyweightKg)?.copy(statedAt = b.measuredAt.takeIf { b.source != BenchmarkSource.AUTO || b.sets != null })
+
+    private fun measured(def: ExerciseDefinition, b: Benchmark, bodyweightKg: Double?): Capacity? {
         val bw = b.bodyweightKg ?: bodyweightKg
         if (b.sets != null) return fromWorkingSets(def, b, bw)
         return when (capacityKind(def)) {
@@ -328,7 +338,9 @@ object LoadPrescriber {
                     val lower = snapped - incrementKg
                     when {
                         reps >= bottom -> LoadTarget(snapped, reps.coerceAtMost(top), null, capacity)
-                        incrementKg > 0 && (def.load == LoadMode.BODYWEIGHT_PLUS || lower > 1e-9) -> LoadTarget(lower, top, null, capacity)
+                        // The lighter step, where there is one: no dumbbell under its smallest step, no "assisted" leg work.
+                        incrementKg > 0 && (if (def.load == LoadMode.BODYWEIGHT_PLUS) lower >= -1e-9 || assistable(def) else lower > 1e-9) ->
+                            LoadTarget(lower, top, null, capacity)
                         else -> LoadTarget(snapped, reps.coerceAtLeast(1), null, capacity)
                     }
                 }

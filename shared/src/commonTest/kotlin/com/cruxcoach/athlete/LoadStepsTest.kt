@@ -50,6 +50,16 @@ class LoadStepsTest {
         assertEquals(false, LoadSteps.mayStepUp(false, false, adult) { Result.success(ramp) })
         // A return ramp that could not be worked out keeps loads careful (fail closed, owner 2026-11-06).
         assertEquals(false, LoadSteps.mayStepUp(false, false, adult) { Result.failure(IllegalStateException("no data")) })
+        // The same reading as levels ([NextTargets.Steps]): a comeback session keeps its plan, an injury, the return
+        // ramp and a lighter week never step up, the young and the new step body-weight work only.
+        assertEquals(NextTargets.Steps.FULL, LoadSteps.steps(false, false, adult, returnState = noRamp))
+        assertEquals(NextTargets.Steps.OFF, LoadSteps.steps(comeback = true, openInjury = true, coach = adult, returnState = noRamp))
+        assertEquals(NextTargets.Steps.CAREFUL, LoadSteps.steps(false, true, adult.copy(ageBand = AgeBand.UNDER_16), returnState = noRamp))
+        assertEquals(NextTargets.Steps.CAREFUL, LoadSteps.steps(false, false, adult, lightWeek = true, returnState = noRamp))
+        assertEquals(NextTargets.Steps.CAREFUL, LoadSteps.steps(false, false, adult.copy(ageBand = AgeBand.UNDER_16)) { Result.success(ramp) })
+        assertEquals(NextTargets.Steps.CAREFUL, LoadSteps.steps(false, false, adult) { Result.failure(IllegalStateException("no data")) })
+        assertEquals(NextTargets.Steps.GENTLE, LoadSteps.steps(false, false, adult.copy(ageBand = AgeBand.Y16_17), returnState = noRamp))
+        assertEquals(NextTargets.Steps.GENTLE, LoadSteps.steps(false, false, adult.copy(experience = ExperienceBand.UNDER_1), returnState = noRamp))
     }
 
     @Test
@@ -69,7 +79,7 @@ class LoadStepsTest {
         val history = sets(wrist, 3.0, rir = 1)
         var n = 0
         fun plan(item: RoutineItem, capacity: Capacity?) = WorkoutPlanner.plan("w2", 0, item, catalog, history, emptyList(), 70.0,
-            capacityFor = { capacity }, incrementKg = 1.0, newId = { "id${n++}" }, stepUp = true).sets
+            capacityFor = { capacity }, incrementKg = 1.0, newId = { "id${n++}" }, steps = NextTargets.Steps.FULL).sets
         // A value that would plan 6 kg plans 4 kg: one step from the 3 kg of last time.
         val strong = Capacity(CapacityKind.E1RM_TOTAL, 6.0 * (1 + 12 / 30.0), 70.0)
         assertEquals(listOf(4.0, 4.0, 4.0), plan(RoutineItem(wrist.slug, repsMax = 10), strong).map { it.loadKg })

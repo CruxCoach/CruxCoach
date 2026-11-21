@@ -133,17 +133,25 @@ object WeekPlanSuggester {
         val plan = mutableMapOf<Int, String>()
         val climbingEntry = climbingEntry(coach, logbook, equipment)
         climbing.forEach { plan[it] = climbingEntry }
+        val other = rotation.firstOrNull { it != FINGER } ?: PULL
         var finger = 0
-        chosen.forEachIndexed { index, day ->
-            // No max finger work the day after a climbing day, and none the day before one: the day planner warns about
-            // exactly that, so the coach's own week must not start with it (phone check 2026-11-21).
-            val afterClimbing = ((day + 5) % 7 + 1) in climbing
-            val beforeClimbing = (day % 7 + 1) in climbing
+        val entries = chosen.indices.map { index ->
             var entry = rotation[index % rotation.size]
-            if (entry == FINGER && (afterClimbing || beforeClimbing || finger > 0)) entry = rotation.firstOrNull { it != FINGER } ?: PULL
+            if (entry == FINGER && finger > 0) entry = other
             if (entry == FINGER) finger++
-            plan[day] = entry
+            entry
+        }.toMutableList()
+        // No max finger work the day after a climbing day, and none the day before one: the day planner warns about
+        // exactly that, so the coach's own week must not start with it (phone check 2026-11-21). The finger day moves
+        // to an off-wall day that fits; only without one it gives way (review 2026-11-21: it was dropped although
+        // Saturday was free).
+        fun fingerFits(day: Int) = ((day + 5) % 7 + 1) !in climbing && (day % 7 + 1) !in climbing
+        val at = entries.indexOf(FINGER)
+        if (at >= 0 && !fingerFits(chosen[at])) {
+            val to = chosen.indices.firstOrNull { it != at && fingerFits(chosen[it]) }
+            if (to == null) entries[at] = other else { entries[at] = entries[to]; entries[to] = FINGER }
         }
+        chosen.forEachIndexed { index, day -> plan[day] = entries[index] }
         val free = (1..7).filter { it !in plan }
         val mobility = free.size >= 2 && (FocusArea.MOBILITY in coach.focus || CoachLogic.needsLongerRecovery(coach) || free.size >= 3)
         if (mobility) {

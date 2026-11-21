@@ -47,8 +47,12 @@ object WorkoutPlanner {
         /** Performance value per side (null = two-handed / not one-sided); null when none is known. */
         capacityFor: (Side?) -> Capacity? = { null },
         incrementKg: Double = 1.0,
-        /** Loads may take the bigger step after an easy training ([LoadSteps]); false while anything keeps them careful. */
-        stepUp: Boolean = false,
+        /** How far the plan may move from the last training ([LoadSteps.steps]); the weight steps need [NextTargets.Steps.FULL]. */
+        steps: NextTargets.Steps = NextTargets.Steps.GENTLE,
+        /** The clock (epoch ms): a last training long ago says nothing about today. */
+        now: Long? = null,
+        /** What the step stands on, when it is not all of [history]: without trainings that today's form trimmed. */
+        stepHistory: List<ExerciseSet> = history,
         newId: () -> String,
     ): PlannedBlock {
         val def = catalog.fallbackFor(item.slug)
@@ -75,7 +79,7 @@ object WorkoutPlanner {
         // training with reserve, a step back after one that was too hard, bigger steps after an easy one and small
         // loads one step at a time ([LoadSteps]). Only where the load was planned, never over a load the athlete chose.
         val targets = sides.associateWith { side ->
-            NextTargets.plan(def, item, capacityFor(side), history, side, bodyweightKg, incrementKg, stepUp, exceptWorkout = workoutId)
+            NextTargets.plan(def, item, capacityFor(side), stepHistory, side, bodyweightKg, incrementKg, steps, exceptWorkout = workoutId, now = now)
         }
         // A circuit member's sets know their circuit; their rest is the short one to the next exercise.
         val circuit = item.circuit?.takeIf { Circuits.eligible(def, item) }

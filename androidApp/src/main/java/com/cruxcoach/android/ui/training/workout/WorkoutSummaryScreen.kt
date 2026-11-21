@@ -27,6 +27,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.athlete.AthleteService
+import com.cruxcoach.android.athlete.NextLine
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
@@ -101,19 +102,6 @@ data class SummaryState(
     val stepTaken: Pair<String, String>? = null,
 )
 
-/**
- * One exercise of "next time": today's work sets, what the next training plans, and the exercise of its chain on
- * offer – the next step once the top of the range went with reserve, a step back after a training that was too hard.
- */
-data class NextLine(
-    val def: ExerciseDefinition,
-    val side: com.cruxcoach.athlete.model.Side?,
-    val done: List<ExerciseSet>,
-    val next: com.cruxcoach.athlete.logic.NextTargets.Next,
-    val offer: ExerciseDefinition? = null,
-    val offerHarder: Boolean = false,
-)
-
 /** "Ja" ([until] set) or "Nur heute" for [changes]; [eventIds] go again with "Rückgängig". */
 data class KeepAnswer(val changes: List<com.cruxcoach.athlete.logic.PreferenceLearning.Change>, val eventIds: List<String>,
                       val until: kotlinx.datetime.LocalDate?)
@@ -183,20 +171,7 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
                     (targets.proteinG - eaten.sumOf { it.proteinG ?: 0.0 }).roundToInt().coerceAtLeast(0))
             }.getOrNull()
             // What the next training of each exercise plans, read the way the planner will read it: the tip is the plan.
-            val stepUp = runCatching { service.loadsMayStepUp() }.getOrDefault(false)
-            val owned = profile.equipment.takeIf { profile.equipmentConfigured }
-            fun there(def: ExerciseDefinition) = owned == null || def.equipment.all { e -> com.cruxcoach.athlete.catalog.EquipmentV2.satisfied(e, owned) }
-            val nextTime = sets.filter { it.setType == SetType.WORK }.groupBy { it.exerciseSlug to it.side }.mapNotNull { (key, done) ->
-                val def = catalog[key.first] ?: return@mapNotNull null
-                if (def.kind == ExerciseKind.CLIMB || def.kind == ExerciseKind.INTERVAL) return@mapNotNull null
-                val next = runCatching {
-                    service.nextTarget(com.cruxcoach.athlete.logic.WorkoutPlanner.itemFor(def).copy(sets = done.size), key.second, stepUp = stepUp)
-                }.getOrNull() ?: return@mapNotNull null
-                val back = next.move == com.cruxcoach.athlete.logic.NextTargets.Move.DOWN || next.move == com.cruxcoach.athlete.logic.NextTargets.Move.RELEARN
-                val harder = def.harder?.let { catalog[it] }?.takeIf { next.atTop && there(it) }
-                val easier = def.easier?.let { catalog[it] }?.takeIf { back && there(it) }
-                NextLine(def, key.second, done.sortedBy { it.setIndex }, next, harder ?: easier, harder != null)
-            }
+            val nextTime = runCatching { service.nextTime(workoutId) }.getOrDefault(emptyList())
             _state.update {
                 it.copy(
                     nextTime = nextTime,
@@ -308,7 +283,7 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
                 }, service.catalog)
                 repo.saveRoutine(r.copy(items = items, updatedAt = System.currentTimeMillis()))
             }
-            undoSwapEvent = service.keepStep(from, to, _state.value.workout?.id)
+            undoSwapEvent = service.keepStep(from, to)
             _state.update { s -> s.copy(stepTaken = from to to, nextTime = s.nextTime.map { if (it.def.slug == from) it.copy(offer = null) else it }) }
         }
     }

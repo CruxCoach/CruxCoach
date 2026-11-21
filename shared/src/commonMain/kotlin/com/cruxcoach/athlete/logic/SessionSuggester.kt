@@ -1100,7 +1100,8 @@ object SessionSuggester {
             val r = routine.copy(id = "suggestion", items = items, builtinKey = "suggestion")
             return finish(ctx, SuggestionFocus.PLANNED, r, planned)
         }
-        reasons += when {
+        // A starter workout that does not fit the place or the athlete's exercises says nothing about an injury.
+        if (injuryRemoved + fingerRemoved + guardRemoved > 0) reasons += when {
             injuryRemoved >= fingerRemoved && injuryRemoved >= guardRemoved -> SuggestionReason.PLAN_REPLACED_FOR_INJURY
             fingerRemoved >= guardRemoved -> fingerBlock ?: SuggestionReason.PLAN_REPLACED_FOR_INJURY
             else -> guard.reason ?: SuggestionReason.PLAN_REPLACED_FOR_INJURY
@@ -1118,12 +1119,15 @@ object SessionSuggester {
      * athlete's own plan. An exercise gives way when
      *
      * - the place has no equipment for it (once the equipment is set up; [alsoThere] counts as there),
-     * - the athlete kept another exercise of its chain after a training (the next step, or a step back), or
+     * - the athlete stepped from it to another exercise of its chain after a training (the next step, or a step back), or
      * - the athlete is still with the classics and it would be new to them: in a warm-up always, in the main work
      *   beyond the session's limit of new exercises.
      *
      * Its place goes to the kept exercise, else to the best Basic or known exercise for the same job ([familiarSwap]),
-     * with the template's sets and rests. Without one it is left out.
+     * with the template's sets and rests. Without one it is left out. The kept exercise passes the same filters as any
+     * swap (place, injuries, youth rules, one chain per session) and takes only the place of the exercise it was
+     * stepped from – never that of another member of the chain (review 2026-11-21: "dead bug" gave way and both
+     * hollow exercises stood in the session).
      */
     internal fun fitTemplate(
         input: SuggestionInput, items: List<RoutineItem>, focus: SuggestionFocus, alsoThere: Set<EquipmentV2> = emptySet(),
@@ -1137,10 +1141,14 @@ object SessionSuggester {
         for (item in items) {
             if (item.test) continue
             val def = catalog.fallbackFor(item.slug)
-            val others = current.map { it.slug }.toSet() - item.slug
-            val next = input.kept.firstNotNullOfOrNull { k ->
-                catalog[k]?.takeIf { k != def.slug && k !in others && (owned == null || owned.matches(it)) &&
-                    catalog.chainOf(def.slug).any { c -> c.slug == k } }
+            val next = if (def.slug !in input.resting) null else {
+                val chain = catalog.chainOf(def.slug).map { it.slug }.toSet()
+                val keptHere = input.kept.filter { it != def.slug && it in chain }
+                if (keptHere.isEmpty()) null else swapCandidates(input, current, item, focus).firstOrNull { c ->
+                    c.slug in keptHere && (owned == null || owned.matches(c)) &&
+                        // Nothing an open injury asks to be careful with comes in by itself.
+                        InjuryAdvisor.assess(c, input.injuries).verdict.let { v -> v == InjuryVerdict.OK || v == InjuryVerdict.ONE_SIDE_ONLY }
+                }
             }
             val isNew = ExerciseFamiliarity.countsAsNew(input, def)
             val tooNew = classics && isNew && (item.warmup || newSoFar >= allowedNew)

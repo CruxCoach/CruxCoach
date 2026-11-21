@@ -3,6 +3,7 @@ package com.cruxcoach.athlete
 import com.cruxcoach.athlete.catalog.*
 import com.cruxcoach.athlete.logic.*
 import com.cruxcoach.athlete.logic.NextTargets.Move
+import com.cruxcoach.athlete.logic.NextTargets.Steps
 import com.cruxcoach.athlete.model.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,19 +34,23 @@ class NextTargetsTest {
 
     private fun item(d: ExerciseDefinition) = WorkoutPlanner.itemFor(d)
 
-    /** One training: three work sets with the same target; [done] and [rir] per set. */
-    private fun training(d: ExerciseDefinition, workout: String, at: Long, target: Int, done: List<Int>, rir: List<Int?>, load: Double? = null) =
+    /**
+     * One training: work sets with the same target; [done] and [rir] per set. [planned]: the load the plan gave the
+     * sets (the athlete changed it by hand when it differs from [load]; null = nothing was planned).
+     */
+    private fun training(d: ExerciseDefinition, workout: String, at: Long, target: Int?, done: List<Int>, rir: List<Int?>,
+                         load: Double? = null, planned: Double? = load) =
         done.indices.map { i ->
             val timed = d.kind == ExerciseKind.TIME || d.kind == ExerciseKind.HANG
             ExerciseSet("$workout-$i", workout, d.slug, 0, i, SetType.WORK,
                 targetReps = target.takeIf { !timed }, reps = done[i].takeIf { !timed },
-                targetDurationS = target.toDouble().takeIf { timed }, durationS = done[i].toDouble().takeIf { timed },
-                loadKg = load, targetLoadKg = load, rir = rir[i], completedAt = at + i)
+                targetDurationS = target?.toDouble().takeIf { timed }, durationS = done[i].toDouble().takeIf { timed },
+                loadKg = load, targetLoadKg = planned, bodyweightKg = 70.0, rir = rir[i], completedAt = at + i)
         }
 
-    private fun next(d: ExerciseDefinition, history: List<ExerciseSet>, capacity: Capacity? = null, mayStepUp: Boolean = true,
-                     item: RoutineItem = item(d), increment: Double = 1.0) =
-        NextTargets.plan(d, item, capacity, history, null, 70.0, increment, mayStepUp)
+    private fun next(d: ExerciseDefinition, history: List<ExerciseSet>, capacity: Capacity? = null, steps: Steps = Steps.FULL,
+                     item: RoutineItem = item(d), increment: Double = 1.0, now: Long? = null) =
+        NextTargets.plan(d, item, capacity, history, null, 70.0, increment, steps, now = now)
 
     private fun maxReps(n: Int) = Capacity(CapacityKind.MAX_REPS, n.toDouble(), 70.0)
     private fun maxSeconds(n: Int) = Capacity(CapacityKind.MAX_SECONDS, n.toDouble(), 70.0)
@@ -59,8 +64,8 @@ class NextTargetsTest {
         val first = training(pushUp, "w1", 1_000, target = 12, done = listOf(12, 12, 12), rir = listOf(3, 3, 3))
         assertEquals(13, LoadPrescriber.prescribe(pushUp, item(pushUp), maxReps(18), 70.0, 1.0)?.reps)
         assertEquals(NextTargets.Next(reps = 14, move = Move.UP_FAST), next(pushUp, first, maxReps(15)))
-        // Something keeps loads careful (youth, first year, a return ramp): one repetition, not two.
-        assertEquals(NextTargets.Next(reps = 13, move = Move.UP), next(pushUp, first, maxReps(15), mayStepUp = false))
+        // A climber under 18 or in the first year: one repetition, not two.
+        assertEquals(NextTargets.Next(reps = 13, move = Move.UP), next(pushUp, first, maxReps(15), steps = Steps.GENTLE))
     }
 
     @Test
@@ -78,10 +83,79 @@ class NextTargetsTest {
     }
 
     @Test
-    fun theValueWinsWhenItAsksForMore() {
+    fun theAthletesNewerWordDecidesAndAnOldTrainingSaysNothing() {
         val last = training(pushUp, "w1", 1_000, target = 10, done = listOf(10, 10, 10), rir = listOf(2, 2, 2))
-        // A test showed 30: 70 % of it is 21.
-        assertEquals(NextTargets.Next(reps = 21, move = Move.UP), next(pushUp, last, maxReps(30)))
+        // A test after the last training showed 30: 70 % of it is 21. A re-test that showed 8 plans 6 the same way
+        // (review 2026-11-21: 3 × 12 before a break and a new maximum of 8 planned 13).
+        assertEquals(NextTargets.Next(reps = 21), next(pushUp, last, maxReps(30).copy(statedAt = 5_000)))
+        assertEquals(NextTargets.Next(reps = 6), next(pushUp, last, maxReps(8).copy(statedAt = 5_000)))
+        // A value from before the training, or one the coach learned, does not: the plan follows the training.
+        assertEquals(NextTargets.Next(reps = 11, move = Move.UP), next(pushUp, last, maxReps(30).copy(statedAt = 500)))
+        assertEquals(NextTargets.Next(reps = 11, move = Move.UP), next(pushUp, last, maxReps(30)))
+        // Six weeks without the exercise: the value alone again.
+        val day = 86_400_000L
+        assertEquals(NextTargets.Next(reps = 11, move = Move.UP), next(pushUp, last, maxReps(20), now = 1_000 + 42 * day))
+        assertEquals(NextTargets.Next(reps = 14), next(pushUp, last, maxReps(20), now = 1_100 + 42 * day))
+    }
+
+    @Test
+    fun aStepBackStaysUntilTheTrainingWentWellAgain() {
+        // Review 2026-11-21: 14/11/9 at the limit planned 11, and after 11/11/11 "hard" the unchanged value planned 14 again.
+        val value = maxReps(20)
+        val bad = training(pushUp, "w1", 1_000, target = 14, done = listOf(14, 11, 9), rir = listOf(0, 0, 0))
+        assertEquals(NextTargets.Next(reps = 11, move = Move.DOWN), next(pushUp, bad, value))
+        val hard = training(pushUp, "w2", 2_000, target = 11, done = listOf(11, 11, 11), rir = listOf(1, 1, 1))
+        assertEquals(NextTargets.Next(reps = 11, move = Move.REPEAT), next(pushUp, bad + hard, value))
+        val well = training(pushUp, "w3", 3_000, target = 11, done = listOf(11, 11, 11), rir = listOf(2, 2, 2))
+        assertEquals(NextTargets.Next(reps = 12, move = Move.UP), next(pushUp, bad + hard + well, value))
+    }
+
+    @Test
+    fun setsLoggedWithoutAPlanAreNoRung() {
+        // One all-out set of 20 must not become the target of every set: the value decides (70 % of 20).
+        val free = training(pushUp, "w1", 1_000, target = null, done = listOf(20), rir = listOf(null))
+        assertEquals(NextTargets.Next(reps = 14), next(pushUp, free, maxReps(20)))
+    }
+
+    @Test
+    fun stretchesAndWarmUpsAreDoneAsWritten() {
+        // Review 2026-11-21: a 60 s stretch was planned at 42 s after its first training, for good.
+        val stretch = def("mobility.pigeon", ExerciseKind.TIME, LoadMode.NONE, defaults = Prescription(sets = 2, durationS = 60))
+            .copy(category = ExerciseCategoryV2.MOBILITY)
+        val last = training(stretch, "w1", 1_000, 60, listOf(60, 60), listOf(null, null))
+        assertEquals(NextTargets.Next(), next(stretch, last, maxSeconds(60)))
+        assertEquals(NextTargets.Next(), next(stretch, emptyList(), maxSeconds(60)))
+        // A mobility hold filed under legs is one too; strength work with a mobility side is not.
+        val squatHold = def("legs.deep_squat_hold", ExerciseKind.TIME, LoadMode.NONE, defaults = Prescription(sets = 3, durationS = 45))
+            .copy(category = ExerciseCategoryV2.LEGS, tags = listOf("mobility", "warmup"))
+        assertEquals(NextTargets.Next(), next(squatHold, training(squatHold, "w1", 1_000, 45, listOf(45, 45, 45), listOf(null, null, null)), maxSeconds(45)))
+        val cossack = pushUp.copy(slug = "legs.cossack_squat", category = ExerciseCategoryV2.LEGS, tags = listOf("mobility", "strength"))
+        val done = training(cossack, "w1", 1_000, 8, listOf(8, 8, 8), listOf(2, 2, 2))
+        assertEquals(NextTargets.Next(reps = 9, move = Move.UP), next(cossack, done, maxReps(12)))
+    }
+
+    @Test
+    fun nothingStepsUpInAComebackSessionAroundAnInjuryOrInALighterWeek() {
+        // Review 2026-11-21 (safety): a wrist comeback hold of 45 s grew to 90 s in six sessions on the injured side.
+        val wristHold = def("antagonist.isometric_wrist_extension", ExerciseKind.TIME, LoadMode.NONE, defaults = Prescription(sets = 4, durationS = 45))
+        val held = training(wristHold, "w1", 1_000, 45, listOf(45, 45, 45, 45), listOf(null, null, null, null))
+        val rehab = item(wristHold)
+        // A comeback session: the value-based plan as before this rule, never the step.
+        assertEquals(NextTargets.Next(durationS = 35), next(wristHold, held, maxSeconds(50), steps = Steps.OFF, item = rehab))
+        // An open injury, the return ramp, a lighter week: the same again.
+        assertEquals(NextTargets.Next(durationS = 45, move = Move.REPEAT), next(wristHold, held, maxSeconds(50), steps = Steps.CAREFUL))
+        assertEquals(NextTargets.Next(durationS = 50, move = Move.UP), next(wristHold, held, maxSeconds(50), steps = Steps.GENTLE))
+        // Repetitions and weights alike.
+        val pushed = training(pushUp, "w1", 1_000, target = 12, done = listOf(12, 12, 12), rir = listOf(3, 3, 3))
+        assertEquals(NextTargets.Next(reps = 12, move = Move.REPEAT), next(pushUp, pushed, maxReps(20), steps = Steps.CAREFUL))
+        assertEquals(NextTargets.Next(reps = 14), next(pushUp, pushed, maxReps(20), steps = Steps.OFF))
+        // Too hard still steps back.
+        val bad = training(pushUp, "w2", 2_000, target = 12, done = listOf(12, 9, 7), rir = listOf(1, 0, 0))
+        assertEquals(NextTargets.Next(reps = 9, move = Move.DOWN), next(pushUp, pushed + bad, maxReps(20), steps = Steps.CAREFUL))
+        // A finger hang steps for adults without anything careful only: not for a climber under 18 or in the first year.
+        val hang = training(deadHang, "w1", 1_000, 10, listOf(10, 10, 10), listOf(3, 3, 2))
+        assertEquals(NextTargets.Next(durationS = 10, move = Move.REPEAT), next(deadHang, hang, maxSeconds(14), steps = Steps.GENTLE))
+        assertEquals(NextTargets.Next(durationS = 10, move = Move.REPEAT), next(deadHang, hang, maxSeconds(14), steps = Steps.CAREFUL))
     }
 
     @Test
@@ -102,11 +176,13 @@ class NextTargetsTest {
         assertEquals(12, next(pushUp, old + last, maxReps(15)).reps)
         // Sets of the training that is being planned (an exercise added twice) are not "last time".
         val now = training(pushUp, "now", 9_000, target = 12, done = listOf(12, 12, 12), rir = listOf(3, 3, 3))
-        assertEquals(12, NextTargets.plan(pushUp, item(pushUp), maxReps(15), old + last + now, null, 70.0, 1.0, true, exceptWorkout = "now").reps)
+        assertEquals(12, NextTargets.plan(pushUp, item(pushUp), maxReps(15), old + last + now, null, 70.0, 1.0, Steps.FULL, exceptWorkout = "now").reps)
         // Warm-up sets and the other side say nothing.
         val warmup = last.first().copy(id = "wu", setType = SetType.WARMUP, reps = 3, targetReps = 3, completedAt = 6_000)
         assertEquals(12, next(pushUp, last + warmup, maxReps(15)).reps)
-        assertEquals(1, NextTargets.sessions(last + last.map { it.copy(id = it.id + "r", side = Side.RIGHT) }, Side.RIGHT).size)
+        val right = training(pushUp, "w3", 7_000, target = 9, done = listOf(9, 9, 9), rir = listOf(2, 2, 2)).map { it.copy(side = Side.RIGHT) }
+        assertEquals(listOf("w3"), NextTargets.sessions(last + right, Side.RIGHT).map { it.first().workoutId })
+        assertEquals(listOf("w2"), NextTargets.sessions(last + right, null).map { it.first().workoutId })
     }
 
     @Test
@@ -137,6 +213,19 @@ class NextTargetsTest {
         // The reserve of a hold says "hard" too.
         val hard = training(plank, "w1", 1_000, 30, listOf(30, 30, 30), listOf(1, 0, 0))
         assertEquals(NextTargets.Next(durationS = 30, move = Move.REPEAT), next(plank, hard, maxSeconds(30)))
+    }
+
+    @Test
+    fun aShortStrengthHoldNeedsItsReserveAndHasALowTop() {
+        // Review 2026-11-21: a 5 s front lever grew to 30 s before the next exercise was offered.
+        val lever = def("pull.front_lever", ExerciseKind.TIME, LoadMode.BODYWEIGHT, defaults = Prescription(sets = 4, durationS = 5))
+        assertEquals(10, NextTargets.holdTop(lever, item(lever)))
+        val silent = training(lever, "w1", 1_000, 5, listOf(5, 5, 5, 5), listOf(null, null, null, null))
+        assertEquals(NextTargets.Next(durationS = 5, move = Move.REPEAT), next(lever, silent, maxSeconds(7)))
+        val easy = training(lever, "w1", 1_000, 5, listOf(5, 5, 5, 5), listOf(2, 2, 2, 2))
+        assertEquals(NextTargets.Next(durationS = 7, move = Move.UP), next(lever, easy, maxSeconds(7)))
+        val top = training(lever, "w1", 1_000, 10, listOf(10, 10, 10, 10), listOf(2, 2, 2, 2))
+        assertEquals(NextTargets.Next(durationS = 10, move = Move.REPEAT, atTop = true), next(lever, top, maxSeconds(12)))
     }
 
     @Test
@@ -179,25 +268,29 @@ class NextTargetsTest {
         assertEquals(LoadTarget(60.0, 5, null, value), LoadPrescriber.prescribe(weighted, item(weighted), value, 70.0, 1.0))
         val s1 = training(weighted, "w1", 1_000, 5, listOf(5, 5, 5), listOf(2, 2, 2), load = 60.0)
         assertEquals(NextTargets.Next(reps = 5, loadKg = 61.0, move = Move.UP), next(weighted, s1, value))
+        // Five with two in reserve at +61 kg shows a little more than the value: enough for five at +62 kg.
         val s2 = training(weighted, "w2", 2_000, 5, listOf(5, 5, 5), listOf(2, 2, 2), load = 61.0)
-        assertEquals(NextTargets.Next(reps = 4, loadKg = 62.0, move = Move.UP), next(weighted, s1 + s2, value))
-        val s3 = training(weighted, "w3", 3_000, 4, listOf(4, 4, 4), listOf(2, 2, 2), load = 62.0)
-        assertEquals(NextTargets.Next(reps = 5, loadKg = 62.0, move = Move.UP), next(weighted, s1 + s2 + s3, value))
+        assertEquals(NextTargets.Next(reps = 5, loadKg = 62.0, move = Move.UP), next(weighted, s1 + s2, value))
         // Hard at two steps above the value's load: it stays there, it does not drop to +60 kg.
         val hard = training(weighted, "w4", 4_000, 5, listOf(5, 5, 5), listOf(1, 0, 0), load = 62.0)
-        assertEquals(NextTargets.Next(reps = 5, loadKg = 62.0, move = Move.REPEAT), next(weighted, s1 + s2 + s3 + hard, value))
-        // Far above the value's load the value decides: the athlete tried +80 kg once.
-        val far = training(weighted, "w5", 5_000, 5, listOf(5, 5, 5), listOf(1, 1, 1), load = 80.0)
+        assertEquals(NextTargets.Next(reps = 5, loadKg = 62.0, move = Move.REPEAT), next(weighted, s1 + s2 + hard, value))
+        // A load the athlete changed by hand is no rung: they tried +80 kg once, the value decides.
+        val far = training(weighted, "w5", 5_000, 5, listOf(5, 5, 5), listOf(1, 1, 1), load = 80.0, planned = 60.0)
         assertEquals(NextTargets.Next(reps = 5, loadKg = 60.0), next(weighted, far, value))
+        // Another workout with another range (8–10) is another job: its loads come from the value.
+        val volume = item(weighted).copy(repsMin = 8, repsMax = 10)
+        assertEquals(Move.NONE, next(weighted, s1 + s2, value, item = volume).move)
     }
 
     @Test
     fun aCarefulStateTakesNoWeightStepButKeepsTheValue() {
         val value = oneRepMax(40.0 * (1.0 + 10.0 / 30.0))
         val atTop = training(press, "w1", 1_000, 8, listOf(8, 8, 8), listOf(3, 3, 3), load = 40.0)
-        assertEquals(NextTargets.Next(reps = 8, loadKg = 40.0), next(press, atTop, value, mayStepUp = false))
-        // Everything "3+" and nothing careful: two steps ([LoadSteps]), with the repetitions the value leaves.
-        assertEquals(NextTargets.Next(reps = 6, loadKg = 42.0, move = Move.UP_FAST), next(press, atTop, value))
+        assertEquals(NextTargets.Next(reps = 8, loadKg = 40.0, move = Move.REPEAT), next(press, atTop, value, steps = Steps.GENTLE))
+        assertEquals(NextTargets.Next(reps = 8, loadKg = 40.0, move = Move.REPEAT), next(press, atTop, value, steps = Steps.CAREFUL))
+        assertEquals(NextTargets.Next(reps = 8, loadKg = 40.0), next(press, atTop, value, steps = Steps.OFF))
+        // Everything "3+" and nothing careful: two steps ([LoadSteps]), with the repetitions the training showed for them.
+        assertEquals(NextTargets.Next(reps = 7, loadKg = 42.0, move = Move.UP_FAST), next(press, atTop, value))
     }
 
     @Test
@@ -212,6 +305,14 @@ class NextTargetsTest {
         // One bad training between good ones is one step back, no more.
         val fine = training(press, "w1", 1_000, 8, listOf(8, 8, 8), listOf(1, 1, 1), load = 40.0)
         assertEquals(NextTargets.Next(reps = 8, loadKg = 39.0, move = Move.DOWN), next(press, fine + bad, value))
+        // The step back stays while it is hard, and the way up is rung by rung – not back to the value's 40 kg at once
+        // (review 2026-11-21: 39 → 40 → 39, and 36 → 40 after one good training).
+        val stillHard = training(press, "w3", 3_000, 8, listOf(8, 8, 7), listOf(1, 1, 0), load = 39.0)
+        assertEquals(NextTargets.Next(reps = 8, loadKg = 39.0, move = Move.REPEAT), next(press, bad + stillHard, value))
+        val well = training(press, "w4", 4_000, 8, listOf(8, 8, 8), listOf(2, 2, 2), load = 39.0)
+        assertEquals(NextTargets.Next(reps = 8, loadKg = 40.0, move = Move.UP), next(press, bad + stillHard + well, value))
+        val afterRelearn = training(press, "w4", 4_000, 8, listOf(8, 8, 8), listOf(2, 2, 2), load = 36.0)
+        assertEquals(NextTargets.Next(reps = 8, loadKg = 37.0, move = Move.UP), next(press, bad + worse + afterRelearn, value))
     }
 
     @Test
@@ -224,7 +325,7 @@ class NextTargetsTest {
         // The value has grown with the repetitions: 4 kg × 12 is in the range now.
         val grown = oneRepMax(4.0 * (1.0 + 14.0 / 30.0))
         val more = training(wrist, "w2", 2_000, 22, listOf(22, 22, 22), listOf(2, 2, 2), load = 3.0)
-        assertEquals(NextTargets.Next(reps = 12, loadKg = 4.0), next(wrist, more, grown))
+        assertEquals(NextTargets.Next(reps = 12, loadKg = 4.0, move = Move.UP), next(wrist, more, grown))
     }
 
     @Test
@@ -251,6 +352,10 @@ class NextTargetsTest {
         val pull = def("pull.weighted", ExerciseKind.LOAD_REPS, LoadMode.BODYWEIGHT_PLUS,
             defaults = Prescription(sets = 3, repsMin = 5, repsMax = 8)).copy(category = ExerciseCategoryV2.PULL)
         assertTrue(LoadPrescriber.prescribe(pull, item(pull), Capacity(CapacityKind.E1RM_TOTAL, 70.0, 63.0), 63.0, 1.0)!!.loadKg!! < 0)
+        // Fixed repetitions and a coarse step (review 2026-11-21: "-2.5 kg × 20"): body weight, with the 19 the value allows.
+        val fixed = item(lunge).copy(repsMin = 20, repsMax = 20)
+        val close = Capacity(CapacityKind.E1RM_TOTAL, 107.64, 63.0)
+        assertEquals(LoadTarget(0.0, 19, null, close), LoadPrescriber.prescribe(lunge, fixed, close, 63.0, 2.5))
     }
 
     @Test
@@ -272,9 +377,9 @@ class NextTargetsTest {
         val easy = training(pickup, "w1", 1_000, 10, listOf(10, 10, 10), listOf(3, 3, 3), load = base.loadKg)
         // One smallest step, never two – and none while something keeps loads careful or nothing was answered.
         assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg!! + 1.0, move = Move.UP), next(pickup, easy, value))
-        assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg), next(pickup, easy, value, mayStepUp = false))
+        assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg, move = Move.REPEAT), next(pickup, easy, value, steps = Steps.GENTLE))
         val silent = training(pickup, "w1", 1_000, 10, listOf(10, 10, 10), listOf(null, null, null), load = base.loadKg)
-        assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg), next(pickup, silent, value))
+        assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg, move = Move.REPEAT), next(pickup, silent, value))
         // The step stays while it is hard, and goes on when it went well again.
         val stepped = training(pickup, "w2", 2_000, 10, listOf(10, 10, 10), listOf(1, 1, 0), load = base.loadKg!! + 1.0)
         assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg!! + 1.0, move = Move.REPEAT), next(pickup, easy + stepped, value))
@@ -288,6 +393,35 @@ class NextTargetsTest {
         val relearnt = next(pickup, bad + again, value)
         assertEquals(Move.RELEARN, relearnt.move)
         assertTrue(relearnt.loadKg!! < back.loadKg!!, "$relearnt")
+        // The way back up is one step at a time, also far under the value's plan.
+        val recovered = training(pickup, "w4", 4_000, 10, listOf(10, 10, 10), listOf(2, 2, 2), load = relearnt.loadKg)
+        assertEquals(NextTargets.Next(durationS = 10, loadKg = relearnt.loadKg!! + 1.0, move = Move.UP), next(pickup, bad + again + recovered, value))
+        // The step back stays while it is hard.
+        val hardBelow = training(pickup, "w3", 3_000, 10, listOf(10, 10, 10), listOf(1, 1, 0), load = back.loadKg)
+        assertEquals(NextTargets.Next(durationS = 10, loadKg = back.loadKg, move = Move.REPEAT), next(pickup, bad + hardBelow, value))
+    }
+
+    @Test
+    fun aMaxHangJustShortOfItsTimeIsNotTooHard() {
+        // Review 2026-11-21: 10/10/10/10/9.4 s at the limit – the intended effort – planned a step back.
+        val value = Capacity(CapacityKind.TEN_SECOND_MAX, 40.0, 70.0)
+        val base = LoadPrescriber.prescribe(pickup, item(pickup), value, 70.0, 1.0)!!
+        val limit = training(pickup, "w1", 1_000, 10, listOf(10, 10, 10, 10, 10), listOf(0, 0, 0, 0, 0), load = base.loadKg)
+            .mapIndexed { i, s -> if (i == 4) s.copy(durationS = 9.4) else s }
+        assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg, move = Move.REPEAT), next(pickup, limit, value))
+        // Clearly short with nothing in reserve is.
+        val short = limit.mapIndexed { i, s -> if (i == 4) s.copy(durationS = 8.0) else s }
+        assertEquals(Move.DOWN, next(pickup, short, value).move)
+    }
+
+    @Test
+    fun anotherEdgeIsAnotherJob() {
+        val value = Capacity(CapacityKind.TEN_SECOND_MAX, 40.0, 70.0)
+        val base = LoadPrescriber.prescribe(pickup, item(pickup), value, 70.0, 1.0)!!
+        val on15 = training(pickup, "w1", 1_000, 10, listOf(10, 10, 10), listOf(3, 3, 3), load = base.loadKg).map { it.copy(edgeMm = 15.0) }
+        // The training on the 15 mm edge says nothing about the 20 mm plan; on the same edge it is the rung.
+        assertEquals(Move.NONE, next(pickup, on15, value, item = item(pickup).copy(edgeMm = 20)).move)
+        assertEquals(Move.UP, next(pickup, on15, value, item = item(pickup).copy(edgeMm = 15)).move)
     }
 
     // ── In the planner ───────────────────────────────────────────────
@@ -303,10 +437,10 @@ class NextTargetsTest {
         val value = oneRepMax(40.0 * (1.0 + 10.0 / 30.0))
         val atTop = training(press, "w1", 1_000, 8, listOf(8, 8, 8), listOf(2, 2, 2), load = 40.0)
         val loaded = WorkoutPlanner.plan("w", 1, item(press), catalog, atTop, emptyList(), 70.0,
-            capacityFor = { value }, incrementKg = 1.0, stepUp = true, newId = { "id${n++}" })
+            capacityFor = { value }, incrementKg = 1.0, steps = Steps.FULL, newId = { "id${n++}" })
         assertTrue(loaded.sets.all { it.targetLoadKg == 41.0 && it.loadKg == 41.0 && it.targetReps == 7 && it.reps == 7 }, "${loaded.sets}")
         // Without a value and without a step the target stays open and the last load is the prefill, as before.
-        val plain = training(press, "w1", 1_000, 8, listOf(8, 8, 8), listOf(1, 1, 1), load = 20.0)
+        val plain = training(press, "w1", 1_000, 8, listOf(8, 8, 8), listOf(1, 1, 1), load = 20.0, planned = null)
         val open = WorkoutPlanner.plan("w", 2, item(press), catalog, plain, emptyList(), 70.0, newId = { "id${n++}" })
         assertNull(open.sets.first().targetLoadKg)
         assertEquals(20.0, open.sets.first().loadKg)

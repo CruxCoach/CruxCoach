@@ -49,10 +49,11 @@ class TemplateFitTest {
     private val today = LocalDate.parse("2026-11-23")
 
     private fun input(equipment: Set<EquipmentV2>? = bar, starter: Boolean = false, kept: List<String> = emptyList(),
-                      coach: CoachProfile = CoachProfile(experience = ExperienceBand.OVER_5, currentGrade = "7A")) =
+                      coach: CoachProfile = CoachProfile(experience = ExperienceBand.OVER_5, currentGrade = "7A"),
+                      resting: Set<String> = emptySet()) =
         SuggestionInput(catalog, AthleteProfile(equipment = equipment ?: setOf(EquipmentV2.NONE, EquipmentV2.MAT),
             equipmentConfigured = equipment != null, coach = coach), today, ReadinessEvaluator.evaluate(null, emptyList()), emptyList(),
-            kept = kept, starter = starter)
+            kept = kept, resting = resting, starter = starter)
 
     private fun fit(input: SuggestionInput, vararg items: RoutineItem, focus: SuggestionFocus = SuggestionFocus.PLANNED) =
         SessionSuggester.fitTemplate(input, items.toList(), focus)
@@ -103,13 +104,33 @@ class TemplateFitTest {
 
     @Test
     fun theNextStepTheAthleteKeptTakesItsPlaceInATemplate() {
-        val fitted = fit(input(kept = listOf("push.diamond_push_up")), RoutineItem("push.push_up", sets = 4, restS = 100), RoutineItem("core.plank"))
+        // A step after a training: the next exercise leads, the one it was stepped from rests ([AthleteService.keepStep]).
+        val stepped = input(kept = listOf("push.diamond_push_up"), resting = setOf("push.push_up"))
+        val fitted = fit(stepped, RoutineItem("push.push_up", sets = 4, restS = 100), RoutineItem("core.plank"))
         assertEquals(listOf("push.diamond_push_up", "core.plank"), fitted.map { it.slug })
         assertEquals(4, fitted[0].sets)
         assertEquals(100, fitted[0].restS)
         // Never twice in one training.
-        val both = fit(input(kept = listOf("push.diamond_push_up")), RoutineItem("push.push_up"), RoutineItem("push.diamond_push_up"))
+        val both = fit(stepped, RoutineItem("push.push_up"), RoutineItem("push.diamond_push_up"))
         assertEquals(listOf("push.push_up", "push.diamond_push_up"), both.map { it.slug })
+    }
+
+    @Test
+    fun theKeptStepTakesOnlyThePlaceOfTheExerciseItWasSteppedFrom() {
+        // Review 2026-11-21: stepped from the hollow hold to hollow rocks – "dead bug", first of the chain in the
+        // template, gave way and both hollow exercises stood in the session.
+        val chain = ExerciseCatalog(1, listOf(
+            ex("core.dead_bug", ExerciseCategoryV2.CORE, harder = "core.hollow_hold"),
+            ex("core.hollow_hold", ExerciseCategoryV2.CORE, easier = "core.dead_bug", harder = "core.hollow_rock"),
+            ex("core.hollow_rock", ExerciseCategoryV2.CORE, easier = "core.hollow_hold"),
+            ex("core.plank", ExerciseCategoryV2.CORE),
+        ))
+        val stepped = input(kept = listOf("core.hollow_rock"), resting = setOf("core.hollow_hold")).copy(catalog = chain)
+        val fitted = fit(stepped, RoutineItem("core.dead_bug"), RoutineItem("core.hollow_hold"), RoutineItem("core.plank"))
+        assertEquals(listOf("core.dead_bug", "core.hollow_rock", "core.plank"), fitted.map { it.slug })
+        // A member of the chain that only rests (swapped away lately) is not replaced by the kept one of another place.
+        val other = input(kept = listOf("core.hollow_rock"), resting = emptySet()).copy(catalog = chain)
+        assertEquals(listOf("core.dead_bug", "core.plank"), fit(other, RoutineItem("core.dead_bug"), RoutineItem("core.plank")).map { it.slug })
     }
 
     @Test

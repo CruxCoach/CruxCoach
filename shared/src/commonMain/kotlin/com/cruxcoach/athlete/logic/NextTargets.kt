@@ -16,38 +16,52 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * What the next training of an exercise plans: the value-based prescription ([LoadPrescriber]) and, on top of it, a
- * step that follows the last training (owner 2026-11-21: "offering the fitting progression is the main feature").
+ * What the next training of an exercise plans: the value-based prescription ([LoadPrescriber]) and, once there is a
+ * last training to go by, a step that follows it (owner 2026-11-21: "offering the fitting progression is the main
+ * feature").
  *
- * The performance value alone left three holes:
+ * The performance value alone left holes:
  *
  * - **Body-weight repetitions and timed holds stood still.** They are planned at 70 % of the maximum. A set done as
  *   planned proves less than the maximum, whatever reserve is answered ("3+" is the largest answer), so the value
  *   never rose: 15 push-ups in the first training made a maximum of 18 and a plan of 13, for good.
- * - **Too hard was planned again.** A value the athlete trusts only rises ([ValueUpdates]), so a training that went
- *   badly was repeated with the same load.
- * - **The top of a loaded range with two in reserve is the value's resting point.** The value plans exactly that, so
- *   nothing moved until the athlete answered "3+".
+ * - **Holds and loaded repetitions rested on their own plan.** A hang at 90 % of the value, or the top of a range
+ *   with two in reserve, proves exactly the value that planned it. The summary's tip said "one step more", the plan
+ *   stood (training simulation 2026-11-21: +1 kg hangs for ten weeks).
+ * - **Too hard was planned again.** A value the athlete trusts only rises ([ValueUpdates]).
  *
- * The rule, relative to the last training of the exercise (double progression, one lever at a time):
+ * The rule is a ladder relative to the last training of the exercise (double progression, one lever at a time):
  *
  * - everything reached with reserve: one repetition or a few seconds more; at the top of a loaded range one weight
- *   step more, with the repetitions the value allows at that weight;
- * - reached, but hard: the same again;
- * - too hard: one step back; after two such trainings in a row the plan is read from what they showed;
- * - whenever the value asks for more (a test, an entered value, a value that rose), the value wins.
+ *   step, with the repetitions the value allows at that weight; a hold one smallest step;
+ * - reached, but hard, or just missed: the same again – also on a rung below or above the value's own plan, so a
+ *   step back stays until the training went well again;
+ * - too hard: one step back; two such trainings in a row plan from what they showed.
  *
- * Finger work keeps its careful rules: a loaded hang or pick-up takes one smallest step, never two, and only after a
- * training in which every set was held for the planned time and answered with reserve – what the summary's tip
- * already said, while the plan stood still (training simulation 2026-11-21: +1 kg for ten weeks). Nothing steps up
- * while something keeps loads careful (an injury, a comeback, the return after a break, a young or first-year climber).
- * A load the athlete wrote into the workout is never changed.
+ * The value-based prescription decides whenever the ladder has nothing to stand on: no last training, a last
+ * training long ago ([MAX_AGE_DAYS]), a value the athlete entered or tested after it, a load the athlete changed by
+ * hand in it, sets logged without a plan, or a last training with another repetition range, hold time, edge or grip.
+ * A load written into the workout is never changed.
+ *
+ * How far it may move is the caller's word ([Steps]): not at all in a comeback session, never upwards around an open
+ * injury or in the return after a break, only body-weight work for young and first-year climbers.
  */
 object NextTargets {
 
+    /** How far the plan may move by itself. */
+    enum class Steps {
+        /** A comeback session: the rehab plan's numbers stand; only the value-based prescription, as before this rule. */
+        OFF,
+        /** An open injury, the return ramp after a break: the same again or a step back, never up. */
+        CAREFUL,
+        /** A growing or first-year climber: body-weight work adds its repetition or seconds; no weight and no finger step. */
+        GENTLE,
+        FULL,
+    }
+
     /** Why the plan differs from the value-based prescription. */
     enum class Move {
-        /** Nothing to go by, or nothing to change: the value-based prescription. */
+        /** Nothing to go by, or nothing for this rule to decide: the value-based prescription. */
         NONE,
         UP,
         /** Everything answered "3+": two steps. */
@@ -61,7 +75,7 @@ object NextTargets {
 
     /**
      * The targets of a work set. With [Move.NONE] they are the prescription's (null where there is none); every other
-     * move sets what it decides. [atTop]: the top of the range was reached with reserve — time for the next exercise
+     * move sets what it decides. [atTop]: the top of the range was reached with reserve – time for the next exercise
      * of the chain ([ExerciseDefinition.harder]).
      */
     data class Next(
@@ -72,16 +86,26 @@ object NextTargets {
         val atTop: Boolean = false,
     )
 
-    private val NOT_STEPPED = setOf(ExerciseCategoryV2.MOBILITY, ExerciseCategoryV2.WARMUP, ExerciseCategoryV2.TECHNIQUE, ExerciseCategoryV2.ENDURANCE)
+    /** Stretches, warm-ups, technique and endurance work are done as written: no share of a maximum, no step. */
+    private val AS_WRITTEN = setOf(ExerciseCategoryV2.MOBILITY, ExerciseCategoryV2.WARMUP, ExerciseCategoryV2.TECHNIQUE, ExerciseCategoryV2.ENDURANCE)
+
+    fun asWritten(def: ExerciseDefinition): Boolean =
+        def.category in AS_WRITTEN || ("mobility" in def.tags && "strength" !in def.tags && "prehab" !in def.tags)
 
     /** A set this far under its target counts as missed; half of the sets missed is too hard. */
     const val TOO_HARD_SHARE = 0.8
-    /** The value's load within this share of the last training's: the steps are this rule's own. */
-    const val NEAR_SHARE = 0.9
-    /** The same for holds, under their planning share ([LoadPrescriber.holdShare]). */
-    const val HOLD_MARGIN = 0.05
-    /** Repetitions a loaded range may stretch above its top while the weight step is too big to take. */
+    /** With no reserve on any set, one set this far under its target is too hard as well (9.4 of 10 s is not). */
+    const val CLEARLY_SHORT_SHARE = 0.9
+    /** A last training older than this says nothing about today. */
+    const val MAX_AGE_DAYS = 42
+    /** The last training's best set implies at least this share of the value: the value was shown there. */
+    const val SHOWN_SHARE = 0.99
+    /** Holds this many seconds apart are the same job. */
+    const val SAME_HOLD_S = 1.0
+    /** Repetitions may stretch this far above the top of a range: while a weight step is too big, or without a next exercise. */
     const val EXTENDED_REPS = 10
+    /** A timed hold at least this long is logged from its timer: done counts as done with reserve. Shorter ones are strength holds and need the answer. */
+    const val LONG_HOLD_S = 20
 
     /** The completed work sets of [side] per training, newest first, without the training [exceptWorkout]. */
     fun sessions(history: List<ExerciseSet>, side: Side?, exceptWorkout: String? = null): List<List<ExerciseSet>> =
@@ -91,9 +115,7 @@ object NextTargets {
             .map { s -> s.sortedBy { it.setIndex } }
 
     /**
-     * [history]: sets of this exercise from other trainings, any order. [mayStepUp]: nothing keeps loads careful
-     * ([LoadSteps.mayStepUp]); without it the plan still follows the value and steps back, and body-weight work
-     * still adds its single repetition.
+     * [history]: sets of this exercise, any order. [now]: the clock (epoch ms), for [MAX_AGE_DAYS]; null = no age limit.
      */
     fun plan(
         def: ExerciseDefinition,
@@ -103,41 +125,61 @@ object NextTargets {
         side: Side?,
         bodyweightKg: Double?,
         incrementKg: Double,
-        mayStepUp: Boolean,
+        steps: Steps,
         exceptWorkout: String? = null,
+        now: Long? = null,
     ): Next {
         val base = LoadPrescriber.prescribe(def, item, capacity, bodyweightKg, incrementKg)
         val none = Next(base?.reps, base?.durationS, base?.loadKg)
         if (item.warmup || item.test || def.kind == ExerciseKind.CLIMB || def.kind == ExerciseKind.INTERVAL) return none
-        // Stretches, warm-ups, technique and endurance work are done as written; only strength work steps.
-        if (def.category in NOT_STEPPED) return none
-        val past = sessions(history, side, exceptWorkout)
-        if (past.isEmpty()) return none
-        return when (BenchmarkMath.capacityKind(def)) {
-            CapacityKind.MAX_REPS -> reps(def, item, base?.reps, past.first(), mayStepUp) ?: none
-            CapacityKind.MAX_SECONDS -> seconds(def, item, base?.durationS, past.first()) ?: none
-            CapacityKind.E1RM_TOTAL ->
-                if (item.loadKg != null) none else loaded(def, item, base, capacity, past, bodyweightKg, incrementKg, mayStepUp) ?: none
-            CapacityKind.TEN_SECOND_MAX ->
-                if (item.loadKg != null) none else hold(def, item, base, capacity, past, bodyweightKg, incrementKg, mayStepUp) ?: none
-            null -> none
+        val kind = BenchmarkMath.capacityKind(def) ?: return none
+        val loadedKind = kind == CapacityKind.E1RM_TOTAL || kind == CapacityKind.TEN_SECOND_MAX
+        // A stretch or a warm-up is not trained towards a maximum: its own repetitions and seconds, every time.
+        if (asWritten(def)) return if (loadedKind) none else Next()
+        // Another edge or grip is another job with other loads: only trainings on this one count.
+        fun sameHold(s: ExerciseSet) = (item.edgeMm == null || s.edgeMm == null || abs(s.edgeMm - item.edgeMm) < 0.5) &&
+            (item.grip == null || s.grip == null || s.grip == item.grip)
+        val past = sessions(history.filter(::sameHold), side, exceptWorkout)
+        val last = past.firstOrNull()
+        // The value alone, as before this rule: bigger steps after an easy training and small loads one step at a
+        // time ([LoadSteps]) where the load is planned.
+        fun valueOnly(): Next {
+            if (!loadedKind || item.loadKg != null || last == null) return none
+            val loads = last.filter { it.loadKg != null }
+            val stepped = LoadSteps.adjust(def, base?.loadKg, loads, incrementKg, steps == Steps.FULL) ?: return none
+            val before = base?.loadKg ?: loads.mapNotNull { it.loadKg }.maxOrNull() ?: return none
+            // More than the value's plan is the bigger step; less is the value's plan taken one small step at a time.
+            return if (abs(stepped - before) < 1e-9) none else none.copy(loadKg = stepped, move = if (stepped > before) Move.UP_FAST else Move.NONE)
         }
+        if (last == null || steps == Steps.OFF) return valueOnly()
+        val lastAt = last.maxOf { it.completedAt ?: 0L }
+        if (now != null && now - lastAt > MAX_AGE_DAYS * 86_400_000L) return valueOnly()
+        // The athlete's newer word (an entered value, a test, a load lowered by hand) decides.
+        if (capacity?.statedAt != null && capacity.statedAt > lastAt) return valueOnly()
+        return when (kind) {
+            CapacityKind.MAX_REPS -> reps(def, item, last, steps)
+            CapacityKind.MAX_SECONDS -> seconds(def, item, last, steps)
+            CapacityKind.E1RM_TOTAL -> if (item.loadKg != null) none else loaded(def, item, base, capacity, past, bodyweightKg, incrementKg, steps)
+            CapacityKind.TEN_SECOND_MAX -> if (item.loadKg != null) none else hold(def, item, base, capacity, past, bodyweightKg, incrementKg, steps)
+        } ?: valueOnly()
     }
 
     /** How a training went against its own targets. */
     private class Read(val reached: Boolean, val tooHard: Boolean, val easy: Boolean, val veryEasy: Boolean)
 
     /**
-     * [unknownIsEasy]: a set without a reserve answer counts as done with reserve. True where the result is measured
-     * (repetitions) – reaching the target says enough unless the athlete said it was hard.
+     * [unknownIsEasy]: a planned set that was reached without a reserve answer counts as done with reserve. True where
+     * the result is measured (repetitions, a long timed hold). A set logged without a target says nothing either way.
+     * [tolerance]: how far under its target a set still counts as reached (half a second on a hold).
      */
-    private fun read(achieved: List<Double>, targets: List<Double?>, rirs: List<Int?>, unknownIsEasy: Boolean): Read {
+    private fun read(achieved: List<Double>, targets: List<Double?>, rirs: List<Int?>, unknownIsEasy: Boolean, tolerance: Double = 1e-9): Read {
         val pairs = achieved.zip(targets)
-        val reached = pairs.all { (a, t) -> t == null || a >= t - 1e-9 }
+        val reached = pairs.all { (a, t) -> t == null || a >= t - tolerance }
         val missed = pairs.count { (a, t) -> t != null && a < t * TOO_HARD_SHARE - 1e-9 }
+        val clearlyShort = pairs.any { (a, t) -> t != null && a < t * CLEARLY_SHORT_SHARE - 1e-9 }
         val noReserve = rirs.isNotEmpty() && rirs.all { it == 0 }
-        val tooHard = (missed > 0 && missed * 2 >= pairs.size) || (!reached && noReserve)
-        val easy = rirs.all { r -> if (r == null) unknownIsEasy else r >= 2 }
+        val tooHard = (missed > 0 && missed * 2 >= pairs.size) || (noReserve && clearlyShort)
+        val easy = rirs.indices.all { i -> rirs[i]?.let { it >= 2 } ?: (unknownIsEasy && targets[i] != null) }
         val veryEasy = rirs.all { r -> r != null && r >= 3 }
         return Read(reached, tooHard, reached && easy, reached && veryEasy)
     }
@@ -146,41 +188,43 @@ object NextTargets {
 
     // ── Body-weight repetitions ──────────────────────────────────────
 
-    private fun reps(def: ExerciseDefinition, item: RoutineItem, base: Int?, last: List<ExerciseSet>, mayStepUp: Boolean): Next? {
+    private fun reps(def: ExerciseDefinition, item: RoutineItem, last: List<ExerciseSet>, steps: Steps): Next? {
         val sets = last.filter { it.reps != null }
-        if (sets.isEmpty()) return null
+        // A training without targets (sets logged freely, one all-out set) is no rung to stand on.
+        if (sets.isEmpty() || sets.none { it.targetReps != null }) return null
         val done = sets.map { it.reps!! }
         val r = read(done.map { it.toDouble() }, sets.map { it.targetReps?.toDouble() }, sets.map { it.rir }, unknownIsEasy = true)
         val anchor = done.min()
         val target = sets.mapNotNull { it.targetReps }.maxOrNull() ?: anchor
+        if (r.tooHard) return Next(reps = min(target - 1, lowerMedian(done)).coerceAtLeast(1), move = Move.DOWN)
+        if (!r.reached) return Next(reps = target, move = Move.REPEAT)
         val unit = if (anchor >= 20) 2 else 1
         val top = item.repsMax ?: def.defaults.repsMax
         val aboveTop = top != null && anchor >= top
-        val stepped = when {
-            r.tooHard -> return Next(reps = min(target - 1, lowerMedian(done)).coerceAtLeast(1), move = Move.DOWN)
-            !r.reached -> return Next(reps = target, move = Move.REPEAT)
+        val mayGrow = steps >= Steps.GENTLE && (top == null || anchor < top + EXTENDED_REPS)
+        val next = when {
+            !mayGrow -> anchor
             // Above the range only what is clearly easy still grows: the next exercise of the chain is the better step.
             aboveTop -> if (r.veryEasy) anchor + unit else anchor
-            r.veryEasy && mayStepUp -> anchor + 2 * unit
+            r.veryEasy && steps == Steps.FULL -> anchor + 2 * unit
             r.easy -> anchor + unit
             else -> anchor
         }
-        // The value asks for more than the step (a test, an entered value): the value wins.
-        val next = max(stepped, base ?: 0)
         val move = when {
-            next >= anchor + 2 * unit && r.veryEasy -> Move.UP_FAST
+            next >= anchor + 2 * unit -> Move.UP_FAST
             next > anchor -> Move.UP
             else -> Move.REPEAT
         }
-        return Next(reps = next, move = move, atTop = aboveTop && r.easy)
+        // The next exercise of the chain is a step up too: not offered while something keeps the plan careful.
+        return Next(reps = next, move = move, atTop = aboveTop && r.easy && steps >= Steps.GENTLE)
     }
 
     // ── Timed holds without a load ───────────────────────────────────
 
-    /** Where a hold is long enough and the next exercise of the chain is the better step. */
+    /** Where a hold is long enough and the next exercise of the chain is the better step: twice its usual time. */
     fun holdTop(def: ExerciseDefinition, item: RoutineItem): Int {
         val usual = item.durationS ?: def.defaults.durationS ?: 30
-        return if (LoadDomain.FINGER in def.domains) (usual * 2).coerceIn(usual, max(usual, 30)) else (usual * 2).coerceIn(30, 120)
+        return if (LoadDomain.FINGER in def.domains) (usual * 2).coerceAtMost(max(usual, 30)) else (usual * 2).coerceAtMost(max(usual, 120))
     }
 
     private fun secondsUnit(seconds: Int): Int = when {
@@ -189,33 +233,34 @@ object NextTargets {
         else -> 10
     }
 
-    private fun seconds(def: ExerciseDefinition, item: RoutineItem, base: Int?, last: List<ExerciseSet>): Next? {
+    private fun seconds(def: ExerciseDefinition, item: RoutineItem, last: List<ExerciseSet>, steps: Steps): Next? {
         val sets = last.filter { it.durationS != null }
-        if (sets.isEmpty()) return null
+        if (sets.isEmpty() || sets.none { it.targetDurationS != null }) return null
         val finger = LoadDomain.FINGER in def.domains
+        val usual = item.durationS ?: def.defaults.durationS ?: 30
         val done = sets.map { floor(it.durationS!! + 1e-9).toInt() }
-        // A plain timed hold is logged from its timer and asks for no reserve: done counts as done. Hangs are asked.
+        // A long plain hold is logged from its timer: done counts as done. Hangs and short strength holds need the answer.
         val r = read(sets.map { it.durationS!! }, sets.map { it.targetDurationS }, sets.map { it.rir },
-            unknownIsEasy = def.kind == ExerciseKind.TIME && !finger)
+            unknownIsEasy = def.kind == ExerciseKind.TIME && !finger && usual >= LONG_HOLD_S, tolerance = 0.5)
         val anchor = done.min()
         val target = sets.mapNotNull { it.targetDurationS }.maxOrNull()?.roundToInt() ?: anchor
         val unit = secondsUnit(anchor)
+        if (r.tooHard) return Next(durationS = min(target - unit, lowerMedian(done)).coerceAtLeast(min(3, target)), move = Move.DOWN)
+        if (!r.reached) return Next(durationS = target, move = Move.REPEAT)
         // Tidy numbers from five seconds on: 23 s + 5 s plans 25 s, never less than a second more.
         fun tidy(s: Int): Int = if (unit >= 5) max(s / unit * unit, anchor + 1) else s
         val top = holdTop(def, item)
         val atTop = anchor >= top
-        val stepped = when {
-            r.tooHard -> return Next(durationS = min(target - unit, lowerMedian(done)).coerceAtLeast(3), move = Move.DOWN)
-            !r.reached -> return Next(durationS = target, move = Move.REPEAT)
-            atTop -> anchor
-            r.easy -> min(tidy(anchor + unit), max(top, anchor))
-            else -> anchor
-        }
-        val next = max(stepped, base ?: 0)
-        return Next(durationS = next, move = if (next > anchor) Move.UP else Move.REPEAT, atTop = atTop && r.easy)
+        // Finger hangs only step where nothing keeps loads careful.
+        val mayGrow = !atTop && (if (finger) steps == Steps.FULL else steps >= Steps.GENTLE)
+        val next = if (mayGrow && r.easy) min(tidy(anchor + unit), max(top, anchor)) else anchor
+        return Next(durationS = next, move = if (next > anchor) Move.UP else Move.REPEAT, atTop = atTop && r.easy && steps >= Steps.GENTLE)
     }
 
     // ── Loaded repetitions ───────────────────────────────────────────
+
+    /** Every set at the load the plan gave it: the athlete changed nothing by hand, so the rung is this rule's. */
+    private fun asPlanned(sets: List<ExerciseSet>): Boolean = sets.all { s -> s.targetLoadKg != null && abs(s.loadKg!! - s.targetLoadKg) < 1e-6 }
 
     private fun loaded(
         def: ExerciseDefinition,
@@ -225,22 +270,25 @@ object NextTargets {
         past: List<List<ExerciseSet>>,
         bodyweightKg: Double?,
         incrementKg: Double,
-        mayStepUp: Boolean,
+        steps: Steps,
     ): Next? {
         val last = past.first().filter { it.loadKg != null && it.reps != null }
-        if (last.isEmpty()) return null
+        // A load the athlete changed by hand is their word ([OwnLoads], the value): no rung of this rule.
+        if (last.isEmpty() || !asPlanned(last)) return null
         val top = item.repsMax ?: item.repsMin ?: def.defaults.repsMax ?: base?.reps ?: return null
         val bottom = (item.repsMin ?: def.defaults.repsMin ?: top).coerceAtMost(top)
         val step = ProgressionAdvisor.increment(def, incrementKg)
         val lastLoad = last.maxOf { it.loadKg!! }
         val lastReps = last.mapNotNull { it.targetReps }.maxOrNull() ?: last.minOf { it.reps!! }
+        // A load step needs an answered reserve: "reached" alone must not make a load the athlete lowered heavier again.
         fun readOf(sets: List<ExerciseSet>) = read(sets.map { it.reps!!.toDouble() }, sets.map { it.targetReps?.toDouble() },
-            sets.map { it.rir }, unknownIsEasy = true)
+            sets.map { it.rir }, unknownIsEasy = false)
         val r = readOf(last)
         // One step lighter, where there is one: no dumbbell under its smallest step, no "assisted" leg work.
         val lighter = (lastLoad - step).takeIf {
             if (def.load == LoadMode.BODYWEIGHT_PLUS) it >= -1e-9 || LoadPrescriber.assistable(def) else it > 1e-9
         }
+        val baseLoad = base?.loadKg
 
         if (r.tooHard) {
             // Twice in a row: the value is too high for now. Plan from the best these two trainings showed.
@@ -250,56 +298,69 @@ object NextTargets {
                     .maxByOrNull { it.value }
                 if (shown != null && (capacity == null || shown.value < capacity.value)) {
                     val relearnt = LoadPrescriber.prescribe(def, item, shown, bodyweightKg, incrementKg)
-                    if (relearnt?.loadKg != null) {
-                        val load = lighter?.let { min(relearnt.loadKg, it) } ?: relearnt.loadKg
-                        return Next(relearnt.reps ?: top, null, load, Move.RELEARN)
-                    }
+                    val load = relearnt?.loadKg
+                    if (load != null) return Next(relearnt.reps ?: top, null, lighter?.let { min(load, it) } ?: load, Move.RELEARN)
                 }
             }
-            val load = lighter?.let { l -> base?.loadKg?.let { min(it, l) } ?: l } ?: return Next(max(bottom, lastReps - 1), null, lastLoad, Move.DOWN)
+            val load = lighter?.let { l -> baseLoad?.let { min(it, l) } ?: l } ?: return Next(max(bottom, lastReps - 1), null, lastLoad, Move.DOWN)
             return Next(base?.reps ?: top, null, load, Move.DOWN)
         }
 
-        val baseLoad = base?.loadKg
-        // The steps of this rule run a little ahead of the value (it rises once a set proves 2 % more). Far above the
-        // value's load – more than [NEAR_SHARE] apart – the athlete or an edited value moved things, and the value decides.
-        fun total(load: Double): Double = StrengthMath.effectiveLoad(def, load, bodyweightKg) ?: load
-        val near = baseLoad == null || total(baseLoad) >= total(lastLoad) * NEAR_SHARE - 1e-9
-        val aboveBase = baseLoad != null && lastLoad > baseLoad + 1e-9
-        fun repsFor(load: Double): Int? = capacity?.let { LoadPrescriber.repsAt(def, it, load, bodyweightKg) }
+        // The rungs of this rule run apart from the value's own plan (the value rises once a set proves 2 % more, and
+        // stays where it is after a step back). They are for the same job only: a workout with another repetition
+        // range plans other loads, and there the value decides.
+        if (lastReps !in bottom..(top + EXTENDED_REPS)) return null
+        // What the best set of the last training showed. The repetitions at another weight follow the stronger of
+        // it and the value: a set at the top of the range with reserve shows a little more than the value that
+        // planned it, too little to raise the value and enough for the next fine step.
+        val best = last.mapNotNull { s -> BenchmarkMath.implied(def, s)?.takeIf { it.kind == CapacityKind.E1RM_TOTAL } }.maxByOrNull { it.value }
+        val strongest = listOfNotNull(capacity, best).maxByOrNull { it.value }
+        fun repsFor(load: Double): Int? = strongest?.let { LoadPrescriber.repsAt(def, it, load, bodyweightKg) }
+        // The last training itself showed the value (it rose there): then the value's plan may lead. A value that
+        // stands above a step back is not shown by it – the way up is rung by rung.
+        val shown = capacity != null && best != null && best.value >= capacity.value * SHOWN_SHARE
 
-        var load = baseLoad
-        var reps = base?.reps
-        var move = Move.NONE
-        if (near && r.reached && LoadSteps.strengthExercise(def)) {
-            val hitTop = last.all { it.reps!! >= top }
-            val up = lastLoad + step
-            val repsUp = repsFor(up)
-            when {
-                // Top of the range with reserve: the next weight, with the repetitions it leaves.
-                r.easy && hitTop && mayStepUp && (repsUp == null || repsUp >= bottom || lastReps >= top + EXTENDED_REPS) ->
-                    if (baseLoad == null || up > baseLoad + 1e-9) { load = up; reps = (repsUp ?: top).coerceIn(bottom, top); move = Move.UP }
-                // The weight step is too big to take yet: more repetitions at the same weight.
-                r.easy && hitTop && mayStepUp ->
-                    if (aboveBase || (reps ?: top) <= lastReps) { load = lastLoad; reps = lastReps + 1; move = Move.UP }
-                // Building the repetitions back up after a weight step.
-                aboveBase && lastReps < top ->
-                    { load = lastLoad; reps = if (r.easy) lastReps + 1 else lastReps; move = if (r.easy) Move.UP else Move.REPEAT }
-                aboveBase -> { load = lastLoad; reps = lastReps.coerceAtMost(top + EXTENDED_REPS); move = Move.REPEAT }
+        val hitTop = last.all { it.reps!! >= top }
+        val strength = LoadSteps.strengthExercise(def)
+        var load = lastLoad
+        var reps = lastReps
+        var move = Move.REPEAT
+        when {
+            !r.reached -> Unit
+            // The value asks for more than the next rung (it rose in the training): the value's plan.
+            r.easy && hitTop && shown && steps >= Steps.GENTLE && baseLoad != null && baseLoad > lastLoad + step + 1e-9 -> {
+                load = baseLoad; reps = base.reps ?: top; move = Move.UP
             }
-        } else if (near && !r.reached && aboveBase) {
-            load = lastLoad; reps = lastReps; move = Move.REPEAT
+            // The top of the range with reserve: the next weight, with the repetitions it leaves.
+            r.easy && hitTop && strength && steps == Steps.FULL -> {
+                val up = lastLoad + step
+                val repsUp = repsFor(up)
+                if (repsUp == null || repsUp >= bottom || lastReps >= top + EXTENDED_REPS) {
+                    load = up; reps = (repsUp ?: top).coerceIn(bottom, top); move = Move.UP
+                } else {
+                    // The weight step is too big to take yet: more repetitions at the same weight first.
+                    reps = lastReps + 1; move = Move.UP
+                }
+            }
+            // A young or first-year climber follows the value up, one step at a time; no rung of their own.
+            r.easy && hitTop && shown && steps == Steps.GENTLE && baseLoad != null && baseLoad > lastLoad + 1e-9 -> {
+                load = lastLoad + step; reps = (repsFor(load) ?: top).coerceIn(bottom, top); move = Move.UP
+            }
+            // Building the repetitions back up after a weight step.
+            r.easy && lastReps < top && steps >= Steps.GENTLE -> { reps = lastReps + 1; move = Move.UP }
         }
-        // After an easy training two steps, small loads one step at a time ([LoadSteps]); that rule has the last word.
-        val before = load ?: lastLoad
-        val stepped = LoadSteps.adjust(def, load, last, incrementKg, mayStepUp)
-        if (stepped != null && abs(stepped - before) > 1e-9) {
-            load = stepped
-            reps = (repsFor(stepped) ?: reps ?: top).coerceIn(bottom, max(top, reps ?: top))
-            move = if (stepped > before) Move.UP_FAST else if (stepped > lastLoad) Move.UP else Move.REPEAT
+        // After an easy training two steps, small loads one step at a time ([LoadSteps]) – where the value leaves the
+        // repetitions for it; a step too big for the range was answered with repetitions above.
+        val stepped = LoadSteps.adjust(def, load, last, incrementKg, steps == Steps.FULL)
+        if (stepped != null && abs(stepped - load) > 1e-9) {
+            val fits = stepped < load || (repsFor(stepped) ?: top) >= bottom
+            if (fits) {
+                move = if (stepped > load) Move.UP_FAST else if (stepped > lastLoad) Move.UP else Move.REPEAT
+                load = stepped
+                reps = (repsFor(stepped) ?: reps).coerceIn(bottom, max(top, reps))
+            }
         }
-        if (move == Move.NONE) return null
-        return Next(reps ?: top, null, load, move)
+        return Next(reps, null, load, move)
     }
 
     // ── Loaded holds (finger work): one careful step ─────────────────
@@ -312,43 +373,42 @@ object NextTargets {
         past: List<List<ExerciseSet>>,
         bodyweightKg: Double?,
         incrementKg: Double,
-        mayStepUp: Boolean,
+        steps: Steps,
     ): Next? {
         if (def.kind != ExerciseKind.HANG) return null
         val last = past.first().filter { it.loadKg != null && it.durationS != null }
-        if (last.isEmpty()) return null
+        if (last.isEmpty() || !asPlanned(last)) return null
         // A hold is logged with its planned time: only an answered reserve says it went well.
-        fun readOf(sets: List<ExerciseSet>) = read(sets.map { it.durationS!! }, sets.map { it.targetDurationS }, sets.map { it.rir }, unknownIsEasy = false)
+        fun readOf(sets: List<ExerciseSet>) = read(sets.map { it.durationS!! }, sets.map { it.targetDurationS }, sets.map { it.rir },
+            unknownIsEasy = false, tolerance = 0.5)
         val r = readOf(last)
         val step = ProgressionAdvisor.increment(def, incrementKg)
         val lastLoad = last.maxOf { it.loadKg!! }
-        if (!r.tooHard) {
-            val baseLoad = base?.loadKg
-            // A hold is planned at a share of the value (90 %, long hangs 85 %), so the steps can run up to the
-            // value itself before a set proves more; beyond that the value decides.
-            fun total(load: Double): Double = StrengthMath.effectiveLoad(def, load, bodyweightKg) ?: load
-            val share = LoadPrescriber.holdShare(base?.durationS ?: item.durationS ?: def.defaults.durationS ?: 10) - HOLD_MARGIN
-            val near = baseLoad == null || total(baseLoad) >= total(lastLoad) * share - 1e-9
-            val aboveBase = baseLoad != null && lastLoad > baseLoad + 1e-9
-            return when {
-                !near -> null
-                // Every set held with reserve: one smallest step, where the value does not already ask for it.
-                r.easy && mayStepUp && (baseLoad == null || lastLoad + step > baseLoad + 1e-9) -> Next(null, base?.durationS ?: item.durationS, lastLoad + step, Move.UP)
-                // The step taken last time stays while it is hard, instead of falling back to the value's load.
-                aboveBase -> Next(null, base?.durationS ?: item.durationS, lastLoad, Move.REPEAT)
-                else -> null
+        val baseLoad = base?.loadKg
+        val duration = base?.durationS ?: item.durationS ?: def.defaults.durationS
+
+        if (r.tooHard) {
+            val lighter = (lastLoad - step).takeIf { def.load == LoadMode.BODYWEIGHT_PLUS || it > 1e-9 } ?: return null
+            val before = past.getOrNull(1)?.filter { it.loadKg != null && it.durationS != null }.orEmpty()
+            if (before.isNotEmpty() && readOf(before).tooHard) {
+                val shown = (last + before).mapNotNull { s -> BenchmarkMath.implied(def, s)?.takeIf { it.kind == CapacityKind.TEN_SECOND_MAX } }
+                    .maxByOrNull { it.value }
+                if (shown != null && (capacity == null || shown.value < capacity.value)) {
+                    val relearnt = LoadPrescriber.prescribe(def, item, shown, bodyweightKg, incrementKg)
+                    val load = relearnt?.loadKg
+                    if (load != null) return Next(null, relearnt.durationS, min(load, lighter), Move.RELEARN)
+                }
             }
+            return Next(null, duration, baseLoad?.let { min(it, lighter) } ?: lighter, Move.DOWN)
         }
-        val lighter = (lastLoad - step).takeIf { def.load == LoadMode.BODYWEIGHT_PLUS || it > 1e-9 } ?: return null
-        val before = past.getOrNull(1)?.filter { it.loadKg != null && it.durationS != null }.orEmpty()
-        if (before.isNotEmpty() && readOf(before).tooHard) {
-            val shown = (last + before).mapNotNull { s -> BenchmarkMath.implied(def, s)?.takeIf { it.kind == CapacityKind.TEN_SECOND_MAX } }
-                .maxByOrNull { it.value }
-            if (shown != null && (capacity == null || shown.value < capacity.value)) {
-                val relearnt = LoadPrescriber.prescribe(def, item, shown, bodyweightKg, incrementKg)
-                if (relearnt?.loadKg != null) return Next(null, relearnt.durationS, min(relearnt.loadKg, lighter), Move.RELEARN)
-            }
+
+        // The rungs are for the same job only: a hold of another length plans another load, and there the value decides.
+        val lastDuration = last.mapNotNull { it.targetDurationS }.maxOrNull()
+        if (duration != null && lastDuration != null && abs(lastDuration - duration) > SAME_HOLD_S) return null
+        return when {
+            // Every set held with reserve: one smallest step, never two – also on the way back up after a step back.
+            r.easy && steps == Steps.FULL -> Next(null, duration, lastLoad + step, Move.UP)
+            else -> Next(null, duration, lastLoad, Move.REPEAT)
         }
-        return Next(null, base?.durationS, base?.loadKg?.let { min(it, lighter) } ?: lighter, Move.DOWN)
     }
 }

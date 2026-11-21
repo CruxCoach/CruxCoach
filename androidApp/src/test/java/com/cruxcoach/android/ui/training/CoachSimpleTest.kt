@@ -97,6 +97,31 @@ class CoachSimpleTest : AthleteScreenTest() {
         repo.updateProfile { it.copy(fuelExact = true) }
         val exact = service.energyReport(repo.profile(), service.activities(7))
         assertTrue("${exact.signals}", exact.signals.any { it.name == "HIGH_DEFICIT" })
+        // Switched to "exact" today: the days before were logged for their protein and stay out (review 2026-11-21).
+        repo.updateProfile { it.copy(fuelExact = false, fuelExactSince = null) }
+        val vm = FuelViewModel(service).tracked()
+        vm.setExact(true)
+        compose.waitUntil(WAIT_MS) { repo.profile().fuelExactSince == today.toString() }
+        val switched = service.energyReport(repo.profile(), service.activities(7))
+        assertTrue("${switched.signals}", switched.signals.none { it.name == "HIGH_DEFICIT" })
+    }
+
+    @Test
+    fun `two snacks are no whole day, two main meals are`() {
+        val today = service.today()
+        repo.updateProfile { it.copy(fuelExact = true) }
+        repo.saveMeasurement(BodyMeasurement(today.toString(), BodyMetric.WEIGHT.key, 70.0, "kg", 1))
+        repo.saveMeasurement(BodyMeasurement(today.toString(), BodyMetric.HEIGHT.key, 178.0, "cm", 1))
+        fun log(meals: List<Meal>) = (1..4).forEach { back ->
+            val day = today.minus(DatePeriod(days = back)).toString()
+            meals.forEachIndexed { i, meal ->
+                repo.saveFoodLog(FoodLogEntry("$back-$i", day, i.toLong(), meal, name = "Quark", amountG = 250.0, proteinG = 30.0, carbsG = 10.0, fatG = 1.0))
+            }
+        }
+        log(listOf(Meal.SNACK, Meal.POST_TRAINING))
+        assertTrue(service.energyReport(repo.profile(), service.activities(7)).signals.none { it.name == "HIGH_DEFICIT" })
+        log(listOf(Meal.BREAKFAST, Meal.DINNER))
+        assertTrue(service.energyReport(repo.profile(), service.activities(7)).signals.any { it.name == "HIGH_DEFICIT" })
     }
 
     private val pushUps = Routine("r", "Push", items = listOf(RoutineItem("push.push_up", sets = 3, repsMin = 8, repsMax = 15, restS = 60)))

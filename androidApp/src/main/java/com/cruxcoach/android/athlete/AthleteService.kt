@@ -436,9 +436,9 @@ class AthleteService @Inject constructor(
             val modifier = if (comeback != null) ReadinessModifier.NONE else todaysModifier().let { if (trimSets) it else it.copy(setsDelta = 0) }
             // Circuits in their canonical form, every member with the circuit's rests (the round rest needs all members).
             val items = routine?.items?.let { Circuits.resolveRests(Circuits.normalize(it, catalog), catalog) }
-            val stepUp = loadsMayStepUp(comeback)
+            val steps = planSteps(comeback)
             items?.forEachIndexed { index, item ->
-                addItem(id, index, item, modifier, ownInjury = comeback, despiteInjury = item.slug in despiteInjury, stepUp = stepUp)
+                addItem(id, index, item, modifier, ownInjury = comeback, despiteInjury = item.slug in despiteInjury, steps = steps)
             }
             if (comeback == null && items?.any { it.warmup } == true) addSpecificWarmups(id)
         }
@@ -674,8 +674,8 @@ class AthleteService @Inject constructor(
         ownInjury: String? = null,
         /** The athlete chose it although the open injury rules it out: planned as if nothing hurt. */
         despiteInjury: Boolean = false,
-        /** Loads may take the bigger step after an easy training ([loadsMayStepUp]). */
-        stepUp: Boolean = loadsMayStepUp(ownInjury),
+        /** How far the plan may move from the last training ([planSteps]). */
+        steps: NextTargets.Steps = planSteps(ownInjury),
     ): Boolean {
         val def = catalog.fallbackFor(item.slug)
         val bodyweight = currentBodyweight()
@@ -695,7 +695,9 @@ class AthleteService @Inject constructor(
             },
             incrementKg = increment,
             newId = repo::newId,
-            stepUp = stepUp,
+            steps = steps,
+            now = now(),
+            stepHistory = untrimmed(history),
         )
         val factor = if (item.warmup || item.test) 1.0 else ReadinessModifiers.loadFactorFor(def, modifier)
         // The training remembers what today's form changed, so the player can say why and offer "as planned".
@@ -726,24 +728,101 @@ class AthleteService @Inject constructor(
      * (owner 2026-11-06, [LoadSteps.mayStepUp]): an open injury, a comeback session, the return ramp after a break,
      * a climber under 18 or in the first year. Anything that cannot be read keeps them careful too.
      */
-    fun loadsMayStepUp(comebackInjury: String? = null): Boolean = runCatching {
-        LoadSteps.mayStepUp(comeback = comebackInjury != null, openInjury = repo.activeInjuries().isNotEmpty(), coach = repo.profile().coach) {
-            runCatching { todayCoach().returnStateResult(activities(days = 7 * 26), today()) }.getOrElse { Result.failure(it) }
+    fun loadsMayStepUp(comebackInjury: String? = null): Boolean = planSteps(comebackInjury) == NextTargets.Steps.FULL
+
+    /**
+     * How far the plan may move from one training to the next ([NextTargets.Steps], [LoadSteps.steps]): a comeback
+     * session keeps its plan's numbers, an open injury, the return ramp or a lighter week allows no step up, a climber
+     * under 18 or in the first year steps body-weight work only. Anything that cannot be read keeps it careful.
+     */
+    fun planSteps(comebackInjury: String? = null): NextTargets.Steps = runCatching {
+        val coach = repo.profile().coach
+        val today = today()
+        fun day(iso: String?) = iso?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val phase = TrainingBlocks.state(day(coach.blockStartDay), day(coach.targetDate), today)?.phase
+        val lightWeek = phase == BlockPhase.DELOAD || phase == BlockPhase.TAPER || phase == BlockPhase.EVENT
+        LoadSteps.steps(comeback = comebackInjury != null, openInjury = repo.activeInjuries().isNotEmpty(), coach = coach, lightWeek = lightWeek) {
+            runCatching { todayCoach().returnStateResult(activities(days = 7 * 26), today) }.getOrElse { Result.failure(it) }
         }
-    }.getOrDefault(false)
+    }.getOrDefault(NextTargets.Steps.CAREFUL)
+
+    /** [planSteps] for the next training of the kind [workoutId] is: a comeback session's tips stay with its plan. */
+    fun planStepsAfter(workoutId: String): NextTargets.Steps =
+        planSteps(com.cruxcoach.athlete.logic.Comeback.parseRoutineId(repo.workout(workoutId)?.routineId)?.first)
+
+    /**
+     * [history] without the work sets today's form made lighter (a tired day's loads): they are no "last time" for the
+     * next plan – the plan before them still stands (review 2026-11-21: a step was lost after a trimmed training).
+     * Only the newest trainings are looked at; the step reads no further back.
+     */
+    private fun untrimmed(history: List<ExerciseSet>): List<ExerciseSet> {
+        val newest = history.filter { it.isCompleted && it.setType == SetType.WORK }
+            .sortedByDescending { it.completedAt ?: 0L }.map { it.workoutId }.distinct().take(TRIM_LOOKBACK)
+        val trimmed = newest.flatMapTo(mutableSetOf()) { workout ->
+            repo.setting(ReadinessModifiers.settingKey(workout) + ".loads").orEmpty().split(";").mapNotNull { row ->
+                row.substringBefore(",").takeIf { it.isNotEmpty() }
+            }
+        }
+        return if (trimmed.isEmpty()) history else history.filterNot { it.id in trimmed }
+    }
+
+    /**
+     * The item the next training of [slug] is planned from, as far as it can be known: the workout's own (its
+     * repetition range and seconds), else the exercise's defaults. [sets]: the work sets just done.
+     */
+    fun itemAfter(workoutId: String, slug: String, sets: Int): RoutineItem {
+        val routine = routineOf?.takeIf { it.first == workoutId } ?: run {
+            val id = repo.workout(workoutId)?.routineId
+            (workoutId to id?.let { repo.routines().firstOrNull { r -> r.id == id } ?: BuiltinRoutines.all.firstOrNull { r -> r.id == id } })
+                .also { routineOf = it }
+        }
+        // The workout's own item with all it says (a load written into it stays the plan, as in [addItem]).
+        val own = routine.second?.items?.firstOrNull { it.slug == slug && !it.warmup && !it.test }
+        return (own ?: WorkoutPlanner.itemFor(catalog.fallbackFor(slug))).copy(sets = sets)
+    }
+
+    /**
+     * "Next time" after a training: for each exercise of its work sets what the next training plans ([nextTarget]) and
+     * the exercise of its chain on offer – the next step once the top of the range went with reserve, a step back after
+     * a training that was too hard – when the place has the equipment for it. The summary shows these lines; taking an
+     * offer is [keepStep].
+     */
+    fun nextTime(workoutId: String): List<NextLine> {
+        val work = repo.setsFor(workoutId).filter { it.isCompleted && it.setType == SetType.WORK }
+        if (work.isEmpty()) return emptyList()
+        val steps = runCatching { planStepsAfter(workoutId) }.getOrDefault(NextTargets.Steps.CAREFUL)
+        val profile = repo.profile()
+        val owned = profile.equipment.takeIf { profile.equipmentConfigured }
+        fun there(def: com.cruxcoach.athlete.catalog.ExerciseDefinition) =
+            owned == null || def.equipment.all { e -> com.cruxcoach.athlete.catalog.EquipmentV2.satisfied(e, owned) }
+        return work.groupBy { it.exerciseSlug to it.side }.mapNotNull { (key, done) ->
+            val def = catalog[key.first] ?: return@mapNotNull null
+            if (def.kind == com.cruxcoach.athlete.catalog.ExerciseKind.CLIMB || def.kind == com.cruxcoach.athlete.catalog.ExerciseKind.INTERVAL) return@mapNotNull null
+            val next = runCatching { nextTarget(itemAfter(workoutId, key.first, done.size), key.second, steps = steps) }.getOrNull()
+                ?: return@mapNotNull null
+            val back = next.move == NextTargets.Move.DOWN || next.move == NextTargets.Move.RELEARN
+            val harder = def.harder?.let { catalog[it] }?.takeIf { next.atTop && there(it) }
+            val easier = def.easier?.let { catalog[it] }?.takeIf { back && there(it) }
+            NextLine(def, key.second, done.sortedBy { it.setIndex }, next, harder ?: easier, harder != null)
+        }
+    }
+
+    /** The routine a training was started from, remembered for the training the summary and the player ask about. */
+    @Volatile private var routineOf: Pair<String, Routine?>? = null
 
     /**
      * What the next training plans for [item], the way [addItem] plans it ([NextTargets]): Today's rows and the
      * summary's "next time" show these numbers, so the tip and the plan are one thing. [exceptWorkout]: a training
      * that does not count as "last time" (the one being planned).
      */
-    fun nextTarget(item: RoutineItem, side: Side? = null, exceptWorkout: String? = null, stepUp: Boolean = loadsMayStepUp()): NextTargets.Next {
+    fun nextTarget(item: RoutineItem, side: Side? = null, exceptWorkout: String? = null, steps: NextTargets.Steps = planSteps()): NextTargets.Next {
         val def = catalog.fallbackFor(item.slug)
         val bodyweight = currentBodyweight()
         val history = repo.history(item.slug, 60)
         val capacity = capacityFor(def, side, item.edgeMm?.toDouble(), item.grip, bodyweight)
             ?: startEstimate(def, bodyweight).takeIf { item.loadKg == null && history.none { it.isCompleted && it.setType != SetType.WARMUP } }
-        return NextTargets.plan(def, item, capacity, history, side, bodyweight, repo.profile().smallestIncrementKg, stepUp, exceptWorkout)
+        return NextTargets.plan(def, item, capacity, untrimmed(history), side, bodyweight, repo.profile().smallestIncrementKg, steps, exceptWorkout,
+            now = now())
     }
 
     /** The work sets of the last training with [slug] on [side], in set order; empty when there is none. */
@@ -1054,8 +1133,9 @@ class AthleteService @Inject constructor(
      * kept choice does, for [KEEP_STEP_DAYS] – long enough to stand until the athlete steps again. Returns the ledger
      * entry for "Rückgängig".
      */
-    fun keepStep(from: String, to: String, workoutId: String?): String? =
-        logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.KEEP_CHOICE, listOf(from, to), workoutId = workoutId,
+    fun keepStep(from: String, to: String): String? =
+        // Without the training's id: the question about today's swaps ([keepQuestion]) is a different one and stays open.
+        logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.KEEP_CHOICE, listOf(from, to), workoutId = null,
             value = today().plus(kotlinx.datetime.DatePeriod(days = KEEP_STEP_DAYS)).toEpochDays().toDouble())
 
     /** "Nur heute": the question is answered; the swaps teach as lightly as always. */
@@ -1389,8 +1469,12 @@ class AthleteService @Inject constructor(
             rounds.getOrNull(i) ?: ((rounds.lastOrNull() ?: -1) + 1 + (i - rounds.size))
 
         const val LEDGER_KEEP_DAYS = 180L
-        /** Meals with food that make a logged day complete for the energy check. */
+        /** Meals with food that make a logged day complete for the energy check; two are enough when both are main meals. */
         const val COMPLETE_DAY_MEALS = 3
+        const val COMPLETE_DAY_MAIN_MEALS = 2
+        private val MAIN_MEALS = setOf(Meal.BREAKFAST, Meal.LUNCH, Meal.DINNER)
+        /** How many of the newest trainings [untrimmed] checks for a tired day's loads. */
+        private const val TRIM_LOOKBACK = 4
         /** How long a step along a progression chain stands ([keepStep]): as long as the ledger remembers it. */
         const val KEEP_STEP_DAYS = 180
         /** The logbook grade the athlete last said no to taking over; a higher one asks again. */
@@ -1678,10 +1762,15 @@ class AthleteService @Inject constructor(
                 dayLoad = FuelTargets.dayLoad(activities[day]),
                 kcal = energies.takeIf { it.isNotEmpty() }?.sumOf { it.kcal },
                 needKcal = needs[i]?.totalKcal,
-                // A day counts for the energy check when it was logged as a whole: three meals (two snacks made a "day",
-                // phone check 2026-11-21), and never in the simple view, where only some food is logged for its protein.
+                // A day counts for the energy check when it was logged as a whole: two main meals or three meals of any
+                // kind (two snacks made a "day", phone check 2026-11-21) – and only days logged in the exact view. In
+                // the simple view some food is logged for its protein; such days never count, also not after a switch
+                // to "exact" (review 2026-11-21: three of them made a false low-energy warning).
                 complete = profile.fuelExact != false && day != today.toString() &&
-                    entries.map { it.meal }.distinct().size >= COMPLETE_DAY_MEALS)
+                    (profile.fuelExactSince == null || day >= profile.fuelExactSince!!) &&
+                    entries.map { it.meal }.distinct().let { meals ->
+                        meals.size >= COMPLETE_DAY_MEALS || meals.count { it in MAIN_MEALS } >= COMPLETE_DAY_MAIN_MEALS
+                    })
         }
         val todayNeed = needs.last()
         val own = profile.ownKcal?.let { kcal -> todayNeed?.let { OwnEnergyTarget(kcal, it.totalKcal, it.restingKcal) } }
@@ -1703,3 +1792,16 @@ class AthleteService @Inject constructor(
 
 /** What "it hurts" does to the current exercise. */
 enum class PainAction { SWAP, LIGHTER, END_EXERCISE }
+
+/**
+ * One exercise of "next time": the work sets of the training, what the next one plans, and the exercise of its chain
+ * on offer – the next step once the top of the range went with reserve, a step back after a training that was too hard.
+ */
+data class NextLine(
+    val def: com.cruxcoach.athlete.catalog.ExerciseDefinition,
+    val side: Side?,
+    val done: List<ExerciseSet>,
+    val next: NextTargets.Next,
+    val offer: com.cruxcoach.athlete.catalog.ExerciseDefinition? = null,
+    val offerHarder: Boolean = false,
+)

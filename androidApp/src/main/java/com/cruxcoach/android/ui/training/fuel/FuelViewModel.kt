@@ -301,7 +301,11 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
     /** "Einfach" or "Genau": shown at once, kept for next time. */
     fun setExact(exact: Boolean) {
         _state.update { it.copy(exact = exact) }
-        io { service.repo.updateProfile { it.copy(fuelExact = exact) } }
+        io {
+            val today = service.today().toString()
+            // From "simple" to "exact": the days so far were logged for their protein only and stay out of the energy check.
+            service.repo.updateProfile { p -> p.copy(fuelExact = exact, fuelExactSince = if (exact && p.fuelExact == false) today else p.fuelExactSince) }
+        }
     }
 
     fun deleteWater(entry: HydrationEntry) = io { service.repo.deleteHydration(entry.id) }

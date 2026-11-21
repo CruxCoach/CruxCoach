@@ -316,7 +316,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             if (benchmarks.isNotEmpty() && i.injuries.isEmpty() && System.currentTimeMillis() - lastTest > eightWeeks) add(TodaySuggestion.BASELINE_TEST)
             if (i.profile.bodyEnabled && trend.isEmpty()) add(TodaySuggestion.LOG_WEIGHT)
             // Asked when the answer changes something: once there is a first training and still no week.
-            if (i.profile.weekPlan.isEmpty() && i.profile.coach.climbingDays.isEmpty() &&
+            if (i.profile.weekPlan.isEmpty() && i.profile.datePlan.isEmpty() && i.profile.coach.climbingDays.isEmpty() &&
                 runCatching { repo.trainedExercises().isNotEmpty() }.getOrDefault(false)) add(TodaySuggestion.PLAN_WEEK)
         }
 
@@ -356,13 +356,14 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 i.profile.weekPlan[iso] == null && !DayPlans.isOverridden(i.profile, today)) HabitOffer(iso, h.entry) else null
         }.getOrNull()
         // Each row says what last time was and what today adds: the numbers the training will plan.
-        val stepUp = if (daily == null) false else runCatching { service.loadsMayStepUp() }.getOrDefault(false)
+        val steps = if (daily == null) com.cruxcoach.athlete.logic.NextTargets.Steps.CAREFUL
+            else runCatching { service.planSteps() }.getOrDefault(com.cruxcoach.athlete.logic.NextTargets.Steps.CAREFUL)
         val rows = daily?.routine?.items.orEmpty().filter { !it.warmup }.mapNotNull { item ->
             runCatching {
                 val def = service.catalog.fallbackFor(item.slug)
                 val planned = dayForm?.let { com.cruxcoach.athlete.logic.ReadinessModifiers.applyToItem(item, def, it) } ?: item
                 val side = if (def.unilateral) com.cruxcoach.athlete.model.Side.RIGHT else null
-                item.slug to TodayRow(service.lastTime(item.slug, side), service.nextTarget(planned, side, stepUp = stepUp), planned.sets)
+                item.slug to TodayRow(service.lastTime(item.slug, side), service.nextTarget(planned, side, steps = steps), planned.sets)
             }.getOrNull()
         }.toMap()
         _state.update {

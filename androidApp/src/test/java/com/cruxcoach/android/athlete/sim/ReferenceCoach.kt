@@ -9,6 +9,7 @@ import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.BlockPhase
 import com.cruxcoach.athlete.logic.LoadRules
 import com.cruxcoach.athlete.logic.ProgressionAdvisor
+import com.cruxcoach.athlete.logic.StartEstimate
 import com.cruxcoach.athlete.logic.StrengthMath
 import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.ExerciseSet
@@ -153,7 +154,9 @@ class ReferenceCoach(private val run: SimRun) {
         val top = def.defaults.repsMax ?: def.defaults.repsMin ?: 8
         val bottom = (def.defaults.repsMin ?: top).coerceAtMost(top)
         if (loaded(def)) {
-            val e = state.e1rm ?: return Target(def, first.targetReps ?: first.reps ?: top, null, first.targetLoadKg ?: first.loadKg ?: 0.0)
+            // No estimate yet: where the app started this exercise. (After a step along the chain there is always one.)
+            val e = state.e1rm ?: return Target(def, first.targetReps ?: first.reps ?: top, null,
+                (first.targetLoadKg ?: first.loadKg ?: 0.0).takeIf { appDef.slug == def.slug } ?: 0.0)
             val step = ProgressionAdvisor.increment(def, persona.smallestIncrementKg)
             fun repsAt(load: Double): Int = (30.0 * (e / total(def, load).coerceAtLeast(1.0) - 1.0) - need).roundToInt()
             var load = StrengthMath.roundTo(logged(def, e / (1.0 + (top + need) / 30.0)), persona.smallestIncrementKg)
@@ -177,7 +180,9 @@ class ReferenceCoach(private val run: SimRun) {
         val tooHard = done.count { it.short } * 2 >= done.size && done.any { it.short }
         state.hardInARow = if (tooHard) state.hardInARow + 1 else 0
         if (loaded(def)) {
-            val best = done.mapNotNull { r -> r.reps?.takeIf { it > 0 }?.let { StrengthMath.epley(total(def, target.loadKg ?: 0.0), it + (r.rir ?: 0)) } }.maxOrNull() ?: return
+            // A set without weight on the bar says nothing about a maximum (an estimate of 0 planned 1 × 0 kg for good).
+            val lifted = total(def, target.loadKg ?: 0.0).takeIf { it > 0.0 } ?: return
+            val best = done.mapNotNull { r -> r.reps?.takeIf { it > 0 }?.let { StrengthMath.epley(lifted, it + (r.rir ?: 0)) } }.maxOrNull() ?: return
             state.e1rm = max(best, (state.e1rm ?: best) * 0.95)
             return
         }
@@ -200,8 +205,9 @@ class ReferenceCoach(private val run: SimRun) {
             else -> now
         }
         // The top of the range with reserve: the next exercise of the chain, started at the bottom of its range.
-        val harder = def.harder?.let { catalog[it] }?.takeIf { owns(it) && athlete.qualityOf(it) == athlete.qualityOf(def) }
-        val easier = def.easier?.let { catalog[it] }?.takeIf { owns(it) && athlete.qualityOf(it) == athlete.qualityOf(def) }
+        fun reachable(to: ExerciseDefinition) = owns(to) && athlete.qualityOf(to) == athlete.qualityOf(def) && (!loaded(to) || startFor(to) != null)
+        val harder = def.harder?.let { catalog[it] }?.takeIf(::reachable)
+        val easier = def.easier?.let { catalog[it] }?.takeIf(::reachable)
         when {
             reachedWithReserve && now >= top && harder != null -> moveTo(state, harder)
             state.hardInARow >= 2 && easier != null -> moveTo(state, easier)
@@ -217,12 +223,19 @@ class ReferenceCoach(private val run: SimRun) {
         state.reps = null
         state.seconds = null
         when {
-            loaded(to) -> state.e1rm = athlete.bodyweightKg.takeIf { to.load == LoadMode.BODYWEIGHT_PLUS }
-                ?.let { it * (1.0 + ((to.defaults.repsMax ?: 5) + 2) / 30.0) }
+            loaded(to) -> state.e1rm = startFor(to)
             to.kind == ExerciseKind.TIME -> state.seconds = to.defaults.durationS ?: 20
             else -> state.reps = to.defaults.repsMin ?: to.defaults.repsMax ?: 5
         }
     }
+
+    /**
+     * The estimate a loaded exercise starts from after a step along the chain: body weight for the top of the range
+     * where the body is the load, else the app's careful start guess for a lift ([StartEstimate.liftCapacity]).
+     */
+    private fun startFor(to: ExerciseDefinition): Double? =
+        if (to.load == LoadMode.BODYWEIGHT_PLUS) athlete.bodyweightKg * (1.0 + ((to.defaults.repsMax ?: 5) + 2) / 30.0)
+        else StartEstimate.liftCapacity(to, athlete.bodyweightKg)?.value
 
     companion object {
         /** Strength away from the fingers: what both coaches step in their own way. */

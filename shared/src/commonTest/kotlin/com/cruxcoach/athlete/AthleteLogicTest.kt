@@ -263,9 +263,9 @@ class AthleteLogicTest {
         val history = listOf(set(pullUp.slug, workout = "old", index = 0, reps = 6, at = 3))
         var n = 0
         val block = WorkoutPlanner.plan("w", 0, WorkoutPlanner.itemFor(pullUp), catalog, history, emptyList(), null) { "id${n++}" }
-        // Six pull-ups last time, nothing said about the reserve: one more is the target and the prefill ([NextTargets]).
-        assertEquals(7, block.sets.first().reps)
-        assertEquals(7, block.sets.first().targetReps)
+        // Sets logged without a plan are no rung for the next one ([NextTargets]): the prefill is what was done.
+        assertEquals(6, block.sets.first().reps)
+        assertEquals(8, block.sets.first().targetReps)
         assertTrue(block.sets.none { it.isCompleted })
     }
 

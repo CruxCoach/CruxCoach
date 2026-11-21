@@ -165,8 +165,9 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
             "sets ${repo.setsFor(id).map { "${it.exerciseSlug} ${it.setType} ${it.completedAt}" }}")
         assert(vm.state.value.fuelLeft != null)
         render { WorkoutSummaryScreen(id, {}, {}, viewModel = vm) }
-        waitForTag("summary_after_fingers")
-        waitForTag("summary_after_fuel")
+        // Below "next time": a lazy list composes only what is on screen.
+        scrollTo("summary_list", "summary_after_fingers")
+        scrollTo("summary_list", "summary_after_fuel")
     }
 
     @Test

@@ -340,7 +340,9 @@ class OverridesTest : AthleteScreenTest() {
         assertEquals(null, repo.checkin(day))
         scrollTo("today_list", hasTestTag("today_form_tired"))
         click("today_form_tired")
-        until { repo.checkin(day)?.energy == 2 }
+        // The chip follows the saved check-in: "good" only answers once the card shows "tired".
+        until { repo.checkin(day)?.energy == 2 && vm.state.value.checkin?.energy == 2 }
+        compose.waitForIdle()
         click("today_form_good")
         until { repo.checkin(day)?.energy == 3 }
         // What hurts today is spared today, not an injury: it is one of the questions behind "more".

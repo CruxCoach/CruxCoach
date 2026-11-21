@@ -294,11 +294,11 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             .filterValues { work -> work.all { it.isCompleted } }
         if (finished.isEmpty()) return@runCatching emptyMap()
         // Read once: whether anything keeps loads careful looks back over half a year of training.
-        val stepUp = service.loadsMayStepUp()
+        val workoutId = sets.first().workoutId
+        val steps = service.planStepsAfter(workoutId)
         finished.mapNotNull { (key, work) ->
-                val def = service.catalog[key.first] ?: return@mapNotNull null
-                val item = com.cruxcoach.athlete.logic.WorkoutPlanner.itemFor(def).copy(sets = work.size)
-                val next = service.nextTarget(item, key.second, stepUp = stepUp)
+                if (service.catalog[key.first] == null) return@mapNotNull null
+                val next = service.nextTarget(service.itemAfter(workoutId, key.first, work.size), key.second, steps = steps)
                 if (next.move == com.cruxcoach.athlete.logic.NextTargets.Move.NONE) null else progressKey(key.first, key.second) to next
             }.toMap()
     }.getOrDefault(emptyMap())

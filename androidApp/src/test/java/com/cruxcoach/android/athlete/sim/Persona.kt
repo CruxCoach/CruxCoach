@@ -105,6 +105,10 @@ data class Persona(
     val swapShare: Double = 0.0,
     /** Standard deviation of the reserve answer around the truth, in reps or seconds. */
     val rirNoise: Double = 1.0,
+    /** Lets a timed hold end with its timer and never answers its reserve (the chips under a hold are optional). */
+    val skipsHoldReserve: Boolean = false,
+    /** Takes the step along a chain the summary offers: the next exercise after the top of the range, a step back after two trainings too hard. */
+    val takesOfferedSteps: Boolean = true,
     val checkins: Boolean = true,
     val events: List<Event> = emptyList(),
     /** Days from the start to a trip or competition (taper). */
@@ -283,7 +287,7 @@ data class Persona(
             Persona("new-no-setup", "New user who skips the coach setup",
                 "Answers none of the coach setup; a pull-up bar and a mat at home, trains three times a week, boulders on Saturday.",
                 seed = 1414, weeks = 8, level = Level.BEGINNER, bodyweightKg = 63.0,
-                coach = CoachProfile(),
+                coach = CoachProfile(), skipsHoldReserve = true,
                 equipment = NOTHING + EquipmentV2.PULL_UP_BAR, trainingDays = setOf(1, 3, 5),
                 climbing = mapOf(6 to boulder(90, ClimbIntensity.VOLUME))),
         )

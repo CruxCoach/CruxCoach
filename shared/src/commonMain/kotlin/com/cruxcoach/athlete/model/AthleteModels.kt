@@ -378,6 +378,8 @@ data class AthleteProfile(
      * Null until first resolved: exact for those who logged food before the choice existed, simple for everyone new.
      */
     val fuelExact: Boolean? = null,
+    /** The day the athlete switched to the exact view (ISO); null = always was. Days before it were not logged as a whole. */
+    val fuelExactSince: String? = null,
     val hideBodyNumbers: Boolean = false,
     /** On by default since 2026-10-05 (owner); the settings switch hides them. */
     val showCalories: Boolean = true,
