@@ -100,6 +100,8 @@ data class DayTrace(
     val dontKnow: List<DontKnowTrace> = emptyList(),
     /** Where the athlete trained today had only this equipment (a trip); null = the persona's own. */
     val equipmentToday: Set<com.cruxcoach.athlete.catalog.EquipmentV2>? = null,
+    /** Exercises the athlete stepped to after the day's training (the summary's offer): their own choice from then on. */
+    val steppedTo: List<String> = emptyList(),
 )
 
 /** A whole run of one persona. */
@@ -125,8 +127,8 @@ class Simulator(
     private val rng = Random(persona.seed)
     private val athlete = SimAthlete(persona, Random(persona.seed * 7 + 1))
     private var comeback: SimComeback? = null
-    /** Steps along a chain taken after the training just done, for the day's events. */
-    private val steps = mutableListOf<String>()
+    /** Steps along a chain taken after the training just done (from to to), for the day's trace. */
+    private val steps = mutableListOf<Pair<String, String>>()
 
     private fun dateOf(day: Int) = start.plus(DatePeriod(days = day))
 
@@ -328,7 +330,7 @@ class Simulator(
         if (takes && shown.focus != SuggestionFocus.REST && shown.routine.items.isNotEmpty() && shown.boardPlan == null) {
             at(day, 18)
             done = train(day, shown)
-            if (steps.isNotEmpty()) { events += "step: " + steps.joinToString(); steps.clear() }
+            if (steps.isNotEmpty()) events += "step: " + steps.joinToString { "${it.first} → ${it.second}" }
             trained = done.any { it.setType != SetType.WARMUP }
         } else if (takes && shown.boardPlan != null && climb == null && ill == null) {
             // A board day suggested on a training day: the athlete climbs it.
@@ -350,7 +352,7 @@ class Simulator(
         return DayTrace(day, date, events, checkin, readiness.level, block, returnState, injuries, climb, trace, trained, skipped,
             done, load, athlete.value.toMap(), away = false, weekEnd = weekEnd,
             comeback = cb?.trace(cbPrompts, cbReviews, cbMorning, cbSessions, cbEnded),
-            dontKnow = dontKnow, equipmentToday = trip?.equipment)
+            dontKnow = dontKnow, equipmentToday = trip?.equipment, steppedTo = steps.map { it.second }.also { steps.clear() })
     }
 
     private fun checkIn(day: Int, ill: Boolean): Checkin {
@@ -413,7 +415,7 @@ class Simulator(
                 val offer = line.offer ?: return@forEach
                 if (line.offerHarder || line.next.move == com.cruxcoach.athlete.logic.NextTargets.Move.RELEARN) {
                     service.keepStep(line.def.slug, offer.slug)
-                    steps += "${line.def.slug} → ${offer.slug}"
+                    steps += line.def.slug to offer.slug
                 }
             }
         }

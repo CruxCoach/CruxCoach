@@ -336,7 +336,8 @@ object Checks {
     /**
      * Well-known exercises first (issue #68), from the catalogue's levels and what the athlete logged: an exercise is
      * known after [KNOWN_AFTER_TRAININGS] trainings with it, Basic ones are known to everyone. The coach's own picks are
-     * judged, before the athlete's "Don't know it" swaps.
+     * judged, before the athlete's "Don't know it" swaps. An exercise the athlete stepped to in the summary (the next
+     * one of a chain, after the top of the range went with reserve) is their own choice from the next day on.
      */
     private fun familiarity(r: SimRun, flags: MutableList<Flag>) {
         val catalog = r.catalog
@@ -346,9 +347,11 @@ object Checks {
         // Trainings per exercise before each day.
         val trainings = mutableMapOf<String, Int>()
         val knownOn = mutableMapOf<Int, Set<String>>()
+        val chosen = mutableSetOf<String>()
         r.days.forEach { d ->
-            knownOn[d.day] = trainings.filterValues { it >= KNOWN_AFTER_TRAININGS }.keys.toSet()
+            knownOn[d.day] = trainings.filterValues { it >= KNOWN_AFTER_TRAININGS }.keys + chosen
             if (d.trained) d.sets.map { it.slug }.distinct().forEach { trainings.merge(it, 1, Int::plus) }
+            chosen += d.steppedTo
         }
         fun known(day: Int, def: ExerciseDefinition) = def.familiarity == Familiarity.BASIC || def.slug in knownOn[day].orEmpty() || def.custom
         fun coachItems(d: DayTrace) = d.suggestion?.items.orEmpty().map { item -> d.dontKnow.firstOrNull { it.to == item.slug }?.let { item.copy(slug = it.from) } ?: item }
