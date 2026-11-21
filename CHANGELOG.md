@@ -797,6 +797,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - "Stop sharing" in the sharing notification now holds while the board stays connected. With
   sharing that starts by itself, the next climb you sent started it again; now the next
   connection does, as before. Until then the sharing card says so and offers "Share again".
+- Training: a starter workout in your week (such as "Pull & antagonist") leaves out the exercises that need
+  equipment the place does not have, such as bands or rings; it listed them anyway. Your own workouts stay as
+  you built them.
 
 ## [0.2.4] - 2026-10-25
 

@@ -358,6 +358,28 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun aPlannedStarterWorkoutLeavesOutWhatThePlaceLacks() {
+        // Phone check 2026-11-21: "Zug & Antagonist" at a home without bands still listed Face Pulls and the band
+        // rotation, and ring rows at a home without rings.
+        val noBands = profile.copy(equipment = home - EquipmentV2.BANDS,
+            weekPlan = mapOf(1 to "builtin:" + BuiltinRoutines.PULL_ANTAGONIST))
+        val s = SessionSuggester.suggest(input(profile = noBands))
+        assertEquals(SuggestionFocus.PLANNED, s.focus)
+        assertTrue(slugs(s).none { catalog.fallbackFor(it).equipment.any { e -> e == EquipmentV2.BANDS || e == EquipmentV2.RINGS } },
+            "${slugs(s)}")
+        assertTrue("pull.pull_up" in slugs(s) && "push.push_up" in slugs(s), "${slugs(s)}")
+    }
+
+    @Test
+    fun anOwnWorkoutKeepsItsExercisesWhateverThePlaceHas() {
+        // The athlete's own plan stays as they built it; only the starter templates follow the place.
+        val mine = Routine("r1", "Mine", items = listOf(RoutineItem("pull.pull_up"), RoutineItem("antagonist.face_pull")))
+        val s = SessionSuggester.suggest(input(profile = profile.copy(equipment = home - EquipmentV2.BANDS,
+            weekPlan = mapOf(1 to "r1")), routines = listOf(mine)))
+        assertEquals(listOf("pull.pull_up", "antagonist.face_pull"), slugs(s))
+    }
+
+    @Test
     fun weekPlanWins() {
         val mine = Routine("r1", "Mine", items = listOf(RoutineItem("legs.air_squat"), RoutineItem("core.dead_bug")))
         val s = SessionSuggester.suggest(input(profile = profile.copy(weekPlan = mapOf(1 to "r1")), routines = listOf(mine)))

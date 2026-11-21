@@ -1045,7 +1045,14 @@ object SessionSuggester {
         var injuryRemoved = 0
         var fingerRemoved = 0
         var guardRemoved = 0
+        var equipmentRemoved = 0
         val youth = guard.kind == GuardrailKind.YOUTH
+        // A starter workout is a template, not the athlete's own plan: what needs equipment the place lacks goes, as
+        // in a generated session (bands or rings at a home without them). Own workouts stay as the athlete built them,
+        // and nothing is filtered before the equipment is set up.
+        val equipment = if (planned.startsWith("builtin:") && input.profile.equipmentConfigured) {
+            CatalogFilter(ownedEquipment = input.profile.equipment)
+        } else null
         val kept = routine.items.filter { item ->
             val def = input.catalog.fallbackFor(item.slug)
             val verdict = InjuryAdvisor.assess(def, input.injuries).verdict
@@ -1056,10 +1063,11 @@ object SessionSuggester {
                 !injuryOk || (climbingPaused && def.needsClimbingWall) -> { injuryRemoved++; false }
                 !fingerOk -> { fingerRemoved++; false }
                 youth && !item.warmup && restrictedByGuard(def) -> { guardRemoved++; false }
+                equipment != null && !equipment.matches(def) -> { equipmentRemoved++; false }
                 else -> true
             }
         }
-        val removed = injuryRemoved + fingerRemoved + guardRemoved
+        val removed = injuryRemoved + fingerRemoved + guardRemoved + equipmentRemoved
         if (kept.any { !it.warmup } && removed * 2 <= routine.items.size) {
             reasons.add(0, why)
             if (injuryRemoved > 0) reasons += SuggestionReason.PLAN_FILTERED_FOR_INJURY
