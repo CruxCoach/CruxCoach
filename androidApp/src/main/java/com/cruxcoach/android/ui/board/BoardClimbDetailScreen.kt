@@ -730,8 +730,12 @@ fun BoardClimbDetailScreen(
                                 // Wall games play this climb (endurance,
                                 // traverse) on the active board. Quantum
                                 // shares its lights, so it has no games.
+                                // Not offered at all while the games are
+                                // switched off (WallGamesFeature).
                                 val gameClimb = state.climb
-                                if (gameClimb != null && gameClimb.brand != BoardBrand.QUANTUM) {
+                                if (com.cruxcoach.android.ui.board.games.WallGamesFeature.enabled &&
+                                    gameClimb != null && gameClimb.brand != BoardBrand.QUANTUM
+                                ) {
                                     DropdownMenuItem(
                                         enabled = tourTargets.active == null,
                                         text = { Text(stringResource(R.string.wall_games_play_climb)) },

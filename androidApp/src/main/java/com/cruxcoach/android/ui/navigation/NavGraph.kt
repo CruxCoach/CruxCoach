@@ -1248,9 +1248,16 @@ fun CruxCoachNavHost(
     } // CompositionLocalProvider
 }
 
-/** [sprayWalls]: whether their entry is there ([SprayWallFeature.inMenu]). */
+/**
+ * [sprayWalls]: whether their entry is there ([SprayWallFeature.inMenu]). [wallGames]: the same for the wall games
+ * ([com.cruxcoach.android.ui.board.games.WallGamesFeature]).
+ */
 @Composable
-internal fun BrowserMainDrawer(sprayWalls: Boolean = SprayWallFeature.enabled, onSelect: (String) -> Unit) {
+internal fun BrowserMainDrawer(
+    sprayWalls: Boolean = SprayWallFeature.enabled,
+    wallGames: Boolean = com.cruxcoach.android.ui.board.games.WallGamesFeature.enabled,
+    onSelect: (String) -> Unit,
+) {
     val (tour, _) = rememberBrowserTour()
     ModalDrawerSheet {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -1264,7 +1271,7 @@ internal fun BrowserMainDrawer(sprayWalls: Boolean = SprayWallFeature.enabled, o
                 // One entry for training and nutrition (owner 2026-10-10): both lead into the same area,
                 // whose tab bar (Today, Training, Nutrition, Progress) organises the rest.
                 Triple(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY, com.cruxcoach.android.R.string.tr_nav_training_nutrition, "menu_today"),
-                Triple(Routes.boardGames(), com.cruxcoach.android.R.string.wall_games_title, "menu_wall_games"),
+                Triple(Routes.boardGames(), com.cruxcoach.android.R.string.wall_games_title, "menu_wall_games").takeIf { wallGames },
                 Triple(SprayWallRoutes.LIST, com.cruxcoach.android.R.string.spray_walls_title, "menu_spray_walls").takeIf { sprayWalls },
             ).filterNotNull()
             entries.forEach { (route, label, tag) ->

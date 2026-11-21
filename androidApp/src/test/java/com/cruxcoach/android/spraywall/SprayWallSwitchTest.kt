@@ -41,7 +41,7 @@ class SprayWallSwitchTest {
     @Test
     fun `the main menu has spray walls only while the switch is on`() {
         var on by mutableStateOf(true)
-        compose.setContent { MaterialTheme { BrowserMainDrawer(sprayWalls = on) {} } }
+        compose.setContent { MaterialTheme { BrowserMainDrawer(sprayWalls = on, wallGames = true) {} } }
         compose.onNodeWithTag("menu_spray_walls").assertExists()
 
         on = false
