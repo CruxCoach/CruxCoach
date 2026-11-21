@@ -595,6 +595,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Quantum four colors with up to 92 LEDs each; Shiny Wall is not supported yet.
 
 ### Fixed
+- Sharing the board ("Share with board apps"): a climb the sharing phone lights
+  itself no longer cuts off the phones connected through it. Each of its own
+  sends stopped the sharing for a moment; the others lost the board, and until
+  they were back the sharing phone lit every climb it swiped to, also with
+  "Multiple connections" set to "Tap to send".
 - Knot: every spacing is a real step. Medium and Wide widen the field where
   it is too narrow for the colours to spread (solo about 1.2, 1.8 and 2.4 m),
   until the colours really are farther apart than at the closer spacing; a

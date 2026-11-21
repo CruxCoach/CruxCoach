@@ -234,18 +234,32 @@ class CruxRelayManager(
             combine(
                 userPreferences.relayManualStart,
                 bleConnection.connectionState,
-            ) { manual, st -> !manual && st == ConnectionState.CONNECTED }
+            ) { manual, st ->
+                when {
+                    manual -> false
+                    st == ConnectionState.CONNECTED -> true
+                    // SENDING is the same board link in the middle of the host's own
+                    // write: no reason to start and none to stop. Read as "board gone",
+                    // every climb the host lit stopped the relay and dropped its guests,
+                    // and with no guest left the host's send mode fell back to the
+                    // single-connection one.
+                    st == ConnectionState.SENDING -> null
+                    else -> false
+                }
+            }
                 .distinctUntilChanged()
                 .collect { shouldShare ->
-                    if (shouldShare) {
-                        if (!enabledFlow.value) requestAutomaticEnable()
-                    } else {
-                        // The switch is authoritative: switching it off stops sharing right
-                        // away, and a lost board link stops it too.
-                        if (bleConnection.connectionState.value == ConnectionState.DISCONNECTED) {
-                            autoDisclosureDismissedBoardAddress = null
+                    when (shouldShare) {
+                        true -> if (!enabledFlow.value) requestAutomaticEnable()
+                        false -> {
+                            // The switch is authoritative: switching it off stops sharing right
+                            // away, and a lost board link stops it too.
+                            if (bleConnection.connectionState.value == ConnectionState.DISCONNECTED) {
+                                autoDisclosureDismissedBoardAddress = null
+                            }
+                            disable()
                         }
-                        disable()
+                        null -> Unit
                     }
                 }
         }
