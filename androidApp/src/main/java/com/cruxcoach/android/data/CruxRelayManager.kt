@@ -77,6 +77,8 @@ data class CruxRelayState(
      * so this state is rendered at the navigation root, not only in the
      * connection sheet. */
     val pendingDisclosure: Boolean = false,
+    /** Sharing was stopped from the notification: automatic sharing waits for the next board connection. */
+    val stoppedForConnection: Boolean = false,
 )
 
 /**
@@ -256,6 +258,7 @@ class CruxRelayManager(
                             // away, and a lost board link stops it too.
                             if (bleConnection.connectionState.value == ConnectionState.DISCONNECTED) {
                                 autoDisclosureDismissedBoardAddress = null
+                                _state.update { it.copy(stoppedForConnection = false) }
                             }
                             disable()
                         }
@@ -271,6 +274,7 @@ class CruxRelayManager(
 
     private fun requestEnable(disclosureShown: Boolean) {
         autoDisclosureDismissedBoardAddress = null
+        _state.update { it.copy(stoppedForConnection = false) }
         pendingDisclosureIsAutomatic = false
         // Bound to this very request: an early rejection must not leave a consent behind.
         disclosureShownInline = disclosureShown
@@ -299,6 +303,7 @@ class CruxRelayManager(
                 if (!enabledFlow.value) requestEnableWithShownDisclosure()
             } else {
                 userPreferences.setRelayManualStart(true)
+                _state.update { it.copy(stoppedForConnection = false) }
                 disable()
             }
         }
@@ -408,6 +413,7 @@ class CruxRelayManager(
     fun stopForThisConnection() {
         autoDisclosureDismissedBoardAddress = bleConnection.connectedBoard?.address
         disable()
+        _state.update { it.copy(stoppedForConnection = true) }
     }
 
     /** One-tap stop used by every UI/service surface. */

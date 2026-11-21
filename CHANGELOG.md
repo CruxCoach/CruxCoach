@@ -782,7 +782,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and a very large report could not be sent at all.
 - "Stop sharing" in the sharing notification now holds while the board stays connected. With
   sharing that starts by itself, the next climb you sent started it again; now the next
-  connection does, as before.
+  connection does, as before. Until then the sharing card says so and offers "Share again".
 
 ## [0.2.4] - 2026-10-25
 

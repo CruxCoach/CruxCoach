@@ -75,8 +75,22 @@ class RelaySharingSectionTest {
         compose.onNodeWithText(string(R.string.relay_status_waiting)).assertIsDisplayed()
     }
 
-    private fun render() {
-        every { relay.state } returns MutableStateFlow(CruxRelayState())
+    @Test fun `after a stop from the notification the card says the next connection shares and offers share again`() {
+        runBlocking {
+            preferences.setRelayDisclosureSeen()
+            preferences.setRelayManualStart(false)
+        }
+        render(CruxRelayState(stoppedForConnection = true))
+
+        compose.onNodeWithTag("relay_share_switch").assertIsOn()
+        compose.onNodeWithText(string(R.string.relay_status_stopped_for_car)).assertIsDisplayed()
+        compose.onNodeWithText(string(R.string.relay_status_waiting)).assertDoesNotExist()
+        compose.onNodeWithTag("relay_share_again").performClick()
+        verify(exactly = 1) { relay.requestEnable() }
+    }
+
+    private fun render(state: CruxRelayState = CruxRelayState()) {
+        every { relay.state } returns MutableStateFlow(state)
         every { relay.disclosureSeen } returns
             preferences.relayDisclosureSeen.onEach { seenRead = true }
         every { relay.manualStart } returns
