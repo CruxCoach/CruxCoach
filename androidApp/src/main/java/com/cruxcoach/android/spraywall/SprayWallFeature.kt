@@ -1,7 +1,11 @@
 package com.cruxcoach.android.spraywall
 
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
@@ -22,10 +26,18 @@ object SprayWallFeature {
      * Whether the main menu has spray walls: always while [enabled]. Off, only while the relays may hold something of
      * mine ([SprayWallRepository.hasMineMaybeOnRelays]), so a wall made public or a climb set with an earlier build
      * can still be withdrawn or deleted; after that the entry goes. [repository] is only opened while off.
+     *
+     * Off, this runs at every start of the board browser. Whatever goes wrong while looking, the menu then has no
+     * entry: the browser must not fail over a feature that is switched off.
      */
     fun inMenu(enabled: Boolean, repository: () -> SprayWallRepository): Flow<Boolean> {
         if (enabled) return flowOf(true)
-        val walls = repository()
-        return walls.changes.map { walls.hasMineMaybeOnRelays() }.distinctUntilChanged()
+        return flow {
+            val walls = repository()
+            emitAll(walls.changes.map { walls.hasMineMaybeOnRelays() })
+        }.catch { e ->
+            Log.w("SprayWallFeature", "Could not look for spray walls of mine; no menu entry", e)
+            emit(false)
+        }.distinctUntilChanged()
     }
 }
