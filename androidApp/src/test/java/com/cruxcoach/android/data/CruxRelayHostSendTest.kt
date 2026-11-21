@@ -148,6 +148,39 @@ class CruxRelayHostSendTest {
     }
 
     @Test
+    fun `a stop from the notification holds through the host's next send`() = runTest {
+        val sharing = sharingWithGuest()
+
+        sharing.manager.stopForThisConnection()
+        runCurrent()
+        sharing.manager.state.first { !it.enabled && !it.advertising }
+        sharing.connectionState.value = ConnectionState.SENDING
+        runCurrent()
+        sharing.connectionState.value = ConnectionState.CONNECTED
+        runCurrent()
+
+        val after = sharing.manager.state.value
+        assertTrue("sharing started again after the host's send: $after", !after.enabled && !after.advertising)
+        coVerify(exactly = 1) { sharing.server.start() }
+    }
+
+    @Test
+    fun `after a stop from the notification the next connection shares again`() = runTest {
+        val sharing = sharingWithGuest()
+
+        sharing.manager.stopForThisConnection()
+        runCurrent()
+        sharing.connectionState.value = ConnectionState.DISCONNECTED
+        runCurrent()
+        sharing.connectionState.value = ConnectionState.CONNECTED
+        runCurrent()
+
+        val again = sharing.manager.state.first { it.advertising || it.error != null }
+        assertTrue("sharing did not start on the new connection: $again", again.enabled && again.advertising)
+        coVerify(exactly = 2) { sharing.server.start() }
+    }
+
+    @Test
     fun `a board lost in the middle of a send still ends sharing`() = runTest {
         val sharing = sharingWithGuest()
 

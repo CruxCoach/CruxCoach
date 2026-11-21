@@ -136,9 +136,9 @@ class CruxRelayManager(
     /** Board identity for the disclosure currently shown. A consent answer
      * must never carry across a disconnect/reconnect to a different wall. */
     private var pendingDisclosureBoardAddress: String? = null
-    /** A cancelled automatic disclosure stays cancelled for this physical
-     * connection. Board writes briefly transition CONNECTED -> SENDING ->
-     * CONNECTED and must not turn that transition into another prompt. */
+    /** A cancelled automatic disclosure, or a stop from the notification, stays for this
+     * physical connection. Board writes briefly transition CONNECTED -> SENDING ->
+     * CONNECTED and must not turn that transition into another prompt or start. */
     private var autoDisclosureDismissedBoardAddress: String? = null
     private var pendingDisclosureIsAutomatic = false
     /** Set when the caller showed the disclosure inline, so the deliberate tap is the consent. */
@@ -400,6 +400,14 @@ class CruxRelayManager(
         disclosureJob = null
         pendingDisclosureBoardAddress = null
         _state.update { it.copy(pendingDisclosure = false) }
+    }
+
+    /** The notification's "Stop sharing": ends sharing and keeps automatic sharing from starting it again
+     * on this board connection, which the host's next send would otherwise do (it passes CONNECTED again).
+     * A new connection, or the user's own "share", starts sharing as usual. */
+    fun stopForThisConnection() {
+        autoDisclosureDismissedBoardAddress = bleConnection.connectedBoard?.address
+        disable()
     }
 
     /** One-tap stop used by every UI/service surface. */

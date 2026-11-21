@@ -780,6 +780,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A crash report is cut to fit one message (about 12 KB; the start and the end of the
   stack trace stay), so it reaches every relay: relay.primal.net refuses larger messages,
   and a very large report could not be sent at all.
+- "Stop sharing" in the sharing notification now holds while the board stays connected. With
+  sharing that starts by itself, the next climb you sent started it again; now the next
+  connection does, as before.
 
 ## [0.2.4] - 2026-10-25
 

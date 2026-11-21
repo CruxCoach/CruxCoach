@@ -62,9 +62,10 @@ class CruxRelayService : android.app.Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP_SHARING) {
-            // One-tap stop from the notification. Queue and direct board
-            // connection remain independent; the collector shuts this service down.
-            relayManager.disable()
+            // One-tap stop from the notification, for this board connection: automatic
+            // sharing must not start again with the host's next send. Queue and direct
+            // board connection remain independent; the collector shuts this service down.
+            relayManager.stopForThisConnection()
             return START_NOT_STICKY
         }
         ServiceCompat.startForeground(
