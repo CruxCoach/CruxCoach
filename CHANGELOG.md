@@ -183,6 +183,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     gain a repetition or a few seconds after a training with reserve, weights
     step up at the top of the range, a weight step that is too big is answered
     with repetitions first, and leg work is never planned "assisted".
+  - A training that was too hard plans one step back, and the step back stays
+    until it went well again. Nothing steps up by itself in a comeback
+    session, with an open injury, in the first weeks after a break or in a
+    lighter week; under 18 and in the first year of climbing only body-weight
+    work steps. A value you enter or test, and a load you change by hand, win
+    over the last training. Stretches and warm-ups keep their own numbers.
   - Starter workouts and the warm-up before climbing use what your place has:
     an exercise that needs missing equipment is replaced, not dropped.
   - The week you plan counts from the day you plan it: earlier days are not
@@ -191,7 +197,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     climb on boards.
   - Nutrition has two views. "Simple" shows today's protein and what you ate,
     and is where you start; "Exact" has energy, macros, water, meals and
-    micronutrients. The energy check only reads days logged as a whole.
+    micronutrients. The energy check only reads days logged as a whole (two
+    main meals or three meals) in the exact view.
   - Progress opens with "My exercises": where each started and where it stands.
   - Plainer words in German: "Kraftwert" for the value the coach plans from,
     "Ausgleich" for antagonist work, "Leichte Woche", "% Körpergewicht".

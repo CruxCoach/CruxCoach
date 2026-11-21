@@ -208,11 +208,18 @@ same exercises and the same number of sets as the app did; only the targets are 
 
 Finger work, warm-ups, climbing and stretches are replayed as the app planned them: the app's
 finger rules are safety rules. Personas with an injury are not compared (the reference knows no
-comeback plan).
+comeback plan). After a step along a chain a loaded exercise starts from an estimate (body weight
+for the top of the range, or the app's start guess for a lift).
+
+The simulated athlete uses the app as offered: the summary's "next time" offers the next exercise
+of a chain once the top of the range went with reserve, and a step back after two trainings that
+were too hard, and the athlete takes it (`Persona.takesOfferedSteps`). One persona never answers
+the reserve of a timed hold (`skipsHoldReserve`).
 
 The table gives, per persona and quality (pull, push, legs, core, prehab), the gain in true
 capacity with both coaches and the trainings in which the quality got its stimulus. A quality
-counts as weaker when the app's gain is more than one percentage point behind the reference's.
+counts as weaker when the app's gain is more than one percentage point behind the reference's,
+and the full run fails when there is one.
 
 ## Sources
 

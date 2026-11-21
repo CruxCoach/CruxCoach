@@ -48,6 +48,7 @@
     <string name="trc_session_minutes">Length of a training without the wall</string>
     <string name="trc_minutes">%1$d\u00A0min</string>
     <string name="trc_add_on">10–15\u00A0min antagonists or core after climbing?</string>
+    <string name="trc_from_start">From your start</string>
     <string name="trc_experience_title">Climbing and experience</string>
     <string name="trc_experience_why">Lets the coach dose finger load: max hangs and campus only when your fingers are ready, more recovery where it helps.</string>
     <string name="trc_contexts">Where do you climb?</string>

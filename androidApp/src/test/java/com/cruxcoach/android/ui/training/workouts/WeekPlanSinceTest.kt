@@ -50,5 +50,16 @@ class WeekPlanSinceTest : AthleteScreenTest() {
         // The same week saved again keeps its day.
         repo.updateProfile { it.copy(sessionMinutes = 45) }
         assertEquals(since, repo.profile().weekPlanSince)
+        // A change to a day still ahead keeps it too; a change to a day already past starts the count anew.
+        repo.updateProfile { it.copy(weekPlanSince = "2026-01-01") }
+        if (iso < 7) {
+            repo.updateProfile { it.copy(weekPlan = it.weekPlan + (7 to "builtin:core_climber")) }
+            assertEquals("2026-01-01", repo.profile().weekPlanSince)
+        }
+        if (iso > 1) {
+            repo.updateProfile { it.copy(weekPlan = it.weekPlan + (1 to "builtin:core_climber")) }
+            val anew = repo.profile().weekPlanSince
+            assertTrue("$anew", anew != null && LocalDate.parse(anew!!) >= service.today().minus(DatePeriod(days = 1)))
+        }
     }
 }
