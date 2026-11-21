@@ -145,14 +145,16 @@ fun RelaySharingSection(
                     modifier = Modifier.testTag("relay_share_switch"),
                 )
             }
-            val stoppedForCar = !state.enabled && state.error == RelayError.STOPPED_FOR_CAR
+            // Stopped in the car or from the notification: sharing waits for the next board connection.
+            val stoppedUntilNextConnection = !state.enabled &&
+                (state.error == RelayError.STOPPED_FOR_CAR || state.stoppedForConnection)
             val status = when {
                 state.enabled -> stringResource(
                     R.string.relay_chip_text,
                     state.boardName ?: connectedBoard.displayName,
                     state.clientCount,
                 )
-                stoppedForCar -> stringResource(R.string.relay_status_stopped_for_car)
+                stoppedUntilNextConnection -> stringResource(R.string.relay_status_stopped_for_car)
                 sharingOn -> stringResource(R.string.relay_status_waiting)
                 disclosureSeen -> stringResource(R.string.relay_share_description)
                 else -> stringResource(R.string.relay_disclosure_text)
@@ -163,7 +165,7 @@ fun RelaySharingSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, end = 8.dp),
             )
-            if (stoppedForCar) {
+            if (stoppedUntilNextConnection) {
                 TextButton(
                     onClick = viewModel::shareAgain,
                     modifier = Modifier.testTag("relay_share_again"),
