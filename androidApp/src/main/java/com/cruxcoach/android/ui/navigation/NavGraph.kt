@@ -608,7 +608,7 @@ fun CruxCoachNavHost(
                 }
                 ModalNavigationDrawer(
                     drawerState = drawerState,
-                    gesturesEnabled = browserTourStep in listOf(TourStep.INACTIVE, TourStep.DONE),
+                    gesturesEnabled = menuGesturesEnabled(drawerState.isOpen, browserTourStep),
                     drawerContent = {
                         BrowserMainDrawer(sprayWalls = sprayWallsInMenu) { route ->
                             drawerScope.launch { drawerState.close() }

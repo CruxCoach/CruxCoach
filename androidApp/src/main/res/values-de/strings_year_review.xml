@@ -167,7 +167,7 @@
     <string name="yr_share_show_name">Meinen Namen zeigen</string>
     <string name="yr_share_show_problems">Namen der Boulder zeigen</string>
     <string name="yr_share_show_dates">Genaues Datum zeigen</string>
-    <string name="yr_share_hint">Das Bild entsteht auf diesem Handy. Es enthält deine Zahlen und einen kleinen CruxCoach-Schriftzug, sonst nichts.</string>
+    <string name="yr_share_hint">Das Bild entsteht auf diesem Handy. Es enthält deine Zahlen und einen kleinen CruxCoach-Schriftzug. Dein Name, die Namen der Boulder und die genauen Tage deiner Begehungen stehen nur dann darauf, wenn du sie hier einschaltest.</string>
     <string name="yr_share_send">Bild teilen</string>
     <string name="yr_share_chooser">Dein Jahr teilen</string>
     <string name="yr_share_failed">Das Bild konnte nicht geteilt werden.</string>
