@@ -37,7 +37,10 @@ import kotlin.math.roundToInt
  * - too hard: one step back; after two such trainings in a row the plan is read from what they showed;
  * - whenever the value asks for more (a test, an entered value, a value that rose), the value wins.
  *
- * Finger work keeps its careful rules: loaded hangs and pick-ups never step up here, they only step back.
+ * Finger work keeps its careful rules: a loaded hang or pick-up takes one smallest step, never two, and only after a
+ * training in which every set was held for the planned time and answered with reserve – what the summary's tip
+ * already said, while the plan stood still (training simulation 2026-11-21: +1 kg for ten weeks). Nothing steps up
+ * while something keeps loads careful (an injury, a comeback, the return after a break, a young or first-year climber).
  * A load the athlete wrote into the workout is never changed.
  */
 object NextTargets {
@@ -73,6 +76,10 @@ object NextTargets {
 
     /** A set this far under its target counts as missed; half of the sets missed is too hard. */
     const val TOO_HARD_SHARE = 0.8
+    /** The value's load within this share of the last training's: the steps are this rule's own. */
+    const val NEAR_SHARE = 0.9
+    /** The same for holds, under their planning share ([LoadPrescriber.holdShare]). */
+    const val HOLD_MARGIN = 0.05
     /** Repetitions a loaded range may stretch above its top while the weight step is too big to take. */
     const val EXTENDED_REPS = 10
 
@@ -112,7 +119,7 @@ object NextTargets {
             CapacityKind.E1RM_TOTAL ->
                 if (item.loadKg != null) none else loaded(def, item, base, capacity, past, bodyweightKg, incrementKg, mayStepUp) ?: none
             CapacityKind.TEN_SECOND_MAX ->
-                if (item.loadKg != null) none else hold(def, item, base, capacity, past, bodyweightKg, incrementKg) ?: none
+                if (item.loadKg != null) none else hold(def, item, base, capacity, past, bodyweightKg, incrementKg, mayStepUp) ?: none
             null -> none
         }
     }
@@ -254,9 +261,10 @@ object NextTargets {
         }
 
         val baseLoad = base?.loadKg
-        // The last training sat on the value's load or one step above it (the step this rule took). Further above,
-        // the athlete or an edited value moved it, and the value decides.
-        val near = baseLoad == null || lastLoad <= baseLoad + step + 1e-9
+        // The steps of this rule run a little ahead of the value (it rises once a set proves 2 % more). Far above the
+        // value's load – more than [NEAR_SHARE] apart – the athlete or an edited value moved things, and the value decides.
+        fun total(load: Double): Double = StrengthMath.effectiveLoad(def, load, bodyweightKg) ?: load
+        val near = baseLoad == null || total(baseLoad) >= total(lastLoad) * NEAR_SHARE - 1e-9
         val aboveBase = baseLoad != null && lastLoad > baseLoad + 1e-9
         fun repsFor(load: Double): Int? = capacity?.let { LoadPrescriber.repsAt(def, it, load, bodyweightKg) }
 
@@ -294,7 +302,7 @@ object NextTargets {
         return Next(reps ?: top, null, load, move)
     }
 
-    // ── Loaded holds (finger work): only ever back ───────────────────
+    // ── Loaded holds (finger work): one careful step ─────────────────
 
     private fun hold(
         def: ExerciseDefinition,
@@ -304,14 +312,33 @@ object NextTargets {
         past: List<List<ExerciseSet>>,
         bodyweightKg: Double?,
         incrementKg: Double,
+        mayStepUp: Boolean,
     ): Next? {
         if (def.kind != ExerciseKind.HANG) return null
         val last = past.first().filter { it.loadKg != null && it.durationS != null }
         if (last.isEmpty()) return null
+        // A hold is logged with its planned time: only an answered reserve says it went well.
         fun readOf(sets: List<ExerciseSet>) = read(sets.map { it.durationS!! }, sets.map { it.targetDurationS }, sets.map { it.rir }, unknownIsEasy = false)
-        if (!readOf(last).tooHard) return null
+        val r = readOf(last)
         val step = ProgressionAdvisor.increment(def, incrementKg)
         val lastLoad = last.maxOf { it.loadKg!! }
+        if (!r.tooHard) {
+            val baseLoad = base?.loadKg
+            // A hold is planned at a share of the value (90 %, long hangs 85 %), so the steps can run up to the
+            // value itself before a set proves more; beyond that the value decides.
+            fun total(load: Double): Double = StrengthMath.effectiveLoad(def, load, bodyweightKg) ?: load
+            val share = LoadPrescriber.holdShare(base?.durationS ?: item.durationS ?: def.defaults.durationS ?: 10) - HOLD_MARGIN
+            val near = baseLoad == null || total(baseLoad) >= total(lastLoad) * share - 1e-9
+            val aboveBase = baseLoad != null && lastLoad > baseLoad + 1e-9
+            return when {
+                !near -> null
+                // Every set held with reserve: one smallest step, where the value does not already ask for it.
+                r.easy && mayStepUp && (baseLoad == null || lastLoad + step > baseLoad + 1e-9) -> Next(null, base?.durationS ?: item.durationS, lastLoad + step, Move.UP)
+                // The step taken last time stays while it is hard, instead of falling back to the value's load.
+                aboveBase -> Next(null, base?.durationS ?: item.durationS, lastLoad, Move.REPEAT)
+                else -> null
+            }
+        }
         val lighter = (lastLoad - step).takeIf { def.load == LoadMode.BODYWEIGHT_PLUS || it > 1e-9 } ?: return null
         val before = past.getOrNull(1)?.filter { it.loadKg != null && it.durationS != null }.orEmpty()
         if (before.isNotEmpty() && readOf(before).tooHard) {

@@ -188,9 +188,31 @@ that misfires is caught instead of confirmed.
 | Choice | Beginners (personas of the beginner level), weeks 1–4: no Special exercise they do not know yet | Novices start with simple exercises and proper technique; complexity grows with training status (ACSM 2009) |
 | Choice | Beginners, weeks 1–4: at least 70 % of the main exercises (warm-ups and mobility aside) are Basic or known to them; with "Mostly classics" 80 % outside the finger work, for the whole run, and no Special exercise they do not know | ACSM 2009; the shares are the values of the proposal in issue #68 |
 | Choice | A training holds at most one exercise new to the athlete (two with "Open to unusual exercises"); warm-ups and mobility count only when Special. More, where nothing Basic or known of the same kind fits the equipment, is reported under Info and not counted | One new skill at a time keeps the session's attention on the work (ACSM 2009); the limits are those of issue #68 |
-| Choice | An advanced athlete still gets variety: at least 30 % of the main exercises are Common or Special (and the variety check above) | Issue #68 |
+| Choice | An advanced athlete who asked for variety (the variety setting from 25 on) gets it: at least 30 % of the main exercises are Common or Special (and the variety check above). By default the coach stays with the athlete's exercises, so their progress shows | Issue #68; owner 2026-11-21 |
 | Choice | "Open to unusual exercises": a Special exercise in at least half of all two-week stretches | Issue #68 |
 | Choice | "Don't know it": the replacement is Basic or known in at least 95 % of the taps, the tap changes nothing in the learned preference for the exercise and does not make it rest, and the exercise does not come back as a new pick within 14 days | Issue #68 |
+
+## The reference coach
+
+The full run also writes `reference.md`: the coach's progression against a plain reference
+(`ReferenceCoach.kt`, owner 2026-11-21: "our progression must not get weaker than the
+reference"). The reference trains the same hidden athlete (same seed) on the same days, with the
+same exercises and the same number of sets as the app did; only the targets are its own:
+
+- loaded repetitions from an estimated maximum and the planned reserve, in the athlete's weight
+  steps, with the repetitions the estimate allows at that load;
+- body-weight repetitions and timed holds one repetition or a few seconds up after a training
+  reached with the planned reserve, back after one that was too hard, and on to the next exercise
+  of the chain at the top of the range;
+- a planned reserve of 2, 1 in the third build week and 3 in the intro and the lighter week.
+
+Finger work, warm-ups, climbing and stretches are replayed as the app planned them: the app's
+finger rules are safety rules. Personas with an injury are not compared (the reference knows no
+comeback plan).
+
+The table gives, per persona and quality (pull, push, legs, core, prehab), the gain in true
+capacity with both coaches and the trainings in which the quality got its stimulus. A quality
+counts as weaker when the app's gain is more than one percentage point behind the reference's.
 
 ## Sources
 

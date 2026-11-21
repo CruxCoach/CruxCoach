@@ -1403,7 +1403,7 @@ private fun DailySuggestionCard(
                 itemVerticalAlignment = Alignment.CenterVertically,
             ) {
                 // The count matches the list below: the warm-up is part of the time, not of the list.
-                Text(pluralStringResource(R.plurals.trsg_meta_count, main.size, main.size),
+                Text(pluralStringResource(R.plurals.trsg_meta_count, main.size, main.size) + "  ·",
                     style = MaterialTheme.typography.bodyMedium)
                 if (s.timeAdjustable) DurationChip(s.totalMinutes, state.minutesToday, state.profile.sessionMinutes, onChooseMinutes)
                 else Text(stringResource(R.string.trt_duration_value, s.totalMinutes), style = MaterialTheme.typography.bodyMedium)
@@ -1611,18 +1611,15 @@ private fun kindLabel(focus: SuggestionFocus): String = stringResource(when (foc
 @Composable
 private fun DurationChip(minutes: Int, chosen: Int?, usual: Int, onChoose: (Int?) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val content = LocalContentColor.current
     Box {
-        AssistChip(
-            onClick = { open = true },
-            label = { Text(stringResource(R.string.trt_duration_value, minutes)) },
-            leadingIcon = { Icon(Icons.Default.Timer, null, Modifier.size(18.dp)) },
-            trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp)) },
-            colors = AssistChipDefaults.assistChipColors(labelColor = content, leadingIconContentColor = content,
-                trailingIconContentColor = content),
-            border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = content.copy(alpha = 0.4f)),
-            modifier = Modifier.testTag("today_duration"),
-        )
+        // Quiet text with a caret, not a chip (owner 2026-11-21: one filled button per screen, everything else calm).
+        Row(verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clip(CruxCoachDesign.shapes.small)
+                .clickable(onClickLabel = stringResource(R.string.trt_duration_title)) { open = true }
+                .heightIn(min = 40.dp).padding(start = 2.dp).testTag("today_duration")) {
+            Text(stringResource(R.string.trt_duration_value, minutes), style = MaterialTheme.typography.bodyMedium)
+            Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp))
+        }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.testTag("today_duration_menu")) {
             Text(stringResource(R.string.trt_duration_title), style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))

@@ -1039,7 +1039,7 @@ private fun ViewSwitch(exact: Boolean, onChange: (Boolean) -> Unit) {
 @Composable
 private fun ProteinCard(state: FuelState) {
     val eaten = state.entries.sumOf { it.proteinG ?: 0.0 }.roundToInt()
-    val target = state.targets?.proteinG?.roundToInt()
+    val target = state.targets?.proteinG?.toDouble()?.roundToInt()
     Card(Modifier.fillMaxWidth().testTag("fuel_simple_protein")) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             if (target != null && target > 0) {

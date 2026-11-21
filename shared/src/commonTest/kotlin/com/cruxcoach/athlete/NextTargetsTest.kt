@@ -170,6 +170,28 @@ class NextTargetsTest {
     }
 
     @Test
+    fun aHeavyLoadWithFineStepsClimbsWithoutFallingBack() {
+        // +60 kg on 70 kg body weight, 3–5 repetitions, 1 kg steps: a step is 1.2 % of the total, less than what
+        // raises the value, so two steps run ahead of it. The plan must not fall back to the value's load in between.
+        val weighted = def("pull.weighted_pull_up", ExerciseKind.LOAD_REPS, LoadMode.BODYWEIGHT_PLUS, listOf(EquipmentV2.PULL_UP_BAR),
+            defaults = Prescription(sets = 3, repsMin = 3, repsMax = 5))
+        val value = oneRepMax(130.0 * (1.0 + 7.0 / 30.0))
+        assertEquals(LoadTarget(60.0, 5, null, value), LoadPrescriber.prescribe(weighted, item(weighted), value, 70.0, 1.0))
+        val s1 = training(weighted, "w1", 1_000, 5, listOf(5, 5, 5), listOf(2, 2, 2), load = 60.0)
+        assertEquals(NextTargets.Next(reps = 5, loadKg = 61.0, move = Move.UP), next(weighted, s1, value))
+        val s2 = training(weighted, "w2", 2_000, 5, listOf(5, 5, 5), listOf(2, 2, 2), load = 61.0)
+        assertEquals(NextTargets.Next(reps = 4, loadKg = 62.0, move = Move.UP), next(weighted, s1 + s2, value))
+        val s3 = training(weighted, "w3", 3_000, 4, listOf(4, 4, 4), listOf(2, 2, 2), load = 62.0)
+        assertEquals(NextTargets.Next(reps = 5, loadKg = 62.0, move = Move.UP), next(weighted, s1 + s2 + s3, value))
+        // Hard at two steps above the value's load: it stays there, it does not drop to +60 kg.
+        val hard = training(weighted, "w4", 4_000, 5, listOf(5, 5, 5), listOf(1, 0, 0), load = 62.0)
+        assertEquals(NextTargets.Next(reps = 5, loadKg = 62.0, move = Move.REPEAT), next(weighted, s1 + s2 + s3 + hard, value))
+        // Far above the value's load the value decides: the athlete tried +80 kg once.
+        val far = training(weighted, "w5", 5_000, 5, listOf(5, 5, 5), listOf(1, 1, 1), load = 80.0)
+        assertEquals(NextTargets.Next(reps = 5, loadKg = 60.0), next(weighted, far, value))
+    }
+
+    @Test
     fun aCarefulStateTakesNoWeightStepButKeepsTheValue() {
         val value = oneRepMax(40.0 * (1.0 + 10.0 / 30.0))
         val atTop = training(press, "w1", 1_000, 8, listOf(8, 8, 8), listOf(3, 3, 3), load = 40.0)
@@ -242,11 +264,22 @@ class NextTargetsTest {
     // ── Finger work ──────────────────────────────────────────────────
 
     @Test
-    fun loadedFingerWorkOnlyEverStepsBack() {
+    fun loadedFingerWorkTakesOneCarefulStepAndStepsBack() {
+        // A pick-up planned at 90 % of the value proves less than the value however long the reserve: the plan stood
+        // at the same load for weeks while the summary's tip said "+1 kg".
         val value = Capacity(CapacityKind.TEN_SECOND_MAX, 40.0, 70.0)
         val base = LoadPrescriber.prescribe(pickup, item(pickup), value, 70.0, 1.0)!!
         val easy = training(pickup, "w1", 1_000, 10, listOf(10, 10, 10), listOf(3, 3, 3), load = base.loadKg)
-        assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg), next(pickup, easy, value))
+        // One smallest step, never two – and none while something keeps loads careful or nothing was answered.
+        assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg!! + 1.0, move = Move.UP), next(pickup, easy, value))
+        assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg), next(pickup, easy, value, mayStepUp = false))
+        val silent = training(pickup, "w1", 1_000, 10, listOf(10, 10, 10), listOf(null, null, null), load = base.loadKg)
+        assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg), next(pickup, silent, value))
+        // The step stays while it is hard, and goes on when it went well again.
+        val stepped = training(pickup, "w2", 2_000, 10, listOf(10, 10, 10), listOf(1, 1, 0), load = base.loadKg!! + 1.0)
+        assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg!! + 1.0, move = Move.REPEAT), next(pickup, easy + stepped, value))
+        val solid = training(pickup, "w2", 2_000, 10, listOf(10, 10, 10), listOf(2, 2, 2), load = base.loadKg!! + 1.0)
+        assertEquals(NextTargets.Next(durationS = 10, loadKg = base.loadKg!! + 2.0, move = Move.UP), next(pickup, easy + solid, value))
         val bad = training(pickup, "w2", 2_000, 10, listOf(7, 6, 5), listOf(0, 0, 0), load = base.loadKg)
         val back = next(pickup, bad, value)
         assertEquals(Move.DOWN, back.move)

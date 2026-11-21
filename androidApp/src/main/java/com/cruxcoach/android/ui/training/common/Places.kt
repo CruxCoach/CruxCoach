@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -201,14 +203,14 @@ fun PlacePicker(places: List<TrainingPlace>, currentId: String?, defaultId: Stri
     var menu by remember { mutableStateOf(false) }
     val at = stringResource(R.string.tro_at, placeLabel(current))
     Box(modifier) {
-        AssistChip(
-            onClick = { menu = true },
-            // The name and its icon are enough next to the time on the card; "At: …" stays for screen readers.
-            label = { Text(placeLabel(current)) },
-            leadingIcon = { Icon(placeIcon(current.kind), null, Modifier.size(18.dp)) },
-            trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = stringResource(R.string.tro_pick_title)) },
-            modifier = Modifier.testTag("today_place").semantics { contentDescription = at },
-        )
+        // Quiet text with a caret next to the time on the card; "At: …" stays for screen readers.
+        Row(verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clip(MaterialTheme.shapes.small)
+                .clickable(onClickLabel = stringResource(R.string.tro_pick_title)) { menu = true }
+                .heightIn(min = 40.dp).padding(start = 2.dp).testTag("today_place").semantics { contentDescription = at }) {
+            Text("·  " + placeLabel(current), style = MaterialTheme.typography.bodyMedium)
+            Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp))
+        }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             all.forEach { place ->
                 DropdownMenuItem(

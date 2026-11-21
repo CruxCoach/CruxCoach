@@ -399,7 +399,11 @@ object Checks {
                 "${new.size} new (${new.joinToString { "${it.slug} ${it.familiarity.name.lowercase()}" }}), allowed $limit")
         }
 
-        if (p.level == Level.ADVANCED && choice != com.cruxcoach.athlete.model.ExerciseChoice.CLASSICS) {
+        // Only for an advanced athlete who asked for variety: by default the coach stays with the athlete's exercises
+        // (owner 2026-11-21), and those are the well-known ones the first weeks picked.
+        val wantsVariety = (p.coach.variety ?: com.cruxcoach.athlete.logic.ExerciseFamiliarity.SETTLED_VARIETY) >=
+            com.cruxcoach.athlete.logic.SessionSuggester.SETTLED_BELOW_VARIETY
+        if (p.level == Level.ADVANCED && choice != com.cruxcoach.athlete.model.ExerciseChoice.CLASSICS && wantsVariety) {
             val all = days.flatMap { main(it) }
             if (all.isNotEmpty()) {
                 val unusual = all.count { it.familiarity != Familiarity.BASIC }.toDouble() / all.size

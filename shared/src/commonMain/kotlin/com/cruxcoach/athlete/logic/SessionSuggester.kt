@@ -1612,7 +1612,7 @@ object SessionSuggester {
             // for weeks (owner 2026-11-21); the simulation showed a different mix every day. "Another suggestion" and the
             // variety slider still bring something else, warm-ups and stretches keep their rotation.
             val settled = (input.coach.variety ?: input.varietyDefault) < SETTLED_BELOW_VARIETY && input.variant == 0 &&
-                slot != Slot.WARMUP && slot != Slot.MOBILITY
+                input.coach.exerciseChoice != ExerciseChoice.OPEN && slot != Slot.WARMUP && slot != Slot.MOBILITY
             val again = if (!settled) null else familiar
                 .filter { d -> input.lastTrained[d.slug]?.let { (input.today.toEpochDays() - it.toEpochDays()) in 0..SETTLED_DAYS } == true }
                 .maxWithOrNull(compareBy<ExerciseDefinition> { input.lastTrained.getValue(it.slug) }.thenByDescending { it.slug })
