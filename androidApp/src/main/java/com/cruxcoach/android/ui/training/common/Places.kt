@@ -207,8 +207,8 @@ fun PlacePicker(places: List<TrainingPlace>, currentId: String?, defaultId: Stri
         Row(verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.clip(MaterialTheme.shapes.small)
                 .clickable(onClickLabel = stringResource(R.string.tro_pick_title)) { menu = true }
-                .heightIn(min = 40.dp).padding(start = 2.dp).testTag("today_place").semantics { contentDescription = at }) {
-            Text("·  " + placeLabel(current), style = MaterialTheme.typography.bodyMedium)
+                .heightIn(min = 48.dp).padding(horizontal = 2.dp).testTag("today_place").semantics { contentDescription = at }) {
+            Text(placeLabel(current), style = MaterialTheme.typography.bodyMedium)
             Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp))
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {

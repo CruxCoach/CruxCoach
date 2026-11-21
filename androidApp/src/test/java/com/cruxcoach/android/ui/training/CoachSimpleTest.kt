@@ -13,6 +13,7 @@ import com.cruxcoach.android.ui.training.workout.WorkoutSummaryScreen
 import com.cruxcoach.android.ui.training.workout.WorkoutSummaryViewModel
 import com.cruxcoach.athlete.logic.NextTargets
 import com.cruxcoach.athlete.logic.PreferenceLearning
+import com.cruxcoach.athlete.logic.ReadinessEvaluator
 import com.cruxcoach.athlete.model.Benchmark
 import com.cruxcoach.athlete.model.BenchmarkSource
 import com.cruxcoach.athlete.model.BodyMeasurement
@@ -22,8 +23,11 @@ import com.cruxcoach.athlete.model.Meal
 import com.cruxcoach.athlete.model.Routine
 import com.cruxcoach.athlete.model.RoutineItem
 import com.cruxcoach.athlete.model.SetType
+import com.cruxcoach.athlete.model.SuggestionEvent
+import com.cruxcoach.athlete.model.SuggestionEventKind
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -177,8 +181,63 @@ class CoachSimpleTest : AthleteScreenTest() {
             PreferenceLearning.kept(repo.suggestionEventsSince(0), service.today()).any { it.replaced == "push.push_up" && it.chosen == harder }
         }
         compose.waitUntil(WAIT_MS) { vm.state.value.nextTime.single { it.def.slug == "push.push_up" }.offer == null }
-        // One "undo" takes it back.
-        vm.undoLastAction()
+        // "Undo" takes this step back, and the offer is there again.
+        vm.undoStep("push.push_up")
         compose.waitUntil(WAIT_MS) { PreferenceLearning.kept(repo.suggestionEventsSince(0), service.today()).none { it.chosen == harder } }
+        compose.waitUntil(WAIT_MS) { vm.state.value.nextTime.single { it.def.slug == "push.push_up" }.offer?.slug == harder }
+        // A second tap while the first is still being saved takes one step, not two.
+        vm.takeStep("push.push_up", harder); vm.takeStep("push.push_up", harder)
+        compose.waitUntil(WAIT_MS) { PreferenceLearning.kept(repo.suggestionEventsSince(0), service.today()).any { it.chosen == harder } }
+        compose.waitUntil(WAIT_MS) { vm.state.value.nextTime.single { it.def.slug == "push.push_up" }.offer == null }
+        assertEquals(1, repo.suggestionEventsSince(0).count { it.focus == PreferenceLearning.KEEP_CHOICE })
+    }
+
+    @Test
+    fun `a step is offered for the same kind of work only, and not back to what the athlete stepped away from`() {
+        // Scapular push-ups at the top with reserve: their next exercise is filed under push, another job – no offer
+        // (simulation 2026-11-21: the step took the push-up's place and the shoulder work was gone).
+        val scapular = Routine("s", "Prehab", items = listOf(RoutineItem("antagonist.scapular_push_up", sets = 3, repsMin = 10, repsMax = 15)))
+        val first = train(scapular, rir = 2, reps = 15)
+        assertEquals(null, service.nextTime(first).single().offer)
+        // Push-ups at the top: the diamond push-up is offered – until the athlete steps back from it (no back and forth).
+        val second = train(pushUps, rir = 2, reps = 15)
+        assertEquals("push.diamond_push_up", service.nextTime(second).single { it.def.slug == "push.push_up" }.offer?.slug)
+        service.keepStep("push.diamond_push_up", "push.push_up")
+        assertEquals(null, service.nextTime(second).single { it.def.slug == "push.push_up" }.offer)
+        // A step back stands for six weeks, the next step up for as long as the ledger remembers.
+        val kept = PreferenceLearning.kept(repo.suggestionEventsSince(0), service.today()).single()
+        assertEquals(service.today().plus(DatePeriod(days = PreferenceLearning.WINDOW_DAYS)), kept.until)
+    }
+
+    @Test
+    fun `a step taken months ago still leads its place`() {
+        // Review 2026-11-21: a step holds for 180 days, but the coach read only the last 42 days of the ledger.
+        val today = service.today()
+        val harder = service.catalog["push.push_up"]!!.harder!!
+        repo.logSuggestionEvent(SuggestionEvent("old-step", today.minus(DatePeriod(days = 100)).toString(),
+            System.currentTimeMillis() - 100L * 86_400_000L, SuggestionEventKind.FEEDBACK, PreferenceLearning.KEEP_CHOICE,
+            listOf("push.push_up", harder), value = today.plus(DatePeriod(days = 80)).toEpochDays().toDouble()))
+        val built = service.todayCoach().build(profile = repo.profile(), checkin = null, injuries = emptyList(), pauses = emptyList(),
+            readiness = ReadinessEvaluator.evaluate(null, emptyList()), activities = service.activities(days = 7 * 26), block = null,
+            loadStatus = null, weekly = emptyList(), weekStart = null, logbook = null, today = today)
+        assertTrue("${built.input.kept}", harder in built.input.kept)
+        assertTrue("${built.input.resting}", "push.push_up" in built.input.resting)
+    }
+
+    @Test
+    fun `an ended training plans its full sets next time, and a stretch has no line`() {
+        service.saveBenchmark(Benchmark(id = "b1", exerciseSlug = "push.push_up", reps = 14, source = BenchmarkSource.MANUAL, measuredAt = 1))
+        val stretch = service.catalog.all.first { it.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.MOBILITY &&
+            it.kind == com.cruxcoach.athlete.catalog.ExerciseKind.TIME && it.equipment.all { e -> e == com.cruxcoach.athlete.catalog.EquipmentV2.NONE } }
+        val id = service.startWorkout(Routine("r2", "Push", items = pushUps.items + RoutineItem(stretch.slug, sets = 2, durationS = 30)), null)
+        // Two of the three push-up sets, then the training is ended; the stretch is done as written.
+        val work = repo.setsFor(id).filter { it.setType == SetType.WORK }
+        work.filter { it.exerciseSlug == "push.push_up" }.take(2).forEach { service.completeSet(it.copy(rir = 2), startRest = false) }
+        work.filter { it.exerciseSlug == stretch.slug }.forEach { service.completeSet(it, startRest = false) }
+        service.finishWorkout(id, 6, null)
+        val lines = service.nextTime(id)
+        assertEquals(listOf("push.push_up"), lines.map { it.def.slug })
+        assertEquals(3, lines.single().sets)
+        assertEquals(2, lines.single().done.size)
     }
 }

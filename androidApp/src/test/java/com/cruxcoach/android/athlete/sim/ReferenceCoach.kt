@@ -8,9 +8,11 @@ import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.BlockPhase
 import com.cruxcoach.athlete.logic.LoadRules
+import com.cruxcoach.athlete.logic.NextTargets
 import com.cruxcoach.athlete.logic.ProgressionAdvisor
 import com.cruxcoach.athlete.logic.StartEstimate
 import com.cruxcoach.athlete.logic.StrengthMath
+import com.cruxcoach.athlete.logic.WorkoutPlanner
 import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.ExerciseSet
 import com.cruxcoach.athlete.model.SetType
@@ -192,7 +194,8 @@ class ReferenceCoach(private val run: SimRun) {
         if (def.kind == ExerciseKind.TIME) {
             now = target.seconds ?: return
             unit = if (now < 20) 2 else 5
-            top = ((def.defaults.durationS ?: 30) * 2).coerceIn(30, 120)
+            // The same top as the app's: a hold longer than twice its time is no step either coach would plan.
+            top = NextTargets.holdTop(def, WorkoutPlanner.itemFor(def))
         } else {
             now = target.reps ?: return
             unit = 1
@@ -211,7 +214,7 @@ class ReferenceCoach(private val run: SimRun) {
         when {
             reachedWithReserve && now >= top && harder != null -> moveTo(state, harder)
             state.hardInARow >= 2 && easier != null -> moveTo(state, easier)
-            def.kind == ExerciseKind.TIME -> state.seconds = next
+            def.kind == ExerciseKind.TIME -> state.seconds = min(next, max(top, now))
             else -> state.reps = next
         }
     }

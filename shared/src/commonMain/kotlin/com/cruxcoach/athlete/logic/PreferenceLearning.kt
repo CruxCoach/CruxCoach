@@ -27,6 +27,11 @@ import kotlin.math.roundToLong
 object PreferenceLearning {
 
     const val WINDOW_DAYS = 42
+    /**
+     * How long the ledger keeps its events, and so the longest a kept choice can hold. Kept choices are read from the
+     * whole ledger, not from [WINDOW_DAYS] (review 2026-11-21: a step taken for 180 days lapsed after 42).
+     */
+    const val LEDGER_DAYS = 180
     const val MAX_AFFINITY = 3.0
     /** An exercise logged in the athlete's own training (not a suggestion they followed). */
     const val OWN_LOGGED = 0.3

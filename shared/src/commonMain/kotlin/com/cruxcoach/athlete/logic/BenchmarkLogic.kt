@@ -88,6 +88,11 @@ object StartEstimate {
         "legs.goblet_squat" to 0.22, "legs.hip_thrust" to 0.6, "legs.romanian_deadlift" to 0.55,
         "legs.back_squat" to 0.55, "legs.conventional_deadlift" to 0.7, "legs.single_leg_rdl" to 0.12,
         "legs.front_squat" to 0.45,
+        // Every loaded lift has a start (owner 2026-11-21: nobody stands before an empty weight field; the training
+        // simulation left a reverse fly at "– × 15" for sixteen weeks).
+        "antagonist.reverse_fly" to 0.03, "finger.finger_rolls" to 0.05,
+        "pull.single_arm_lat_pulldown" to 0.25, "pull.seated_cable_row" to 0.45, "pull.hammer_curl" to 0.08,
+        "push.dumbbell_incline_press" to 0.15, "push.triceps_pushdown" to 0.2,
     )
 
     /**

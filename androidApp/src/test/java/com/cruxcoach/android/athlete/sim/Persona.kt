@@ -107,7 +107,7 @@ data class Persona(
     val rirNoise: Double = 1.0,
     /** Lets a timed hold end with its timer and never answers its reserve (the chips under a hold are optional). */
     val skipsHoldReserve: Boolean = false,
-    /** Takes the step along a chain the summary offers: the next exercise after the top of the range, a step back after two trainings too hard. */
+    /** Takes the step along a chain the summary offers: the next exercise after the top of the range, the easier one where the plan cannot get lighter. */
     val takesOfferedSteps: Boolean = true,
     val checkins: Boolean = true,
     val events: List<Event> = emptyList(),

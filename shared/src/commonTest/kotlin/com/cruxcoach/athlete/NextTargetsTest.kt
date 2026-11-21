@@ -160,13 +160,50 @@ class NextTargetsTest {
 
     @Test
     fun aboveTheRangeOnlyWhatIsClearlyEasyStillGrows() {
-        val easy = training(pushUp, "w1", 1_000, target = 15, done = listOf(15, 15, 15), rir = listOf(2, 2, 2))
-        assertEquals(NextTargets.Next(reps = 15, move = Move.REPEAT, atTop = true), next(pushUp, easy, maxReps(18)))
-        val veryEasy = training(pushUp, "w1", 1_000, target = 15, done = listOf(15, 15, 15), rir = listOf(3, 3, 3))
-        assertEquals(NextTargets.Next(reps = 16, move = Move.UP, atTop = true), next(pushUp, veryEasy, maxReps(18)))
+        // The chain has a next exercise: that is the better step, the repetitions only grow when it is clearly easy.
+        val chained = pushUp.copy(harder = "push.diamond_push_up")
+        val easy = training(chained, "w1", 1_000, target = 15, done = listOf(15, 15, 15), rir = listOf(2, 2, 2))
+        assertEquals(NextTargets.Next(reps = 15, move = Move.REPEAT, atTop = true), next(chained, easy, maxReps(18)))
+        val veryEasy = training(chained, "w1", 1_000, target = 15, done = listOf(15, 15, 15), rir = listOf(3, 3, 3))
+        assertEquals(NextTargets.Next(reps = 16, move = Move.UP, atTop = true), next(chained, veryEasy, maxReps(18)))
         // Reached at the top, but hard: no hint at the next exercise yet.
-        val hard = training(pushUp, "w1", 1_000, target = 15, done = listOf(15, 15, 15), rir = listOf(1, 0, 0))
-        assertEquals(NextTargets.Next(reps = 15, move = Move.REPEAT), next(pushUp, hard, maxReps(18)))
+        val hard = training(chained, "w1", 1_000, target = 15, done = listOf(15, 15, 15), rir = listOf(1, 0, 0))
+        assertEquals(NextTargets.Next(reps = 15, move = Move.REPEAT), next(chained, hard, maxReps(18)))
+    }
+
+    @Test
+    fun withoutANextExerciseRepetitionsGoOnAboveTheRange() {
+        // The end of a chain (band work, a plain push-up here): repetitions are the lever that is left. With reserve
+        // one more, far above the range too – no cap, each step needs the athlete's answer (simulation 2026-11-21:
+        // a cap ten above the range left band work too easy for good).
+        val easy = training(pushUp, "w1", 1_000, target = 15, done = listOf(15, 15, 15), rir = listOf(2, 2, 2))
+        assertEquals(NextTargets.Next(reps = 16, move = Move.UP, atTop = true), next(pushUp, easy, maxReps(18)))
+        val far = training(pushUp, "w1", 1_000, target = 30, done = listOf(30, 30, 30), rir = listOf(3, 3, 3))
+        assertEquals(NextTargets.Next(reps = 32, move = Move.UP, atTop = true), next(pushUp, far, maxReps(40)))
+        val hard = training(pushUp, "w1", 1_000, target = 30, done = listOf(30, 30, 30), rir = listOf(1, 1, 1))
+        assertEquals(NextTargets.Next(reps = 30, move = Move.REPEAT), next(pushUp, hard, maxReps(40)))
+    }
+
+    @Test
+    fun underTheRangeWithNothingLighterToPlanIsTimeForTheEasierExercise() {
+        // Four push-ups where eight are the least: the plan cannot get lighter, the easier exercise is the step.
+        val bad = training(pushUp, "w1", 1_000, target = 8, done = listOf(5, 4, 3), rir = listOf(0, 0, 0))
+        assertEquals(NextTargets.Next(reps = 4, move = Move.DOWN, atBottom = true), next(pushUp, bad, maxReps(10)))
+        // Inside the range a step back is just a step back.
+        val inRange = training(pushUp, "w1", 1_000, target = 14, done = listOf(14, 11, 9), rir = listOf(0, 0, 0))
+        assertEquals(false, next(pushUp, inRange, maxReps(20)).atBottom)
+        // Body weight is the least a sit-up weighs: three repetitions there, where eight are the least.
+        val sitUp = def("core.weighted_sit_up", ExerciseKind.LOAD_REPS, LoadMode.BODYWEIGHT_PLUS, defaults = Prescription(sets = 3, repsMin = 8, repsMax = 12))
+            .copy(category = ExerciseCategoryV2.CORE)
+        val weak = Capacity(CapacityKind.E1RM_TOTAL, 70.0 * (1.0 + 5.0 / 30.0), 70.0)
+        assertEquals(NextTargets.Next(reps = 3, loadKg = 0.0, atBottom = true), next(sitUp, emptyList(), weak))
+        // Pulling can be made lighter (a band, a pulley): no such signal.
+        val pull = def("pull.weighted", ExerciseKind.LOAD_REPS, LoadMode.BODYWEIGHT_PLUS, defaults = Prescription(sets = 3, repsMin = 5, repsMax = 8))
+            .copy(category = ExerciseCategoryV2.PULL)
+        assertEquals(false, next(pull, emptyList(), Capacity(CapacityKind.E1RM_TOTAL, 70.0, 70.0)).atBottom)
+        // A hold that falls under half its time.
+        val short = training(plank, "w1", 1_000, 30, listOf(12, 10, 8), listOf(0, 0, 0))
+        assertEquals(NextTargets.Next(durationS = 10, move = Move.DOWN, atBottom = true), next(plank, short, maxSeconds(30)))
     }
 
     @Test

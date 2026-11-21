@@ -84,6 +84,11 @@ object NextTargets {
         val loadKg: Double? = null,
         val move: Move = Move.NONE,
         val atTop: Boolean = false,
+        /**
+         * The plan cannot get lighter and is still under the exercise's range (three repetitions where eight are the
+         * least, a hold under half its time, no lighter weight to take): time for the easier exercise of the chain.
+         */
+        val atBottom: Boolean = false,
     )
 
     /** Stretches, warm-ups, technique and endurance work are done as written: no share of a maximum, no step. */
@@ -130,7 +135,8 @@ object NextTargets {
         now: Long? = null,
     ): Next {
         val base = LoadPrescriber.prescribe(def, item, capacity, bodyweightKg, incrementKg)
-        val none = Next(base?.reps, base?.durationS, base?.loadKg)
+        // A load written into the workout is the plan's load, here as in the planner: the tip must say what is planned.
+        val none = Next(base?.reps, base?.durationS, item.loadKg ?: base?.loadKg)
         if (item.warmup || item.test || def.kind == ExerciseKind.CLIMB || def.kind == ExerciseKind.INTERVAL) return none
         val kind = BenchmarkMath.capacityKind(def) ?: return none
         val loadedKind = kind == CapacityKind.E1RM_TOTAL || kind == CapacityKind.TEN_SECOND_MAX
@@ -151,17 +157,25 @@ object NextTargets {
             // More than the value's plan is the bigger step; less is the value's plan taken one small step at a time.
             return if (abs(stepped - before) < 1e-9) none else none.copy(loadKg = stepped, move = if (stepped > before) Move.UP_FAST else Move.NONE)
         }
-        if (last == null || steps == Steps.OFF) return valueOnly()
+        // Body weight is the least this exercise can weigh, and even so the plan is under its range.
+        fun checked(next: Next): Next {
+            val least = item.repsMin ?: def.defaults.repsMin
+            val stuck = kind == CapacityKind.E1RM_TOTAL && def.load == LoadMode.BODYWEIGHT_PLUS && !LoadPrescriber.assistable(def) &&
+                next.loadKg != null && next.loadKg <= 1e-9 && next.reps != null && least != null && next.reps < least
+            return if (stuck) next.copy(atBottom = true) else next
+        }
+        if (last == null || steps == Steps.OFF) return checked(valueOnly())
         val lastAt = last.maxOf { it.completedAt ?: 0L }
-        if (now != null && now - lastAt > MAX_AGE_DAYS * 86_400_000L) return valueOnly()
+        if (now != null && now - lastAt > MAX_AGE_DAYS * 86_400_000L) return checked(valueOnly())
         // The athlete's newer word (an entered value, a test, a load lowered by hand) decides.
-        if (capacity?.statedAt != null && capacity.statedAt > lastAt) return valueOnly()
-        return when (kind) {
+        if (capacity?.statedAt != null && capacity.statedAt > lastAt) return checked(valueOnly())
+        val next = when (kind) {
             CapacityKind.MAX_REPS -> reps(def, item, last, steps)
             CapacityKind.MAX_SECONDS -> seconds(def, item, last, steps)
             CapacityKind.E1RM_TOTAL -> if (item.loadKg != null) none else loaded(def, item, base, capacity, past, bodyweightKg, incrementKg, steps)
             CapacityKind.TEN_SECOND_MAX -> if (item.loadKg != null) none else hold(def, item, base, capacity, past, bodyweightKg, incrementKg, steps)
         } ?: valueOnly()
+        return checked(next)
     }
 
     /** How a training went against its own targets. */
@@ -196,16 +210,22 @@ object NextTargets {
         val r = read(done.map { it.toDouble() }, sets.map { it.targetReps?.toDouble() }, sets.map { it.rir }, unknownIsEasy = true)
         val anchor = done.min()
         val target = sets.mapNotNull { it.targetReps }.maxOrNull() ?: anchor
-        if (r.tooHard) return Next(reps = min(target - 1, lowerMedian(done)).coerceAtLeast(1), move = Move.DOWN)
+        if (r.tooHard) {
+            val back = min(target - 1, lowerMedian(done)).coerceAtLeast(1)
+            val least = item.repsMin ?: def.defaults.repsMin
+            return Next(reps = back, move = Move.DOWN, atBottom = least != null && back < least)
+        }
         if (!r.reached) return Next(reps = target, move = Move.REPEAT)
         val unit = if (anchor >= 20) 2 else 1
         val top = item.repsMax ?: def.defaults.repsMax
         val aboveTop = top != null && anchor >= top
-        val mayGrow = steps >= Steps.GENTLE && (top == null || anchor < top + EXTENDED_REPS)
+        val mayGrow = steps >= Steps.GENTLE
         val next = when {
             !mayGrow -> anchor
-            // Above the range only what is clearly easy still grows: the next exercise of the chain is the better step.
-            aboveTop -> if (r.veryEasy) anchor + unit else anchor
+            // Above the range only what is clearly easy still grows where the chain has a next exercise: that is the
+            // better step. Without one, repetitions are the only lever left and go on with reserve – no cap, each
+            // step needs the athlete's own answer (a cap left band work too easy for good, simulation 2026-11-21).
+            aboveTop -> if (r.veryEasy || (r.easy && def.harder == null)) anchor + unit else anchor
             r.veryEasy && steps == Steps.FULL -> anchor + 2 * unit
             r.easy -> anchor + unit
             else -> anchor
@@ -245,7 +265,10 @@ object NextTargets {
         val anchor = done.min()
         val target = sets.mapNotNull { it.targetDurationS }.maxOrNull()?.roundToInt() ?: anchor
         val unit = secondsUnit(anchor)
-        if (r.tooHard) return Next(durationS = min(target - unit, lowerMedian(done)).coerceAtLeast(min(3, target)), move = Move.DOWN)
+        if (r.tooHard) {
+            val back = min(target - unit, lowerMedian(done)).coerceAtLeast(min(3, target))
+            return Next(durationS = back, move = Move.DOWN, atBottom = back * 2 < usual)
+        }
         if (!r.reached) return Next(durationS = target, move = Move.REPEAT)
         // Tidy numbers from five seconds on: 23 s + 5 s plans 25 s, never less than a second more.
         fun tidy(s: Int): Int = if (unit >= 5) max(s / unit * unit, anchor + 1) else s
@@ -254,7 +277,8 @@ object NextTargets {
         // Finger hangs only step where nothing keeps loads careful.
         val mayGrow = !atTop && (if (finger) steps == Steps.FULL else steps >= Steps.GENTLE)
         val next = if (mayGrow && r.easy) min(tidy(anchor + unit), max(top, anchor)) else anchor
-        return Next(durationS = next, move = if (next > anchor) Move.UP else Move.REPEAT, atTop = atTop && r.easy && steps >= Steps.GENTLE)
+        return Next(durationS = next, move = if (next > anchor) Move.UP else Move.REPEAT,
+            atTop = atTop && r.easy && (if (finger) steps == Steps.FULL else steps >= Steps.GENTLE))
     }
 
     // ── Loaded repetitions ───────────────────────────────────────────
@@ -302,7 +326,8 @@ object NextTargets {
                     if (load != null) return Next(relearnt.reps ?: top, null, lighter?.let { min(load, it) } ?: load, Move.RELEARN)
                 }
             }
-            val load = lighter?.let { l -> baseLoad?.let { min(it, l) } ?: l } ?: return Next(max(bottom, lastReps - 1), null, lastLoad, Move.DOWN)
+            val load = lighter?.let { l -> baseLoad?.let { min(it, l) } ?: l }
+                ?: return Next(max(bottom, lastReps - 1), null, lastLoad, Move.DOWN, atBottom = true)
             return Next(base?.reps ?: top, null, load, Move.DOWN)
         }
 
@@ -388,7 +413,8 @@ object NextTargets {
         val duration = base?.durationS ?: item.durationS ?: def.defaults.durationS
 
         if (r.tooHard) {
-            val lighter = (lastLoad - step).takeIf { def.load == LoadMode.BODYWEIGHT_PLUS || it > 1e-9 } ?: return null
+            val lighter = (lastLoad - step).takeIf { def.load == LoadMode.BODYWEIGHT_PLUS || it > 1e-9 }
+                ?: return Next(null, duration, lastLoad, Move.DOWN, atBottom = true)
             val before = past.getOrNull(1)?.filter { it.loadKg != null && it.durationS != null }.orEmpty()
             if (before.isNotEmpty() && readOf(before).tooHard) {
                 val shown = (last + before).mapNotNull { s -> BenchmarkMath.implied(def, s)?.takeIf { it.kind == CapacityKind.TEN_SECOND_MAX } }

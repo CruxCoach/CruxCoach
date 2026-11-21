@@ -293,7 +293,8 @@ class TrainingUiReviewTest : AthleteScreenTest() {
     fun todayChecklistEquipment() {
         val vm = loaded(TodayViewModel(service))
         shoot("equipment-sheet", {
-            scrollTo("today_list", "today_setup_equipment"); click("today_setup_equipment"); waitForTag("equipment_sheet")
+            // The equipment sheet opens from the card under the training ("Deine Ausrüstung"), the checklist is gone.
+            scrollTo("today_list", "today_suggestion_configure_equipment"); click("today_suggestion_action"); waitForTag("equipment_sheet")
             Thread.sleep(800)
         }) { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
     }

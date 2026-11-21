@@ -408,15 +408,13 @@ class Simulator(
             clock.nowMs += ((saved.restS ?: 90) + 40) * 1000L
         }
         service.finishWorkout(id, sessionRpe = 7, notes = null)
-        // The summary's "next time": the next exercise of a chain once the top of the range went with reserve, a step
-        // back after two trainings that were too hard. One tap there; this athlete takes it.
+        // The summary's "next time": the next exercise of a chain once the top of the range went with reserve, the
+        // easier one where the plan cannot get lighter. One tap there; this athlete takes what is offered.
         if (persona.takesOfferedSteps) runCatching {
-            service.nextTime(id).forEach { line ->
+            service.nextTime(id).distinctBy { it.def.slug }.forEach { line ->
                 val offer = line.offer ?: return@forEach
-                if (line.offerHarder || line.next.move == com.cruxcoach.athlete.logic.NextTargets.Move.RELEARN) {
-                    service.keepStep(line.def.slug, offer.slug)
-                    steps += line.def.slug to offer.slug
-                }
+                service.keepStep(line.def.slug, offer.slug)
+                steps += line.def.slug to offer.slug
             }
         }
         athlete.adapt(day, hard)

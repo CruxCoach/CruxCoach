@@ -148,6 +148,17 @@ class BasicsTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `one missing answer is enough to open the start`() {
+        // Grade, years and equipment are there, the age band is not: the start opens (an "and" for the "or" would not).
+        repo.updateProfile { p ->
+            TrainingPlaces.withEquipment(p, null, setOf(EquipmentV2.NONE, EquipmentV2.MAT), service.today().toString(), PlaceKind.HOME)
+                .let { it.copy(basicsAsked = false, coach = it.coach.copy(currentGrade = "6b", experience = ExperienceBand.Y1_2, ageBand = null)) }
+        }
+        val gate = loaded(BasicsGateViewModel(service))
+        assertTrue(runBlocking { withTimeoutOrNull(WAIT_MS) { gate.open.first() } } != null)
+    }
+
+    @Test
     fun `body data is not what the start waits for`() {
         // Grade, years, age and equipment are there; weight, height and birth year are not: nothing opens.
         repo.updateProfile { p ->

@@ -4,7 +4,7 @@
     <string name="tre_block_build">Aufbau · Woche %1$d/%2$d</string>
     <string name="tre_block_deload">Leichte Woche</string>
     <string name="tre_block_event">Heute ist dein Tag</string>
-    <string name="tre_block_info_text">Das Training läuft in einfachen Zyklen: eine leichtere Woche zum Einstieg, drei Aufbauwochen, eine leichte Woche zur Erholung. Ein Trip- oder Wettkampfdatum ergänzt einen Taper über die letzten zehn Tage. Müde Check-ins oder eine stark steigende Fingerlast können die Entlastung vorziehen – der Kalender ist nur ein Signal.</string>
+    <string name="tre_block_info_text">Das Training läuft in einfachen Zyklen: eine leichtere Woche zum Einstieg, drei Aufbauwochen, eine leichte Woche zur Erholung. Ein Trip- oder Wettkampfdatum ergänzt einen Taper über die letzten zehn Tage. Müde Check-ins oder eine stark steigende Fingerlast können die leichte Woche vorziehen – der Kalender ist nur ein Signal.</string>
     <string name="tre_block_intro">Leichter Einstieg</string>
     <string name="tre_block_taper">Taper: noch %1$d\u00A0Tage</string>
     <string name="tre_board_plan">%1$s · %2$d\u00A0min</string>
@@ -13,8 +13,8 @@
     <string name="tre_conf_info_title">Wie gut dich der Coach kennt</string>
     <string name="tre_conf_low">Basis</string>
     <string name="tre_conf_medium">Persönlich</string>
-    <string name="tre_deload_action">Leichtere Woche starten</string>
-    <string name="tre_deload_started">Leichtere Woche gestartet.</string>
+    <string name="tre_deload_action">Leichte Woche starten</string>
+    <string name="tre_deload_started">Leichte Woche gestartet.</string>
     <string name="tre_duration_apply">Übernehmen</string>
     <string name="tre_duration_hint">Deine Trainings dauern meist etwa %1$d\u00A0min. Vorschläge darauf abstimmen?</string>
     <string name="tre_ev_affinity">öfter gewählt oder gemacht: %1$s</string>

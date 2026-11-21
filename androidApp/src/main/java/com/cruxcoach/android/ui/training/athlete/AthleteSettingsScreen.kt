@@ -150,7 +150,9 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
         // The value that plans each exercise and side now, when it is one the athlete's lower loads left.
         val own = benchmarks.groupBy { it.exerciseSlug to it.side }.values.mapNotNull { list -> list.maxByOrNull { it.measuredAt } }
             .filter { it.source == BenchmarkSource.AUTO && it.sets != null }
-        val kept = com.cruxcoach.athlete.logic.PreferenceLearning.kept(events, today, resets)
+        // Kept choices hold longer than the learning window: read from the whole ledger.
+        val ledger = repo.suggestionEventsSince(System.currentTimeMillis() - com.cruxcoach.athlete.logic.PreferenceLearning.LEDGER_DAYS * 86_400_000L)
+        val kept = com.cruxcoach.athlete.logic.PreferenceLearning.kept(ledger, today, resets)
             .filter { it.replaced !in profile.excludedExercises }
         // Resting after a rejection or for a kept choice: the later day counts.
         val keptRests = com.cruxcoach.athlete.logic.PreferenceLearning.keptEffect(kept).resting

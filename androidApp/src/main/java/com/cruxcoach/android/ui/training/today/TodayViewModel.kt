@@ -113,8 +113,6 @@ data class TodayState(
     val bodyweightKg: Double? = null,
     /** This week's volume per area (weekly plan), empty when it could not be computed. */
     val weekly: List<AreaProgress> = emptyList(),
-    /** The checklist's last step was just done (seen open earlier in this view model's life). */
-    val setupJustDone: Boolean = false,
     /** What the athlete chose to train today ("another suggestion"); null = the coach decides. */
     val wish: com.cruxcoach.athlete.logic.SuggestionFocus? = null,
     /** Minutes chosen for today on the card; null = the preferred duration. */
@@ -213,8 +211,6 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     )
 
     private var lastInputs: Inputs? = null
-    /** Open checklist steps at the previous refresh; null before the first. */
-    private var lastOpenSteps: Int? = null
     /** "Another suggestion" counter; resets with the day. */
     private var variant = 0
     private var variantDay: LocalDate? = null
@@ -337,12 +333,6 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 i.profile.sessionMinutes, today)
         }.getOrNull()
 
-        // Counted here, not in the screen: the coach setup opens before Today has drawn once.
-        val coachDone = i.profile.coach.setupState == com.cruxcoach.athlete.model.SetupState.DONE ||
-            i.profile.coach.setupState == com.cruxcoach.athlete.model.SetupState.DISMISSED
-        val openSteps = listOf(coachDone, i.profile.equipmentConfigured, trend.isNotEmpty()).count { !it }
-        val justDone = (lastOpenSteps ?: 0) > 0 && openSteps == 0
-        lastOpenSteps = openSteps
         val dayForm = service.todaysModifier().let { m -> if (daily?.shortenedForFatigue == true) m.copy(setsDelta = 0) else m }
             .takeIf { !it.isNeutral }
         // The weekday's usual workout on a weekday the standard week leaves free: offered once, "Nein danke" holds for weeks.
@@ -356,20 +346,21 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 i.profile.weekPlan[iso] == null && !DayPlans.isOverridden(i.profile, today)) HabitOffer(iso, h.entry) else null
         }.getOrNull()
         // Each row says what last time was and what today adds: the numbers the training will plan.
+        // The return ramp is the one the suggestion was just built with: no second look back over half a year.
+        val built = lastInput
         val steps = if (daily == null) com.cruxcoach.athlete.logic.NextTargets.Steps.CAREFUL
-            else runCatching { service.planSteps() }.getOrDefault(com.cruxcoach.athlete.logic.NextTargets.Steps.CAREFUL)
-        val rows = daily?.routine?.items.orEmpty().filter { !it.warmup }.mapNotNull { item ->
-            runCatching {
-                val def = service.catalog.fallbackFor(item.slug)
-                val planned = dayForm?.let { com.cruxcoach.athlete.logic.ReadinessModifiers.applyToItem(item, def, it) } ?: item
-                val side = if (def.unilateral) com.cruxcoach.athlete.model.Side.RIGHT else null
-                item.slug to TodayRow(service.lastTime(item.slug, side), service.nextTarget(planned, side, steps = steps), planned.sets)
-            }.getOrNull()
-        }.toMap()
+            else runCatching { service.planSteps(returnState = built?.let { input -> { Result.success(input.returnState) } }) }
+                .getOrDefault(com.cruxcoach.athlete.logic.NextTargets.Steps.CAREFUL)
+        val rows = runCatching {
+            val planned = daily?.routine?.items.orEmpty().filter { !it.warmup }.map { item ->
+                dayForm?.let { com.cruxcoach.athlete.logic.ReadinessModifiers.applyToItem(item, service.catalog.fallbackFor(item.slug), it) } ?: item
+            }
+            val sets = planned.associate { it.slug to it.sets }
+            service.rowTargets(planned, steps, dayForm).mapValues { (slug, t) -> TodayRow(t.last, t.next, sets[slug] ?: 0) }
+        }.getOrDefault(emptyMap())
         _state.update {
             it.copy(
                 loading = false,
-                setupJustDone = it.setupJustDone || justDone,
                 suggestion = daily,
                 rows = rows,
                 dayForm = dayForm,
@@ -991,7 +982,6 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
 
     fun consumeSuggestionSaved() = _state.update { it.copy(suggestionSaved = false) }
 
-    fun dismissSetupDone() = _state.update { it.copy(setupJustDone = false) }
 
     private fun covers(p: PausePeriod, day: LocalDate, today: LocalDate): Boolean {
         val start = runCatching { LocalDate.parse(p.startDay) }.getOrNull() ?: return false

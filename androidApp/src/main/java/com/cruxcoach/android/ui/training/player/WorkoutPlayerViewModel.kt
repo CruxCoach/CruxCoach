@@ -275,8 +275,6 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     private var firstTimeKey: String? = null
     /** Workout and exercises [PlayerState.lastTime] was read for. */
     private var lastTimeKey: String? = null
-    /** Workout, done sets and reserve answers [PlayerState.nextTime] was read for. */
-    private var nextTimeKey: String? = null
 
     /** The last training's work sets per exercise and side; the training on screen never counts as "last time". */
     private fun lastTimeIn(workout: Workout, sets: List<ExerciseSet>): Map<String, List<ExerciseSet>> = runCatching {
@@ -293,15 +291,30 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         val finished = sets.filter { it.setType == SetType.WORK }.groupBy { it.exerciseSlug to it.side }
             .filterValues { work -> work.all { it.isCompleted } }
         if (finished.isEmpty()) return@runCatching emptyMap()
-        // Read once: whether anything keeps loads careful looks back over half a year of training.
         val workoutId = sets.first().workoutId
-        val steps = service.planStepsAfter(workoutId)
+        // Once per training (and again when an injury is logged in it): whether anything keeps loads careful looks
+        // back over half a year of training.
+        val stepsKey = workoutId + ":" + service.repo.activeInjuries().size
+        val steps = stepsOf?.takeIf { it.first == stepsKey }?.second ?: service.planStepsAfter(workoutId).also { stepsOf = stepsKey to it; nextTimeMemo.clear() }
         finished.mapNotNull { (key, work) ->
-                if (service.catalog[key.first] == null) return@mapNotNull null
-                val next = service.nextTarget(service.itemAfter(workoutId, key.first, work.size), key.second, steps = steps)
-                if (next.move == com.cruxcoach.athlete.logic.NextTargets.Move.NONE) null else progressKey(key.first, key.second) to next
-            }.toMap()
+            val id = progressKey(key.first, key.second)
+            // Per exercise, and again only when one of its sets changed (a corrected load or reserve counts too).
+            val signature = work.joinToString("|") { "${it.id}:${it.reps}:${it.durationS}:${it.rir}:${it.loadKg}" }
+            val known = nextTimeMemo[id]?.takeIf { it.first == signature }
+            val next = if (known != null) known.second else {
+                val read = if (service.catalog[key.first] == null) null
+                    else service.nextTarget(service.itemAfter(workoutId, key.first, work.size), key.second, steps = steps)
+                        .takeIf { it.move != com.cruxcoach.athlete.logic.NextTargets.Move.NONE }
+                nextTimeMemo[id] = signature to read
+                read
+            }
+            next?.let { id to it }
+        }.toMap()
     }.getOrDefault(emptyMap())
+
+    /** The training's step level ([AthleteService.planStepsAfter]) and what was read per finished exercise, by its sets. */
+    private var stepsOf: Pair<String, com.cruxcoach.athlete.logic.NextTargets.Steps>? = null
+    private val nextTimeMemo = mutableMapOf<String, Pair<String, com.cruxcoach.athlete.logic.NextTargets.Next?>>()
 
     /**
      * The training's exercises that are not Basic, not the athlete's own or a favourite, and were never done in another
@@ -339,12 +352,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             firstTimeNow == lastTimeKey -> _state.value.lastTime
             else -> lastTimeIn(workout, sets).also { lastTimeKey = firstTimeNow }
         }
-        val nextTimeNow = workout?.let { w -> w.id + ":" + sets.count { it.isCompleted } + ":" + sets.sumOf { (it.rir ?: -1) + 2 } + ":" + sets.sumOf { (it.reps ?: 0) + (it.durationS ?: 0.0).toInt() } }
-        val nextTime = when {
-            workout == null -> emptyMap()
-            nextTimeNow == nextTimeKey -> _state.value.nextTime
-            else -> nextTimeIn(sets).also { nextTimeKey = nextTimeNow }
-        }
+        val nextTime = if (workout == null) emptyMap() else nextTimeIn(sets)
         _state.update { st ->
             if (st.closing) return@update st.copy(profile = profile)
             if (workout == null) return@update st.copy(phase = PlayerPhase.NO_WORKOUT, workout = null, sets = emptyList(),

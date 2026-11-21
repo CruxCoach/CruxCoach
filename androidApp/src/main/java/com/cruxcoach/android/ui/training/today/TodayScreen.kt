@@ -111,8 +111,6 @@ fun TodayScreen(
     /** An exercise of today's card the athlete tapped to swap. */
     var swapFor by rememberSaveable { mutableStateOf<String?>(null) }
     var menu by remember { mutableStateOf(false) }
-    // The checklist's last tick is celebrated once in place before the card goes.
-    val setupJustDone = state.setupJustDone
     val snackbar = remember { SnackbarHostState() }
     val savedText = stringResource(R.string.trsg_saved)
     val weightSavedText = stringResource(R.string.tru_weight_saved)
@@ -460,106 +458,6 @@ fun TodayScreen(
             snackbar.currentSnackbarData?.dismiss()
             val result = snackbar.showSnackbar(text, yes, withDismissAction = true, duration = SnackbarDuration.Long)
             viewModel.answerNeverOffer(result == SnackbarResult.ActionPerformed)
-        }
-    }
-}
-
-// ── "Startklar": the minimum, as a checklist ───────────────────────
-
-internal enum class SetupKind { COACH, EQUIPMENT, WEIGHT }
-
-internal data class SetupStep(val kind: SetupKind, val done: Boolean)
-
-/**
- * What a new athlete has to do at least: goal and week (coach), equipment and
- * body weight. A coach setup the athlete declined counts as done – the
- * checklist never nags about something they said no to.
- */
-internal fun setupSteps(state: TodayState): List<SetupStep> {
-    val coach = state.profile.coach.setupState
-    return listOf(
-        SetupStep(SetupKind.COACH, coach == com.cruxcoach.athlete.model.SetupState.DONE || coach == com.cruxcoach.athlete.model.SetupState.DISMISSED),
-        SetupStep(SetupKind.EQUIPMENT, state.profile.equipmentConfigured),
-        SetupStep(SetupKind.WEIGHT, state.trendKg != null),
-    )
-}
-
-@Composable
-private fun SetupChecklistCard(steps: List<SetupStep>, justDone: Boolean, onDismissDone: () -> Unit, onOpen: (SetupStep) -> Unit) {
-    val done = steps.count { it.done }
-    if (justDone && done == steps.size) {
-        // All three ticked: a short "ready", then the card is gone for good.
-        Card(
-            colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.positiveContainer,
-                contentColor = CruxCoachDesign.colors.onPositiveContainer),
-            modifier = Modifier.fillMaxWidth().testTag("today_setup_done"),
-        ) {
-            Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.CheckCircle, null)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.tru_setup_ready_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(stringResource(R.string.tru_setup_ready_text), style = MaterialTheme.typography.bodySmall)
-                }
-                IconButton(onClick = onDismissDone) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.tru_done)) }
-            }
-        }
-        return
-    }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        modifier = Modifier.fillMaxWidth().testTag("today_setup"),
-    ) {
-        Column(Modifier.padding(vertical = 12.dp)) {
-            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.RocketLaunch, null, tint = CruxCoachDesign.colors.brandAccent)
-                Spacer(Modifier.width(10.dp))
-                LabelBesideOrAbove(modifier = Modifier.weight(1f), label = {
-                    Text(stringResource(R.string.tru_setup_title), style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(end = 8.dp))
-                }) {
-                    Text(stringResource(R.string.tru_setup_progress, done, steps.size), style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            LinearProgressIndicator(
-                progress = { done.toFloat() / steps.size },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                color = CruxCoachDesign.colors.brandAccent, drawStopIndicator = {},
-            )
-            steps.forEachIndexed { i, step ->
-                val (title, text) = when (step.kind) {
-                    SetupKind.COACH -> R.string.tru_setup_coach to R.string.tru_setup_coach_text
-                    SetupKind.EQUIPMENT -> R.string.tru_setup_equipment to R.string.tru_setup_equipment_text
-                    SetupKind.WEIGHT -> R.string.tru_setup_weight to R.string.tru_setup_weight_text
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
-                        .clickable(enabled = !step.done) { onOpen(step) }
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                        .testTag("today_setup_${step.kind.name.lowercase()}"),
-                ) {
-                    Box(
-                        Modifier.size(32.dp).clip(CircleShape)
-                            .background(if (step.done) CruxCoachDesign.colors.positive else MaterialTheme.colorScheme.surface),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (step.done) Icon(Icons.Default.Check, contentDescription = stringResource(R.string.tru_setup_done),
-                            tint = CruxCoachDesign.colors.positiveContainer, modifier = Modifier.size(20.dp))
-                        else Text("${i + 1}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(title), style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = if (step.done) FontWeight.Normal else FontWeight.SemiBold,
-                            color = if (step.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                        Text(stringResource(if (step.done) R.string.tru_setup_done else text), style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (!step.done) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
-                }
-            }
         }
     }
 }
@@ -1140,6 +1038,17 @@ private val AccentOnCard: androidx.compose.ui.graphics.Color
     @androidx.compose.runtime.ReadOnlyComposable
     get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFFFFB74D, light = 0xFF9A3500)
 
+/** "+1 kg" and "−1 kg" on the suggestion card: the theme's green and amber reach only 4.3:1 on its light container. */
+private val StepUpOnCard: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFF8EE8A5, light = 0xFF125C2C)
+
+private val StepDownOnCard: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFFFFD166, light = 0xFF674C00)
+
 /** Water's own colour, the same on Today and in the nutrition log; deeper in the light theme, where its taps need 3:1. */
 internal val WaterBlue: androidx.compose.ui.graphics.Color
     @androidx.compose.runtime.Composable
@@ -1403,8 +1312,7 @@ private fun DailySuggestionCard(
                 itemVerticalAlignment = Alignment.CenterVertically,
             ) {
                 // The count matches the list below: the warm-up is part of the time, not of the list.
-                Text(pluralStringResource(R.plurals.trsg_meta_count, main.size, main.size) + "  ·",
-                    style = MaterialTheme.typography.bodyMedium)
+                Text(pluralStringResource(R.plurals.trsg_meta_count, main.size, main.size), style = MaterialTheme.typography.bodyMedium)
                 if (s.timeAdjustable) DurationChip(s.totalMinutes, state.minutesToday, state.profile.sessionMinutes, onChooseMinutes)
                 else Text(stringResource(R.string.trt_duration_value, s.totalMinutes), style = MaterialTheme.typography.bodyMedium)
                 com.cruxcoach.android.ui.training.common.PlacePicker(
@@ -1495,9 +1403,9 @@ private fun DailySuggestionCard(
                                     Text(text, style = MaterialTheme.typography.bodySmall, maxLines = 1,
                                         fontWeight = if (tone == com.cruxcoach.android.ui.training.common.StepTone.SAME) FontWeight.Normal else FontWeight.SemiBold,
                                         color = when (tone) {
-                                            com.cruxcoach.android.ui.training.common.StepTone.UP -> CruxCoachDesign.colors.positive
-                                            com.cruxcoach.android.ui.training.common.StepTone.SAME -> MaterialTheme.colorScheme.onSurfaceVariant
-                                            com.cruxcoach.android.ui.training.common.StepTone.DOWN -> CruxCoachDesign.colors.caution
+                                            com.cruxcoach.android.ui.training.common.StepTone.UP -> StepUpOnCard
+                                            com.cruxcoach.android.ui.training.common.StepTone.SAME -> MaterialTheme.colorScheme.onSecondaryContainer
+                                            com.cruxcoach.android.ui.training.common.StepTone.DOWN -> StepDownOnCard
                                         },
                                         modifier = Modifier.testTag("today_step_${item.slug}"))
                                 }
@@ -1616,7 +1524,7 @@ private fun DurationChip(minutes: Int, chosen: Int?, usual: Int, onChoose: (Int?
         Row(verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.clip(CruxCoachDesign.shapes.small)
                 .clickable(onClickLabel = stringResource(R.string.trt_duration_title)) { open = true }
-                .heightIn(min = 40.dp).padding(start = 2.dp).testTag("today_duration")) {
+                .heightIn(min = 48.dp).padding(horizontal = 2.dp).testTag("today_duration")) {
             Text(stringResource(R.string.trt_duration_value, minutes), style = MaterialTheme.typography.bodyMedium)
             Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp))
         }

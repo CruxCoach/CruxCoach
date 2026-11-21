@@ -4,7 +4,7 @@
     <string name="tre_block_build">Build · week %1$d/%2$d</string>
     <string name="tre_block_deload">Lighter week</string>
     <string name="tre_block_event">Today is your day</string>
-    <string name="tre_block_info_text">Training runs in simple cycles: one easier week to get going, three build weeks, one lighter week to recover. A trip or competition date adds a taper over the last ten days. Tired check-ins or a finger-load spike can bring the deload forward – the calendar is only one signal.</string>
+    <string name="tre_block_info_text">Training runs in simple cycles: one easier week to get going, three build weeks, one lighter week to recover. A trip or competition date adds a taper over the last ten days. Tired check-ins or a finger-load spike can bring the lighter week forward – the calendar is only one signal.</string>
     <string name="tre_block_intro">Easy start</string>
     <string name="tre_block_taper">Taper: %1$d\u00A0days to go</string>
     <string name="tre_board_plan">%1$s · %2$d\u00A0min</string>

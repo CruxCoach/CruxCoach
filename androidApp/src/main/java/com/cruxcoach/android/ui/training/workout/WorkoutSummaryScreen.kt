@@ -273,9 +273,11 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
             service.ensureReady()
             val repo = service.repo
             val target = service.catalog[to] ?: return@launch
-            val before = repo.routines().filter { r -> r.items.any { it.slug == from } }
-            undoRoutines = before; undoDeload = false
-            before.forEach { r ->
+            // One step per exercise: a second tap before the button has gone changes nothing.
+            synchronized(stepUndos) { if (stepUndos.containsKey(from)) return@launch else stepUndos[from] = StepUndo(target, null, emptyMap()) }
+            val replaced = mutableMapOf<String, Map<Int, com.cruxcoach.athlete.model.RoutineItem>>()
+            repo.routines().filter { r -> r.items.any { it.slug == from } }.forEach { r ->
+                replaced[r.id] = r.items.withIndex().filter { it.value.slug == from }.associate { it.index to it.value }
                 val items = com.cruxcoach.athlete.logic.Circuits.normalize(r.items.map { item ->
                     if (item.slug != from) item
                     else WorkoutPlanner.itemFor(target).copy(sets = item.sets, restS = item.restS, sides = item.sides, warmup = item.warmup,
@@ -283,8 +285,32 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
                 }, service.catalog)
                 repo.saveRoutine(r.copy(items = items, updatedAt = System.currentTimeMillis()))
             }
-            undoSwapEvent = service.keepStep(from, to)
+            synchronized(stepUndos) { stepUndos[from] = StepUndo(target, service.keepStep(from, to), replaced) }
             _state.update { s -> s.copy(stepTaken = from to to, nextTime = s.nextTime.map { if (it.def.slug == from) it.copy(offer = null) else it }) }
+        }
+    }
+
+    /** What a step changed: its ledger entry and the items it replaced in own workouts, by workout and position. */
+    private class StepUndo(val to: ExerciseDefinition, val event: String?, val replaced: Map<String, Map<Int, com.cruxcoach.athlete.model.RoutineItem>>)
+
+    /** The steps taken on this summary, by the exercise stepped from: each "Rückgängig" takes back its own. */
+    private val stepUndos = mutableMapOf<String, StepUndo>()
+
+    /** "Rückgängig" for the step from [from]: the coach's choice and the own workouts are as before, and the offer is back. */
+    fun undoStep(from: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            val undo = synchronized(stepUndos) { stepUndos.remove(from) } ?: return@launch
+            undo.event?.let(service::forgetSuggestion)
+            repo.routines().forEach { r ->
+                val before = undo.replaced[r.id] ?: return@forEach
+                // Only where the step's exercise still stands: what the athlete changed since stays.
+                val items = r.items.mapIndexed { i, item -> before[i]?.takeIf { item.slug == undo.to.slug } ?: item }
+                if (items != r.items) repo.saveRoutine(r.copy(items = com.cruxcoach.athlete.logic.Circuits.normalize(items, service.catalog),
+                    updatedAt = System.currentTimeMillis()))
+            }
+            _state.update { s -> s.copy(nextTime = s.nextTime.map { if (it.def.slug == from && it.offer == null) it.copy(offer = undo.to) else it }) }
         }
     }
 
@@ -389,11 +415,13 @@ fun WorkoutSummaryScreen(
         stringResource(R.string.trpr_step_taken, state.catalog.fallbackFor(to).name(language), state.catalog.fallbackFor(from).name(language))
     }.orEmpty()
     LaunchedEffect(state.stepTaken) {
-        if (state.stepTaken == null) return@LaunchedEffect
+        val taken = state.stepTaken ?: return@LaunchedEffect
         val text = stepText
         viewModel.consumeStepTaken()
+        // The line on screen belongs to the step just taken: an older one makes way instead of holding it back.
+        snackbar.currentSnackbarData?.dismiss()
         snackScope.launch {
-            if (snackbar.showSnackbar(text, undoLabel, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoLastAction()
+            if (snackbar.showSnackbar(text, undoLabel, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoStep(taken.first)
         }
     }
     var confirmSwap by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -629,21 +657,26 @@ private fun NextTimeCard(state: SummaryState, language: String, onOpenExercise: 
             Text(stringResource(R.string.trpr_next_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             state.nextTime.forEach { line ->
                 val def = line.def
-                val plan = com.cruxcoach.android.ui.training.common.planText(line.done.size, line.next.reps, line.next.durationS, line.next.loadKg, def, state.units)
+                val plan = com.cruxcoach.android.ui.training.common.planText(line.sets, line.next.reps, line.next.durationS, line.next.loadKg, def, state.units)
                 val today = com.cruxcoach.android.ui.training.common.setsDoneText(line.done, def, state.units)
                 val step = com.cruxcoach.android.ui.training.common.stepText(line.done, line.next.reps, line.next.durationS, line.next.loadKg, def, state.units)
                 val name = def.name(language) + (line.side?.let { " · " + com.cruxcoach.android.ui.training.sideLabel(it) } ?: "")
                 val key = def.slug + line.side?.name.orEmpty()
                 if (plan != null) {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { onOpenExercise(def.slug) }.padding(vertical = 6.dp).testTag("summary_next_$key"),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).padding(end = 8.dp)) {
-                            Text(name, style = MaterialTheme.typography.bodyLarge)
-                            today?.let {
-                                Text(stringResource(R.string.trpr_today, it), style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // The plan beside the name, or below it where both do not fit (320 dp, the largest font): never cut.
+                    com.cruxcoach.android.ui.training.LabelBesideOrAbove(
+                        modifier = Modifier.heightIn(min = 48.dp).clickable { onOpenExercise(def.slug) }.padding(vertical = 6.dp).testTag("summary_next_$key"),
+                        growth = 1.5f,
+                        label = {
+                            Column(Modifier.padding(end = 8.dp)) {
+                                Text(name, style = MaterialTheme.typography.bodyLarge)
+                                today?.let {
+                                    Text(stringResource(R.string.trpr_today, it), style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
-                        }
+                        },
+                    ) {
                         Column(horizontalAlignment = Alignment.End) {
                             val tone = step?.second
                             val colour = when (tone) {
