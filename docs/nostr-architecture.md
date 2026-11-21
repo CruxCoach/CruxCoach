@@ -116,12 +116,22 @@ Zwei getrennte Listen, beide in `NostrConfig.kt` einkompiliert:
 wss://relay.damus.io
 wss://nos.lol                ← das einzige Relay, das Community-Climbs empirisch langfristig hält
 wss://relay.primal.net
-wss://nostr-pub.wellorder.net
-wss://nostr.oxtr.dev
+wss://nostr.mom
+wss://purplerelay.com
 ```
 
 Wird zur Laufzeit **additiv** mit der NIP-65-Liste des Users gemergt (§9) — die
-Defaults verschwinden also nie.
+Defaults verschwinden also nie. 0.2.5 ersetzt `nostr-pub.wellorder.net` (seit 06.11.2026 down)
+und `nostr.oxtr.dev` (502 seit 19.11.2026) durch `nostr.mom` und `purplerelay.com`: beide
+laufen mit strfry und speicherten am 20.11.2026 einen kurzen NIP-17-Wrap und einen in
+Crash-Report-Größe (27,8 KB), auch zwei Tage zurückdatiert (nostr.mom nimmt nur Wraps, die
+jünger als etwa 26 Tage datiert sind). Nicht `offchain.pub` und nicht `nostr.bitcoiner.social`
+(ab etwa 4 KB): sie lehnen Events von Keys außerhalb ihres Web of Trust ab, und der Einmal-Key
+eines Gift Wraps ist das immer. relay.primal.net nimmt keine Gift Wraps über 32 768 Bytes;
+Crash-Reports werden deshalb auf 12 KB Text gekürzt (`fitCrashReport`). Eine gespeicherte Liste (bis zu einem Tag alt,
+länger, solange die Aktualisierung scheitert) tauscht beim Lesen Defaults, die der Build nicht
+mehr kennt, gegen die aktuellen; Relays aus der NIP-65-Liste des Users bleiben, auch wenn sie
+ein altes Default nennen (`withCurrentDefaults` in `RelayListResolver.kt`).
 
 **`MANIFEST_RELAYS`** — ausschließlich für Katalog-Manifeste:
 

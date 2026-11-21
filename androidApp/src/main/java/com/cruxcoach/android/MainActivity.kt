@@ -44,6 +44,7 @@ import com.cruxcoach.android.nostr.NostrMessageSending
 import com.cruxcoach.android.nostr.SendResult
 import com.cruxcoach.android.nostr.model.MessageType
 import com.cruxcoach.android.crash.CruxCoachCrashHandler
+import com.cruxcoach.android.crash.fitCrashReport
 import com.cruxcoach.android.data.NostrMessageRepository
 import androidx.compose.runtime.rememberCoroutineScope
 import com.cruxcoach.android.data.DarkModeSetting
@@ -521,9 +522,11 @@ class MainActivity : AppCompatActivity() {
         return com.cruxcoach.android.util.LocalShareProtocol.isPrivateIpv4(uri.host)
     }
 
-    private suspend fun sendCrashReport(crashText: String) {
+    private suspend fun sendCrashReport(savedText: String) {
         val now = System.currentTimeMillis()
         val sender = nostrMessageSender.get()
+        // A report saved by an older version can be too big for one message.
+        val crashText = fitCrashReport(savedText)
 
         // Build first, like DevContactViewModel.sendMessage: the self-wrap id
         // is the row key, so the relay echo dedupes instead of listing the
