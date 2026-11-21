@@ -45,17 +45,39 @@ object ExerciseFamiliarity {
     }
 
     /**
+     * While the athlete knows fewer exercises than this ([known]), the coach stays with the classics for everyone who
+     * has not chosen otherwise (owner 2026-11-21: "at the start exercises that need no explanation; most want the
+     * usual basic exercises for climbing and to get better at them"). How hard the exercises are still follows the
+     * athlete's level; this is only about how well known they are.
+     */
+    const val STARTER_KNOWN = 8
+
+    /**
+     * [SuggestionInput.varietyDefault]: a fixed set of exercises while the athlete is new to training here, and close
+     * to it afterwards – the same exercises week after week are what makes the next step visible. The variety slider
+     * in the coach's settings stands above it.
+     */
+    fun varietyDefault(starter: Boolean): Int = if (starter) 0 else SETTLED_VARIETY
+
+    const val SETTLED_VARIETY = 15
+
+    /** [SuggestionInput.starter] from the exercises known to the athlete. */
+    fun starter(known: Set<String>): Boolean = known.size < STARTER_KNOWN
+
+    /**
      * The athlete's group for a kind of training at [level]. "Mostly classics" makes everyone a beginner here,
      * "Open to unusual exercises" everyone advanced; "Balanced" follows experience: a beginner is someone the
      * coach knows nothing about yet (no experience answer, no grade from 6c), in the first year, in the second
      * year without a performance value (as the first-year guardrail), or at level 1.
      */
-    fun group(coach: CoachProfile, level: Int, hasPerformanceValue: Boolean, grade: Double?): Group {
+    fun group(coach: CoachProfile, level: Int, hasPerformanceValue: Boolean, grade: Double?, starter: Boolean = false): Group {
         when (coach.exerciseChoice) {
             ExerciseChoice.CLASSICS -> return Group.BEGINNER
             ExerciseChoice.OPEN -> return Group.ADVANCED
             ExerciseChoice.BALANCED, null -> Unit
         }
+        // New to training here: the classics first, whatever the grade and the years ([STARTER_KNOWN]).
+        if (starter) return Group.BEGINNER
         val unknown = coach.experience == null && (grade ?: 0.0) < NO_BEGINNER_FROM_GRADE
         val beginner = unknown || level <= 1 || coach.experience == ExperienceBand.UNDER_1 ||
             (coach.experience == ExperienceBand.Y1_2 && !hasPerformanceValue)

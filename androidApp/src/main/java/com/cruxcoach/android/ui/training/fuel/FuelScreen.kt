@@ -173,6 +173,30 @@ fun FuelScreen(
                 // explained once instead of behind an opt-in.
                 if (!state.profile.fuelIntroAccepted) item { FuelIntroCard(onGotIt = viewModel::acceptIntro) }
                 item { DayHeader(state, viewModel::previousDay, viewModel::nextDay, viewModel::goToday) }
+                item(key = "view") { ViewSwitch(state.exact, viewModel::setExact) }
+                if (!state.exact) {
+                    // Simple (owner 2026-11-21): one number and what was eaten. Everything else is one tap away in "exact".
+                    if (state.targets == null) {
+                        item(key = "needs_weight") {
+                            com.cruxcoach.android.ui.training.common.NeedsDataCard(
+                                icon = Icons.Default.MonitorWeight,
+                                title = stringResource(R.string.trfs_protein_title),
+                                text = stringResource(R.string.trfs_needs_weight),
+                                action = stringResource(R.string.tru_enter_weight),
+                                tag = "fuel_needs_weight",
+                                onAction = { weightOpen = true },
+                            )
+                        }
+                    }
+                    item(key = "protein") { ProteinCard(state) }
+                    if (state.entries.isEmpty() && state.previousDayCount > 0) {
+                        item(key = "copy") { CopyPreviousCard(state.previousDayCount, onCopy = { copyConfirm = true }) }
+                    }
+                    item(key = "eaten") {
+                        EatenCard(state.entries, state.profile.showCalories, units, isDrink, onEdit = { editing = it }, onDelete = ::deleteEntry)
+                    }
+                    return@LazyColumn
+                }
                 if (state.energy.signals.isNotEmpty()) item { EnergyCareCard(state.energy, state.profile, "fuel_reds", onAdjustGoal = { goalOpen = true }) }
                 if (state.targets == null) {
                     item(key = "needs_weight") {
@@ -993,6 +1017,74 @@ fun macrosText(protein: Double?, carbs: Double?, fat: Double?, energy: MacroTota
     val macros = stringResource(R.string.trf_entry_macros_g,
         protein?.let(::grams) ?: "–", carbs?.let(::grams) ?: "–", fat?.let(::grams) ?: "–")
     return if (showCalories && energy != null) macros + " · " + kcalText(energy.kcal, energy.estimated) else macros
+}
+
+/** "Einfach" or "Genau": two views of the same day, remembered. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ViewSwitch(exact: Boolean, onChange: (Boolean) -> Unit) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().testTag("fuel_view")) {
+        SegmentedButton(selected = !exact, onClick = { if (exact) onChange(false) },
+            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2), modifier = Modifier.testTag("fuel_view_simple")) {
+            Text(stringResource(R.string.trfs_view_simple))
+        }
+        SegmentedButton(selected = exact, onClick = { if (!exact) onChange(true) },
+            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2), modifier = Modifier.testTag("fuel_view_exact")) {
+            Text(stringResource(R.string.trfs_view_exact))
+        }
+    }
+}
+
+/** The simple view's one number: today's protein against its target. */
+@Composable
+private fun ProteinCard(state: FuelState) {
+    val eaten = state.entries.sumOf { it.proteinG ?: 0.0 }.roundToInt()
+    val target = state.targets?.proteinG?.roundToInt()
+    Card(Modifier.fillMaxWidth().testTag("fuel_simple_protein")) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (target != null && target > 0) {
+                CircularProgressIndicator(
+                    progress = { (eaten.toFloat() / target).coerceIn(0f, 1f) },
+                    modifier = Modifier.size(84.dp), strokeWidth = 8.dp,
+                    color = CruxCoachDesign.colors.brandAccent, trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                )
+                Spacer(Modifier.width(16.dp))
+            }
+            Column {
+                Text(stringResource(R.string.trfs_protein_title), style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.trfs_grams, eaten), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.testTag("fuel_simple_protein_value"))
+                if (target != null) {
+                    Text(if (eaten >= target) stringResource(R.string.trfs_protein_reached, target)
+                        else stringResource(R.string.trfs_protein_left, target, target - eaten),
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+/** The simple view's list: everything eaten that day in one card, a tap edits. */
+@Composable
+private fun EatenCard(
+    entries: List<FoodLogEntry>, showCalories: Boolean, units: UnitSystem, isDrink: (FoodLogEntry) -> Boolean,
+    onEdit: (FoodLogEntry) -> Unit, onDelete: (FoodLogEntry) -> Unit,
+) {
+    Card(Modifier.fillMaxWidth().testTag("fuel_simple_eaten")) {
+        Column(Modifier.padding(vertical = 4.dp)) {
+            Text(stringResource(R.string.trfs_eaten_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            if (entries.isEmpty()) {
+                Text(stringResource(R.string.trfs_eaten_empty), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
+            }
+            entries.forEach { entry ->
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                EntryRow(entry, showCalories, FuelUnits.unitFor(units, isDrink(entry)), onEdit = { onEdit(entry) }, onDelete = { onDelete(entry) })
+            }
+        }
+    }
 }
 
 @Composable

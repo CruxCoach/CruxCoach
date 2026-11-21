@@ -613,7 +613,7 @@ private fun DoneRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPage,
 @Composable
 private fun LatestDoneExtras(set: ExerciseSet, def: ExerciseDefinition, state: PlayerState, actions: PageActions) {
     val units = state.profile.units
-    val asks = set.setType == SetType.WORK && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG)
+    val asks = set.setType == SetType.WORK && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG, ExerciseKind.TIME)
     Column(Modifier.padding(start = 48.dp, bottom = 4.dp)) {
         if (asks) ReserveChoice(set, reserveInSeconds(def), actions, "player_rir_", Modifier.padding(bottom = 4.dp))
         state.feedback?.takeIf { it.def.slug == def.slug }?.let { fb ->
@@ -657,7 +657,7 @@ private fun EditingRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPa
                     modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             SetSteppers(set, def, units, state.profile.smallestIncrementKg, actions.onUpdate, Modifier.padding(top = 8.dp))
-            if (set.setType != SetType.WARMUP && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG)) {
+            if (set.setType != SetType.WARMUP && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG, ExerciseKind.TIME)) {
                 ReserveChoice(set, reserveInSeconds(def), actions, "player_review_rir_", Modifier.padding(top = 12.dp))
             }
             // "Fertig" below when both do not fit in a row ("D/o" at the largest font).
@@ -704,6 +704,13 @@ private fun ActiveRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPag
                                 Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.testTag("player_target"))
                             }
+                            // What the last training was, right under what today asks for.
+                            state.lastTime[progressKey(set.exerciseSlug, set.side)]
+                                ?.let { com.cruxcoach.android.ui.training.common.setsDoneText(it, def, units) }
+                                ?.let {
+                                    Text(stringResource(R.string.trpr_last_time, it), style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("player_last_time"))
+                                }
                         }
                     }) {
                         percent?.let {

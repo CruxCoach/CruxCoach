@@ -97,5 +97,7 @@ class TrainingSimulationTest {
             r to flags
         }
         write("overview.md", SimReport.overview(runs))
+        // The yardstick (owner 2026-11-21): the same athletes with a plain reference progression on the app's schedule.
+        write("reference.md", ReferenceComparison.report(runs.flatMap { (r, _) -> ReferenceComparison.compare(r) }))
     }
 }

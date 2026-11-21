@@ -106,7 +106,7 @@
     <string name="trt_sugg_test_title">Zeit für einen Leistungstest</string>
     <string name="trt_sugg_test_text">Max Hang, Klimmzüge und Hollow Hold zeigen deinen Fortschritt bei Kraft zu Gewicht.</string>
     <string name="trt_sugg_weight_title">Körpergewicht eintragen</string>
-    <string name="trt_sugg_weight_text">Nötig für Prozent des Körpergewichts am Hangboard und für die Ernährungsziele.</string>
+    <string name="trt_sugg_weight_text">Damit passen die Lasten am Hangboard und dein Protein-Ziel.</string>
     <string name="trt_sugg_weight_action">Eintragen</string>
     <string name="trt_reds_title">Achte auf deine Energie</string>
     <string name="trt_reds_info">Klettern belohnt Kraft zu Gewicht, und das verleitet manche dazu, zu wenig zu essen. Zu wenig Energie für das Training, das du machst (relatives Energiedefizit im Sport, RED-S), kostet Kraft, Erholung und Gesundheit – Knochen, Hormone, Immunsystem. CruxCoach zeigt dir die Zahlen hinter jedem Zeichen und stellt keine Diagnosen; deine Ziele bleiben deine. Wenn mehrere Zeichen auf dich passen – anhaltende Müdigkeit, häufig krank, ausbleibende Periode, Schwindel, Stillstand trotz Training, Gedanken, die ständig um Essen und Gewicht kreisen –, sprich mit einer Ärztin oder einem Arzt, einer Sport-Ernährungsberatung oder einer Beratungsstelle für Essstörungen.</string>
@@ -120,7 +120,7 @@
     <string name="trt_weight_today">Gewicht heute (%1$s)</string>
     <string name="trt_fuel_needs_weight">Trag dein Körpergewicht ein, dann siehst du Protein- und Kohlenhydrat-Ziele.</string>
     <string name="trt_protein">Protein</string>
-    <string name="trt_sugg_benchmarks_title">Leistungswerte eintragen</string>
+    <string name="trt_sugg_benchmarks_title">Kraftwerte eintragen</string>
     <string name="trt_sugg_benchmarks_text">Max Hang, Blockheben, Klimmzug mit Zusatzgewicht: Aus dem, was du schaffst, plant CruxCoach deine Lasten.</string>
     <string name="trt_sugg_benchmarks_action">Eintragen</string>
     <string name="trt_today_hero">Dein Training heute</string>
@@ -183,4 +183,13 @@
     <string name="trt_never_offer_yes">Nie mehr</string>
     <string name="trt_swapped_undo">Heute „%1$s“ statt „%2$s“</string>
     <string name="trt_dropped_undo">„%1$s“ heute weggelassen</string>
+    <string name="trt_adjust">Anpassen</string>
+    <string name="trt_adjust_title">Training anpassen</string>
+    <string name="trt_adjust_edit">Übungen bearbeiten</string>
+    <string name="trt_form_good">Fühle mich gut</string>
+    <string name="trt_form_tired">Müde</string>
+    <string name="trt_form_more">Mehr</string>
+    <string name="trt_sugg_week_title">Deine Woche planen</string>
+    <string name="trt_sugg_week_text">Sag dem Coach, an welchen Tagen du kletterst. Er plant den Rest drumherum.</string>
+    <string name="trt_adjust_coach">Coach anpassen: Ziel, Woche, Vorlieben</string>
 </resources>

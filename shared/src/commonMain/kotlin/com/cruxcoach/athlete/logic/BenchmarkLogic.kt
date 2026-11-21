@@ -279,6 +279,22 @@ object LoadPrescriber {
     /** Weighted holds: share of what the athlete can hold for [durationS]; long density hangs go easier. */
     fun holdShare(durationS: Int): Double = if (durationS >= 20) 0.85 else 0.90
 
+    /**
+     * The repetitions [capacity] (a one-rep max) allows at [loadKg] (the logged number) with the planned reserve,
+     * rounded to whole repetitions. It may lie outside the exercise's range; callers clamp it. Without a total to
+     * compare it reads as "plenty".
+     */
+    fun repsAt(def: ExerciseDefinition, capacity: Capacity, loadKg: Double, bodyweightKg: Double?): Int {
+        val total = StrengthMath.effectiveLoad(def, loadKg, bodyweightKg ?: capacity.bodyweightKg)?.takeIf { it > 0 } ?: return PLENTY_OF_REPS
+        return (30.0 * (capacity.value / total - 1.0) - BenchmarkMath.TARGET_RIR).roundToInt().coerceAtMost(PLENTY_OF_REPS)
+    }
+
+    private const val PLENTY_OF_REPS = 999
+
+    /** Pulling, hanging and dipping can be assisted (a band, a pulley, a foot on a chair); leg and core work cannot. */
+    fun assistable(def: ExerciseDefinition): Boolean = def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.PULL ||
+        def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.FINGER || def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.PUSH
+
     fun prescribe(
         def: ExerciseDefinition,
         item: RoutineItem,
@@ -296,9 +312,26 @@ object LoadPrescriber {
         }
         return when (capacity.kind) {
             CapacityKind.E1RM_TOTAL -> {
-                val reps = item.repsMax ?: item.repsMin ?: def.defaults.repsMax ?: 5
-                val total = capacity.value / (1.0 + (reps + BenchmarkMath.TARGET_RIR) / 30.0)
-                toLoad(total)?.let { LoadTarget(it, reps, null, capacity) }
+                val top = item.repsMax ?: item.repsMin ?: def.defaults.repsMax ?: 5
+                val bottom = (item.repsMin ?: def.defaults.repsMin ?: top).coerceAtMost(top)
+                val total = capacity.value / (1.0 + (top + BenchmarkMath.TARGET_RIR) / 30.0)
+                toLoad(total)?.let { rounded ->
+                    // Body-weight work that cannot be made lighter with a band or a pulley (lunges, squats) is never
+                    // planned "assisted": at body weight, with the repetitions the value allows (training simulation
+                    // 2026-11-21: walking lunges at "-12 kg × 20" for weeks).
+                    val snapped = if (rounded < 0 && def.load == LoadMode.BODYWEIGHT_PLUS && !assistable(def)) 0.0 else rounded
+                    if (snapped != rounded) return@let LoadTarget(0.0, repsAt(def, capacity, 0.0, bw).coerceIn(1, top), null, capacity)
+                    // A coarse weight step (4 kg after 3 kg) can land well above what the value plans for the top of
+                    // the range. Then the repetitions come down inside the range; under its bottom the lighter step
+                    // is planned with the top of the range.
+                    val reps = repsAt(def, capacity, snapped, bw)
+                    val lower = snapped - incrementKg
+                    when {
+                        reps >= bottom -> LoadTarget(snapped, reps.coerceAtMost(top), null, capacity)
+                        incrementKg > 0 && (def.load == LoadMode.BODYWEIGHT_PLUS || lower > 1e-9) -> LoadTarget(lower, top, null, capacity)
+                        else -> LoadTarget(snapped, reps.coerceAtLeast(1), null, capacity)
+                    }
+                }
             }
             CapacityKind.TEN_SECOND_MAX -> {
                 if (def.kind == ExerciseKind.INTERVAL) {

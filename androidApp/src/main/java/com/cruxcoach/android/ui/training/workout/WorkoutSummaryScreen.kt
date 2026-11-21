@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.training.workout
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -94,6 +95,23 @@ data class SummaryState(
     val keep: List<com.cruxcoach.athlete.logic.PreferenceLearning.Change> = emptyList(),
     /** The answer just given, for the snackbar and "Rückgängig". */
     val keepAnswer: KeepAnswer? = null,
+    /** What the next training plans per exercise ([AthleteService.nextTarget]): the first block, "next time". */
+    val nextTime: List<NextLine> = emptyList(),
+    /** The step along a chain just taken (from, to), for the snackbar and "Rückgängig". */
+    val stepTaken: Pair<String, String>? = null,
+)
+
+/**
+ * One exercise of "next time": today's work sets, what the next training plans, and the exercise of its chain on
+ * offer – the next step once the top of the range went with reserve, a step back after a training that was too hard.
+ */
+data class NextLine(
+    val def: ExerciseDefinition,
+    val side: com.cruxcoach.athlete.model.Side?,
+    val done: List<ExerciseSet>,
+    val next: com.cruxcoach.athlete.logic.NextTargets.Next,
+    val offer: ExerciseDefinition? = null,
+    val offerHarder: Boolean = false,
 )
 
 /** "Ja" ([until] set) or "Nur heute" for [changes]; [eventIds] go again with "Rückgängig". */
@@ -159,11 +177,29 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
             val fuelLeft = if (!isToday) null else runCatching {
                 val targets = service.fuelTargets(service.activities(1)[today.toString()], profile) ?: return@runCatching null
                 val eaten = repo.foodLog(today.toString())
+                // Without a food entry today there is nothing to compare: no numbers out of thin air after the training.
+                if (eaten.isEmpty()) return@runCatching null
                 FuelLeft(targets.dayLoad, (targets.carbsG - eaten.sumOf { it.carbsG ?: 0.0 }).roundToInt().coerceAtLeast(0),
                     (targets.proteinG - eaten.sumOf { it.proteinG ?: 0.0 }).roundToInt().coerceAtLeast(0))
             }.getOrNull()
+            // What the next training of each exercise plans, read the way the planner will read it: the tip is the plan.
+            val stepUp = runCatching { service.loadsMayStepUp() }.getOrDefault(false)
+            val owned = profile.equipment.takeIf { profile.equipmentConfigured }
+            fun there(def: ExerciseDefinition) = owned == null || def.equipment.all { e -> com.cruxcoach.athlete.catalog.EquipmentV2.satisfied(e, owned) }
+            val nextTime = sets.filter { it.setType == SetType.WORK }.groupBy { it.exerciseSlug to it.side }.mapNotNull { (key, done) ->
+                val def = catalog[key.first] ?: return@mapNotNull null
+                if (def.kind == ExerciseKind.CLIMB || def.kind == ExerciseKind.INTERVAL) return@mapNotNull null
+                val next = runCatching {
+                    service.nextTarget(com.cruxcoach.athlete.logic.WorkoutPlanner.itemFor(def).copy(sets = done.size), key.second, stepUp = stepUp)
+                }.getOrNull() ?: return@mapNotNull null
+                val back = next.move == com.cruxcoach.athlete.logic.NextTargets.Move.DOWN || next.move == com.cruxcoach.athlete.logic.NextTargets.Move.RELEARN
+                val harder = def.harder?.let { catalog[it] }?.takeIf { next.atTop && there(it) }
+                val easier = def.easier?.let { catalog[it] }?.takeIf { back && there(it) }
+                NextLine(def, key.second, done.sortedBy { it.setIndex }, next, harder ?: easier, harder != null)
+            }
             _state.update {
                 it.copy(
+                    nextTime = nextTime,
                     loading = false, workout = workout, blocks = blocks, catalog = catalog,
                     volumeKg = volume, hangSeconds = hang.roundToInt(), streak = streak,
                     summary = if (workout != null) service.summarize(workoutId) else null,
@@ -252,6 +288,33 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
         }
     }
 
+    /**
+     * A step along the exercise's chain, from now on (owner 2026-11-21: the next step has to take effect): the coach
+     * suggests [to] where it suggested [from] ([AthleteService.keepStep]), and own workouts that contain [from] get
+     * it too. One "Rückgängig" takes both back.
+     */
+    fun takeStep(from: String, to: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            val target = service.catalog[to] ?: return@launch
+            val before = repo.routines().filter { r -> r.items.any { it.slug == from } }
+            undoRoutines = before; undoDeload = false
+            before.forEach { r ->
+                val items = com.cruxcoach.athlete.logic.Circuits.normalize(r.items.map { item ->
+                    if (item.slug != from) item
+                    else WorkoutPlanner.itemFor(target).copy(sets = item.sets, restS = item.restS, sides = item.sides, warmup = item.warmup,
+                        circuit = item.circuit, circuitRestS = item.circuitRestS, roundRestS = item.roundRestS)
+                }, service.catalog)
+                repo.saveRoutine(r.copy(items = items, updatedAt = System.currentTimeMillis()))
+            }
+            undoSwapEvent = service.keepStep(from, to, _state.value.workout?.id)
+            _state.update { s -> s.copy(stepTaken = from to to, nextTime = s.nextTime.map { if (it.def.slug == from) it.copy(offer = null) else it }) }
+        }
+    }
+
+    fun consumeStepTaken() = _state.update { it.copy(stepTaken = null) }
+
     /** Starts a lighter week now: the training block jumps to its deload week. */
     fun startDeload() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -272,7 +335,7 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
                 val previous = undoBlockStart
                 repo.updateProfile { p -> p.copy(coach = p.coach.copy(blockStartDay = previous)) }
                 undoDeload = false
-            } else if (undoRoutines.isNotEmpty()) {
+            } else if (undoRoutines.isNotEmpty() || undoSwapEvent != null) {
                 val restored = undoRoutines
                 restored.forEach { repo.saveRoutine(it.copy(updatedAt = System.currentTimeMillis())) }
                 undoSwapEvent?.let(service::forgetSuggestion)
@@ -346,6 +409,18 @@ fun WorkoutSummaryScreen(
                 SnackbarResult.ActionPerformed) viewModel.undoKeep(answer)
         }
     }
+    // A step along a chain taken: one line with "Rückgängig".
+    val stepText = state.stepTaken?.let { (from, to) ->
+        stringResource(R.string.trpr_step_taken, state.catalog.fallbackFor(to).name(language), state.catalog.fallbackFor(from).name(language))
+    }.orEmpty()
+    LaunchedEffect(state.stepTaken) {
+        if (state.stepTaken == null) return@LaunchedEffect
+        val text = stepText
+        viewModel.consumeStepTaken()
+        snackScope.launch {
+            if (snackbar.showSnackbar(text, undoLabel, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoLastAction()
+        }
+    }
     var confirmSwap by remember { mutableStateOf<Pair<String, String>?>(null) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.deleted) { if (state.deleted) onBack() }
@@ -378,6 +453,8 @@ fun WorkoutSummaryScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { RewardHeader(workout, summary, state) }
+            // The main thing after a training: what the next one of each exercise plans (owner 2026-11-21).
+            if (state.nextTime.isNotEmpty()) item(key = "next_time") { NextTimeCard(state, language, onOpenExercise, onStep = viewModel::takeStep) }
             if (state.keep.isNotEmpty()) item(key = "keep") { KeepCard(state, language, onAnswer = viewModel::answerKeep) }
             if (state.fingersFreeOn != null || state.fuelLeft != null || state.dayForm != null) {
                 item(key = "after") { AfterTraining(state, onOpenFuel) }
@@ -426,7 +503,8 @@ fun WorkoutSummaryScreen(
                     }
                 }
             }
-            val ownSlugs = state.ownLoads.map { it.exerciseSlug }.toSet()
+            // "Next time" above says it with the numbers of the plan; the old tips only fill in where it has no line.
+            val ownSlugs = state.ownLoads.map { it.exerciseSlug }.toSet() + state.nextTime.map { it.def.slug }
             val suggestions = summary.suggestions.filter { (slug, _) -> slug !in ownSlugs }
             if (suggestions.isNotEmpty()) {
                 item { SectionTitle(stringResource(R.string.trw_suggestions_title)) }
@@ -558,6 +636,55 @@ private fun SuggestionRow(
                 TextButton(onClick = { onOpenExercise(slug) }) {
                     Text(stringResource(if (s.verdict == ProgressionVerdict.TOO_EASY) R.string.trw_sugg_try else R.string.trw_sugg_easier_variant,
                         other.name(language)))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * "Next time": one row per exercise with today's sets, the next plan and the step between them, in the numbers the
+ * next training will show. Where the top of the range went with reserve the next exercise of the chain is one tap
+ * away, after a training that was too hard the easier one; the tap takes effect for the coach's suggestions.
+ */
+@Composable
+private fun NextTimeCard(state: SummaryState, language: String, onOpenExercise: (String) -> Unit, onStep: (String, String) -> Unit) {
+    Card(Modifier.fillMaxWidth().testTag("summary_next_time")) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(stringResource(R.string.trpr_next_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            state.nextTime.forEach { line ->
+                val def = line.def
+                val plan = com.cruxcoach.android.ui.training.common.planText(line.done.size, line.next.reps, line.next.durationS, line.next.loadKg, def, state.units)
+                val today = com.cruxcoach.android.ui.training.common.setsDoneText(line.done, def, state.units)
+                val step = com.cruxcoach.android.ui.training.common.stepText(line.done, line.next.reps, line.next.durationS, line.next.loadKg, def, state.units)
+                val name = def.name(language) + (line.side?.let { " · " + com.cruxcoach.android.ui.training.sideLabel(it) } ?: "")
+                val key = def.slug + line.side?.name.orEmpty()
+                if (plan != null) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { onOpenExercise(def.slug) }.padding(vertical = 6.dp).testTag("summary_next_$key"),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(name, style = MaterialTheme.typography.bodyLarge)
+                            today?.let {
+                                Text(stringResource(R.string.trpr_today, it), style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            val tone = step?.second
+                            val colour = when (tone) {
+                                com.cruxcoach.android.ui.training.common.StepTone.UP -> CruxCoachDesign.colors.positive
+                                com.cruxcoach.android.ui.training.common.StepTone.DOWN -> CruxCoachDesign.colors.caution
+                                else -> MaterialTheme.colorScheme.onSurface
+                            }
+                            Text(plan, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = colour, maxLines = 1)
+                            step?.let { Text(it.first, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+                        }
+                    }
+                }
+                line.offer?.let { to ->
+                    TextButton(onClick = { onStep(def.slug, to.slug) }, modifier = Modifier.testTag("summary_step_${def.slug}")) {
+                        Text(stringResource(if (line.offerHarder) R.string.trpr_next_step else R.string.trw_sugg_easier_variant, to.name(language)))
+                    }
                 }
             }
         }

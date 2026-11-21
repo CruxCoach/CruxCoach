@@ -53,7 +53,7 @@
 
     <string name="trw_finish_title">Training beenden</string>
     <string name="trw_rpe_label">Wie anstrengend war es? (1–10)</string>
-    <string name="trw_rpe_info_title">Session-RPE</string>
+    <string name="trw_rpe_info_title">Anstrengung</string>
     <string name="trw_rpe_info_text">1 = sehr locker, 10 = maximal. Zusammen mit der Dauer ergibt das die Trainingslast, aus der CruxCoach zum Beispiel dein Kohlenhydrat-Ziel ableitet. Die Angabe ist freiwillig.</string>
     <string name="trw_notes_label">Notizen (optional)</string>
     <string name="trw_finish_confirm">Beenden</string>
@@ -150,5 +150,5 @@
     <string name="trw_open_replace_empty">Beenden, neues Training</string>
     <string name="trw_open_continue">„%1$s“ fortsetzen</string>
     <string name="trw_own_loads_title">Nächstes Mal mit deinen Lasten</string>
-    <string name="trw_own_loads_info">Du hast leichter trainiert als geplant. Das nächste Training plant die Last, die du gewählt hast; ein Satz, der mehr zeigt, hebt sie wieder an. Ändern oder löschen kannst du sie unter Leistungswerte.</string>
+    <string name="trw_own_loads_info">Du hast leichter trainiert als geplant. Das nächste Training plant die Last, die du gewählt hast; ein Satz, der mehr zeigt, hebt sie wieder an. Ändern oder löschen kannst du sie unter Kraftwerte.</string>
 </resources>

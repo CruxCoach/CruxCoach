@@ -105,6 +105,8 @@ abstract class AthleteScreenTest {
         )
         beforeReady()
         runBlocking { service.ensureReady() }
+        // The nutrition screens are tested in their exact view; the simple view's tests switch to it themselves.
+        repo.updateProfile { it.copy(fuelExact = true) }
     }
 
     @After

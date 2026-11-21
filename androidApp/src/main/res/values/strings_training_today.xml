@@ -106,7 +106,7 @@
     <string name="trt_sugg_test_title">Time for a baseline test</string>
     <string name="trt_sugg_test_text">Max hang, pull-ups and hollow hold show your progress in strength to weight.</string>
     <string name="trt_sugg_weight_title">Log your body weight</string>
-    <string name="trt_sugg_weight_text">Needed for percent of body weight on the hangboard and for nutrition targets.</string>
+    <string name="trt_sugg_weight_text">So the loads on the hangboard and your protein target fit.</string>
     <string name="trt_sugg_weight_action">Log</string>
     <string name="trt_reds_title">Look after your energy</string>
     <string name="trt_reds_info">Climbing rewards strength to weight, and that can tempt people into eating too little. Too little energy for the training you do (relative energy deficiency in sport, RED-S) costs strength, recovery and health – bones, hormones, immune system. CruxCoach shows the numbers behind each sign and never diagnoses; your goals stay yours. If several signs fit you – lasting tiredness, frequent illness, missed periods, dizziness, stalling despite training, thoughts circling around food and weight – talk to a doctor, a sports dietitian or an eating-disorder counselling service.</string>
@@ -120,7 +120,7 @@
     <string name="trt_weight_today">Weight today (%1$s)</string>
     <string name="trt_fuel_needs_weight">Log your body weight to see protein and carbohydrate targets.</string>
     <string name="trt_protein">Protein</string>
-    <string name="trt_sugg_benchmarks_title">Enter your performance values</string>
+    <string name="trt_sugg_benchmarks_title">Enter your strength values</string>
     <string name="trt_sugg_benchmarks_text">Max hang, pick-up, weighted pull-up: from what you can do, CruxCoach plans your loads.</string>
     <string name="trt_sugg_benchmarks_action">Enter</string>
     <string name="trt_today_hero">Your training today</string>
@@ -183,4 +183,13 @@
     <string name="trt_never_offer_yes">Never again</string>
     <string name="trt_swapped_undo">“%1$s” instead of “%2$s” today</string>
     <string name="trt_dropped_undo">“%1$s” left out today</string>
+    <string name="trt_adjust">Adjust</string>
+    <string name="trt_adjust_title">Adjust the training</string>
+    <string name="trt_adjust_edit">Edit exercises</string>
+    <string name="trt_form_good">Feeling good</string>
+    <string name="trt_form_tired">Tired</string>
+    <string name="trt_form_more">More</string>
+    <string name="trt_sugg_week_title">Plan your week</string>
+    <string name="trt_sugg_week_text">Tell the coach on which days you climb. It plans the rest around them.</string>
+    <string name="trt_adjust_coach">Tune the coach: goal, week, preferences</string>
 </resources>

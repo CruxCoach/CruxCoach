@@ -202,6 +202,7 @@ class TodayCoach(
         val historyWeeks = parsedActivities.filterValues { it.trained }.keys.map { ConsistencyStreak.weekStart(it) }.distinct().size
         // Back after a break or a healed finger injury: a conservative ramp on top of every other rule.
         val returnState = returnState(activities, today)
+        val known = ExerciseFamiliarity.known(trained.associate { it.slug to it.trainings }, allBenchmarks)
         val input = SuggestionInput(
             catalog = catalog,
             profile = profile,
@@ -239,8 +240,10 @@ class TodayCoach(
             minutesLearned = choices.minutesToday == null && usualMinutes != null,
             kept = kept.preferred,
             beyondWeekDays = choices.trainAnyway,
-            known = ExerciseFamiliarity.known(trained.associate { it.slug to it.trainings }, allBenchmarks),
+            known = known,
             unfamiliar = unfamiliar,
+            starter = ExerciseFamiliarity.starter(known),
+            varietyDefault = ExerciseFamiliarity.varietyDefault(ExerciseFamiliarity.starter(known)),
         )
         return Built(input, habit, levelOffers, usual)
     }

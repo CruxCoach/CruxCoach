@@ -1,5 +1,6 @@
 package com.cruxcoach.athlete.data
 
+import kotlinx.datetime.toLocalDateTime
 import com.cruxcoach.athlete.logic.Recipe
 import com.cruxcoach.athlete.logic.Units
 import app.cash.sqldelight.coroutines.asFlow
@@ -87,7 +88,15 @@ class AthleteRepository(
         body.putSetting(KEY_PROFILE, json.encodeToString(AthleteProfile.serializer(), profile), clock())
     }
 
-    fun updateProfile(transform: (AthleteProfile) -> AthleteProfile) = transaction { saveProfile(transform(profile())) }
+    fun updateProfile(transform: (AthleteProfile) -> AthleteProfile) = transaction {
+        val before = profile()
+        val after = transform(before)
+        // The standard week counts from the day it was set: earlier days were never planned that way.
+        saveProfile(if (after.weekPlan != before.weekPlan && after.weekPlanSince == before.weekPlanSince) after.copy(weekPlanSince = today()) else after)
+    }
+
+    private fun today(): String =
+        kotlin.time.Instant.fromEpochMilliseconds(clock()).toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date.toString()
 
     private fun decodeProfile(text: String): AthleteProfile =
         runCatching { json.decodeFromString(AthleteProfile.serializer(), text) }.getOrDefault(AthleteProfile())

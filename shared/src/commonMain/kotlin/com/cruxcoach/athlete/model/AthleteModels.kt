@@ -372,6 +372,12 @@ data class AthleteProfile(
     /** No longer read: nutrition is always on since 2026-10-05. Kept so older backups still parse. */
     val fuelEnabled: Boolean = false,
     val fuelIntroAccepted: Boolean = false,
+    /**
+     * Which nutrition view the athlete uses (owner 2026-11-21: simple by default, depth one tap away): false =
+     * "simple" (today's protein and what was eaten), true = "exact" (energy, macros, water, meals, micronutrients).
+     * Null until first resolved: exact for those who logged food before the choice existed, simple for everyone new.
+     */
+    val fuelExact: Boolean? = null,
     val hideBodyNumbers: Boolean = false,
     /** On by default since 2026-10-05 (owner); the settings switch hides them. */
     val showCalories: Boolean = true,
@@ -393,6 +399,12 @@ data class AthleteProfile(
      * [com.cruxcoach.athlete.logic.DayPlans]) or [PLAN_REST]. Days without an entry are free.
      */
     val weekPlan: Map<Int, String> = emptyMap(),
+    /**
+     * ISO date the standard week was last set or changed ([com.cruxcoach.athlete.data.AthleteRepository.updateProfile]
+     * writes it). Days before it were never planned that way, so the week view does not call them "missed" (phone
+     * check 2026-11-21: a plan made on a Saturday marked Monday to Friday as missed). Null in profiles from before.
+     */
+    val weekPlanSince: String? = null,
     /**
      * This date's plan instead of the standard week's (ISO date → entry as in [weekPlan], or [PLAN_FREE] for "nothing
      * planned"): "no time today – rest", a day moved, a climbing day added (owner 2026-10-19).

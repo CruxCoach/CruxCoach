@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="trbm_title">Leistungswerte</string>
-    <string name="trbm_card_title">Dein Leistungswert</string>
+    <string name="trbm_title">Kraftwerte</string>
+    <string name="trbm_card_title">Dein Kraftwert</string>
     <string name="trbm_info" formatted="false">Trag ein, was du schaffst – zum Beispiel Klimmzug mit +20\u00A0kg für 5\u00A0Wiederholungen oder Blockheben mit 32\u00A0kg an 20\u00A0mm für 10\u00A0s rechts – oder mach einen kurzen Test. CruxCoach macht daraus die Lasten von heute: Wiederholungen mit Zusatzlast mit zwei in Reserve, Max Hangs bei etwa 90\u00A0%, Repeater bei etwa 65\u00A0% deines 10-Sekunden-Maximums, Körpergewichtsübungen und Halteübungen bei etwa 70\u00A0% deines Maximums. Zeigt ein geloggter Satz, dass du stärker bist, steigt der Wert von selbst und die nächste Einheit plant mehr. Auch dein erstes Training mit einer Übung legt einen ersten Wert fest.</string>
     <string name="trbm_needs_weight" formatted="false">Trag zuerst dein Körpergewicht ein: Werte mit Zusatzgewicht und % Körpergewicht brauchen es.</string>
-    <string name="trbm_key_title">Wichtige Leistungswerte</string>
+    <string name="trbm_key_title">Wichtige Kraftwerte</string>
     <string name="trbm_other_title">Weitere Übungen</string>
     <string name="trbm_none">noch nicht eingetragen</string>
     <string name="trbm_meta">%1$s · %2$s</string>
@@ -18,7 +18,7 @@
     <string name="trbm_delete_text">CruxCoach plant dann aus dem Wert davor oder aus deinem Training.</string>
     <string name="trbm_test">Testen</string>
     <string name="trbm_e1rm">geschätztes 1RM %1$s</string>
-    <string name="trbm_ten_second_max">10-s-Max %1$s (%2$d\u00A0%% KG)</string>
+    <string name="trbm_ten_second_max">10-s-Max %1$s (%2$d\u00A0%% Körpergewicht)</string>
     <string name="trbm_max_reps">max. %1$d\u00A0Wdh.</string>
     <string name="trbm_max_seconds">max. %1$d\u00A0s</string>
     <string name="trbm_hint_e1rm">Der schwerste Satz, den du sauber schaffst: Last und Wiederholungen (1–30). Daraus schätzt CruxCoach dein 1RM.</string>

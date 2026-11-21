@@ -22,6 +22,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -731,6 +732,24 @@ class AthleteService @Inject constructor(
         }
     }.getOrDefault(false)
 
+    /**
+     * What the next training plans for [item], the way [addItem] plans it ([NextTargets]): Today's rows and the
+     * summary's "next time" show these numbers, so the tip and the plan are one thing. [exceptWorkout]: a training
+     * that does not count as "last time" (the one being planned).
+     */
+    fun nextTarget(item: RoutineItem, side: Side? = null, exceptWorkout: String? = null, stepUp: Boolean = loadsMayStepUp()): NextTargets.Next {
+        val def = catalog.fallbackFor(item.slug)
+        val bodyweight = currentBodyweight()
+        val history = repo.history(item.slug, 60)
+        val capacity = capacityFor(def, side, item.edgeMm?.toDouble(), item.grip, bodyweight)
+            ?: startEstimate(def, bodyweight).takeIf { item.loadKg == null && history.none { it.isCompleted && it.setType != SetType.WARMUP } }
+        return NextTargets.plan(def, item, capacity, history, side, bodyweight, repo.profile().smallestIncrementKg, stepUp, exceptWorkout)
+    }
+
+    /** The work sets of the last training with [slug] on [side], in set order; empty when there is none. */
+    fun lastTime(slug: String, side: Side? = null, exceptWorkout: String? = null): List<ExerciseSet> =
+        NextTargets.sessions(repo.history(slug, 60), side, exceptWorkout).firstOrNull().orEmpty()
+
     // ── Performance values ───────────────────────────────────────────
 
     /** Repeaters without a value of their own borrow the two-arm max hang on the same edge. */
@@ -960,10 +979,11 @@ class AthleteService @Inject constructor(
         // The same knowledge as the card (comparison review #11): what the athlete chooses comes first,
         // what they turned down lately comes last.
         val (affinity, resting) = learnedChoices(today, profile)
+        val known = ExerciseFamiliarity.known(repo.trainedExercises().associate { it.slug to it.trainings }, repo.allBenchmarks())
         val input = SuggestionInput(catalog, profile, today, ReadinessEvaluator.evaluate(checkin, injuries), injuries,
             favorites = repo.favorites(), benchmarkSlugs = repo.allBenchmarks().map { it.exerciseSlug }.toSet(),
-            affinity = affinity, resting = resting,
-            known = ExerciseFamiliarity.known(repo.trainedExercises().associate { it.slug to it.trainings }, repo.allBenchmarks()))
+            affinity = affinity, resting = resting, known = known, starter = ExerciseFamiliarity.starter(known),
+            varietyDefault = ExerciseFamiliarity.varietyDefault(ExerciseFamiliarity.starter(known)))
         val focus = if (active.any { it.climbingPaused }) SuggestionFocus.INJURY_SAFE else SuggestionFocus.PULL_PUSH
         return SessionSuggester.alternatives(input, slugs.distinct().map { RoutineItem(it) }, focus, slug)
     }
@@ -1028,6 +1048,15 @@ class AthleteService @Inject constructor(
         }
         return ids to until
     }
+
+    /**
+     * A step along an exercise's chain, from now on (owner 2026-11-21): [to] leads its place and [from] rests, as a
+     * kept choice does, for [KEEP_STEP_DAYS] – long enough to stand until the athlete steps again. Returns the ledger
+     * entry for "Rückgängig".
+     */
+    fun keepStep(from: String, to: String, workoutId: String?): String? =
+        logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.KEEP_CHOICE, listOf(from, to), workoutId = workoutId,
+            value = today().plus(kotlinx.datetime.DatePeriod(days = KEEP_STEP_DAYS)).toEpochDays().toDouble())
 
     /** "Nur heute": the question is answered; the swaps teach as lightly as always. */
     fun keepTodayOnly(workout: Workout): String? =
@@ -1360,6 +1389,10 @@ class AthleteService @Inject constructor(
             rounds.getOrNull(i) ?: ((rounds.lastOrNull() ?: -1) + 1 + (i - rounds.size))
 
         const val LEDGER_KEEP_DAYS = 180L
+        /** Meals with food that make a logged day complete for the energy check. */
+        const val COMPLETE_DAY_MEALS = 3
+        /** How long a step along a progression chain stands ([keepStep]): as long as the ledger remembers it. */
+        const val KEEP_STEP_DAYS = 180
         /** The logbook grade the athlete last said no to taking over; a higher one asks again. */
         const val GRADE_DECLINED_KEY = "logbook.grade.declined"
         /** Pain from this level on pauses climbing when it is remembered as an injury. */
@@ -1645,7 +1678,10 @@ class AthleteService @Inject constructor(
                 dayLoad = FuelTargets.dayLoad(activities[day]),
                 kcal = energies.takeIf { it.isNotEmpty() }?.sumOf { it.kcal },
                 needKcal = needs[i]?.totalKcal,
-                complete = day != today.toString() && entries.map { it.meal }.distinct().size >= 2)
+                // A day counts for the energy check when it was logged as a whole: three meals (two snacks made a "day",
+                // phone check 2026-11-21), and never in the simple view, where only some food is logged for its protein.
+                complete = profile.fuelExact != false && day != today.toString() &&
+                    entries.map { it.meal }.distinct().size >= COMPLETE_DAY_MEALS)
         }
         val todayNeed = needs.last()
         val own = profile.ownKcal?.let { kcal -> todayNeed?.let { OwnEnergyTarget(kcal, it.totalKcal, it.restingKcal) } }

@@ -93,6 +93,10 @@ fun WorkoutPlayerScreen(
         haptics.performHapticFeedback(HapticFeedbackType.Confirm)
         viewModel.completeAs(value)
     }
+    val completeWith: (Int) -> Unit = { rir ->
+        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        viewModel.completeWithReserve(rir)
+    }
     LaunchedEffect(state.feedback) {
         if (state.feedback?.record != null) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
     }
@@ -254,7 +258,7 @@ fun WorkoutPlayerScreen(
                         RestBar(viewModel.restTimer, state, language,
                             onPlus = { viewModel.adjustRest(15) }, onMinus = { viewModel.adjustRest(-15) }, onEnd = viewModel::endRest)
                     } else {
-                        MainAction(state, onDone = completeSet, onStartTimer = viewModel::startTimer,
+                        MainAction(state, onDone = completeSet, onDoneWith = completeWith, onStartTimer = viewModel::startTimer,
                             onShowActive = viewModel::backToActive)
                     }
                 }
@@ -401,7 +405,7 @@ private fun BottomBar(content: @Composable ColumnScope.() -> Unit) {
  * timer. When the active set is on another page, this leads there.
  */
 @Composable
-private fun MainAction(state: PlayerState, onDone: () -> Unit, onStartTimer: () -> Unit, onShowActive: () -> Unit) {
+private fun MainAction(state: PlayerState, onDone: () -> Unit, onDoneWith: (Int) -> Unit, onStartTimer: () -> Unit, onShowActive: () -> Unit) {
     val page = state.page
     val active = state.current?.takeIf { c -> !c.set.isCompleted && page != null && c.set.blockIndex in page.blockIndexes }
     BottomBar {
@@ -426,6 +430,9 @@ private fun MainAction(state: PlayerState, onDone: () -> Unit, onStartTimer: () 
                             Text(stringResource(R.string.trp_done_without_timer))
                         }
                     }
+                    // A work set of repetitions: the reserve answer is the tap that logs it as planned.
+                    set.setType == SetType.WORK && (def.kind == ExerciseKind.REPS || def.kind == ExerciseKind.LOAD_REPS) ->
+                        ReserveDone(mainValue(set, def), onDoneWith)
                     else -> {
                         val label = mainValue(set, def)?.let { stringResource(R.string.trpg_done_planned, it) } ?: stringResource(R.string.trp_done_set)
                         PrimaryButton(label, "player_done", onDone)
@@ -438,6 +445,31 @@ private fun MainAction(state: PlayerState, onDone: () -> Unit, onStartTimer: () 
             }
             else -> Button(onClick = onShowActive, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("player_all_done")) {
                 Text(stringResource(R.string.trpg_all_done), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+            }
+        }
+    }
+}
+
+/**
+ * "8 reps done. How many more could you have done?" with 0, 1, 2 and 3+: one tap logs the set as planned with its
+ * reserve and starts the rest (owner 2026-11-21). A set that went differently is logged from the row above.
+ */
+@Composable
+private fun ReserveDone(planned: String?, onDoneWith: (Int) -> Unit) {
+    Column(Modifier.fillMaxWidth().testTag("player_done_reserve")) {
+        Text(planned?.let { stringResource(R.string.trpr_done_reserve_planned, it) } ?: stringResource(R.string.trpr_done_reserve),
+            style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            listOf(0, 1, 2, 3).forEach { value ->
+                val label = if (value == 3) stringResource(R.string.trw_rir_3plus) else value.toString()
+                val description = stringResource(R.string.trpr_done_rir_cd, label)
+                Button(
+                    onClick = { onDoneWith(value) },
+                    colors = ButtonDefaults.buttonColors(containerColor = CruxCoachDesign.colors.positive),
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 56.dp).semantics { contentDescription = description }
+                        .testTag("player_done_rir_$value"),
+                ) { Text(label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 1) }
             }
         }
     }

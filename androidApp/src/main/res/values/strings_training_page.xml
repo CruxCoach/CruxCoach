@@ -25,7 +25,7 @@
     <string name="trpg_page_progress">%1$d of %2$d\u00A0sets</string>
     <string name="trpg_page_cd_sides">Exercise %1$d of %2$d: %3$s, %4$d of %5$d\u00A0sets per side</string>
     <string name="trpg_page_progress_sides">%1$d of %2$d\u00A0sets per side</string>
-    <string name="trpg_reserve_question">How many more?</string>
+    <string name="trpg_reserve_question">How many more could you have done?</string>
     <!-- A timed hold's reserve is in seconds: the question and the short line say so. -->
     <string name="trpg_reserve_question_seconds">How many more seconds?</string>
     <string name="trpg_rir_short_seconds">%1$d\u00A0s in reserve</string>

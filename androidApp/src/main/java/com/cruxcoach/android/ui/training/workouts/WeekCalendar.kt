@@ -71,13 +71,16 @@ internal fun buildWeek(
     pauses: List<PausePeriod>,
     /** Single dates planned over the standard week ([com.cruxcoach.athlete.model.AthleteProfile.datePlan]). */
     datePlan: Map<String, String> = emptyMap(),
+    /** The day the standard week was set ([com.cruxcoach.athlete.model.AthleteProfile.weekPlanSince]): earlier days were never planned. */
+    planSince: LocalDate? = null,
 ): List<WeekDayCell> {
     val monday = today.minus(DatePeriod(days = today.dayOfWeek.isoDayNumber - 1))
     return (0 until 7).map { offset ->
         val date = monday.plus(DatePeriod(days = offset))
         val key = date.toString()
+        // A day before the standard week existed has no plan of its own: free, not "missed".
         val planned = datePlan[key]?.takeIf { it != com.cruxcoach.athlete.model.PLAN_FREE }
-            ?: weekPlan[date.dayOfWeek.isoDayNumber].takeIf { key !in datePlan }
+            ?: weekPlan[date.dayOfWeek.isoDayNumber].takeIf { key !in datePlan && (planSince == null || date >= planSince) }
         val activity = activities[key]
         val dayWorkouts = workouts.filter { it.day == key && !it.isOpen }
         val paused = pauses.any { p ->

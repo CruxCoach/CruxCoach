@@ -140,10 +140,17 @@ data class PlayerState(
     val weekly: List<com.cruxcoach.athlete.logic.AreaProgress> = emptyList(),
     /** Exercises of this training done for the first time that are not Basic (issue #68): their steps start open. */
     val firstTime: Set<String> = emptySet(),
+    /** The work sets of the last training per exercise and side ([progressKey]): "last time" under the target. */
+    val lastTime: Map<String, List<ExerciseSet>> = emptyMap(),
+    /** What the next training plans for an exercise whose work sets are all done ([progressKey]): "next time 3 × 7". */
+    val nextTime: Map<String, com.cruxcoach.athlete.logic.NextTargets.Next> = emptyMap(),
 ) {
     val page: PlayerPage? get() = pages.getOrNull(pageIndex)
     fun def(slug: String): ExerciseDefinition? = defs[slug]
 }
+
+/** Key of [PlayerState.lastTime] and [PlayerState.nextTime]: one-sided work is read per side. */
+fun progressKey(slug: String, side: com.cruxcoach.athlete.model.Side?): String = slug + "|" + side?.name.orEmpty()
 
 sealed interface PlayerEvent {
     data class Finished(val workoutId: String) : PlayerEvent
@@ -266,6 +273,35 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     private var weeklyKey: String? = null
     /** Workout and exercises [PlayerState.firstTime] was read for. */
     private var firstTimeKey: String? = null
+    /** Workout and exercises [PlayerState.lastTime] was read for. */
+    private var lastTimeKey: String? = null
+    /** Workout, done sets and reserve answers [PlayerState.nextTime] was read for. */
+    private var nextTimeKey: String? = null
+
+    /** The last training's work sets per exercise and side; the training on screen never counts as "last time". */
+    private fun lastTimeIn(workout: Workout, sets: List<ExerciseSet>): Map<String, List<ExerciseSet>> = runCatching {
+        sets.map { it.exerciseSlug to it.side }.distinct().associate { (slug, side) ->
+            progressKey(slug, side) to service.lastTime(slug, side, exceptWorkout = workout.id)
+        }.filterValues { it.isNotEmpty() }
+    }.getOrDefault(emptyMap())
+
+    /**
+     * What the next training plans for the exercises whose work sets are all done, read from the saved sets the way
+     * the planner will read them ([AthleteService.nextTarget]): the step shows while the answer is still fresh.
+     */
+    private fun nextTimeIn(sets: List<ExerciseSet>): Map<String, com.cruxcoach.athlete.logic.NextTargets.Next> = runCatching {
+        val finished = sets.filter { it.setType == SetType.WORK }.groupBy { it.exerciseSlug to it.side }
+            .filterValues { work -> work.all { it.isCompleted } }
+        if (finished.isEmpty()) return@runCatching emptyMap()
+        // Read once: whether anything keeps loads careful looks back over half a year of training.
+        val stepUp = service.loadsMayStepUp()
+        finished.mapNotNull { (key, work) ->
+                val def = service.catalog[key.first] ?: return@mapNotNull null
+                val item = com.cruxcoach.athlete.logic.WorkoutPlanner.itemFor(def).copy(sets = work.size)
+                val next = service.nextTarget(item, key.second, stepUp = stepUp)
+                if (next.move == com.cruxcoach.athlete.logic.NextTargets.Move.NONE) null else progressKey(key.first, key.second) to next
+            }.toMap()
+    }.getOrDefault(emptyMap())
 
     /**
      * The training's exercises that are not Basic, not the athlete's own or a favourite, and were never done in another
@@ -297,6 +333,17 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             workout == null -> emptySet()
             firstTimeNow == firstTimeKey -> _state.value.firstTime
             else -> firstTimeIn(workout, sets).also { firstTimeKey = firstTimeNow }
+        }
+        val lastTime = when {
+            workout == null -> emptyMap()
+            firstTimeNow == lastTimeKey -> _state.value.lastTime
+            else -> lastTimeIn(workout, sets).also { lastTimeKey = firstTimeNow }
+        }
+        val nextTimeNow = workout?.let { w -> w.id + ":" + sets.count { it.isCompleted } + ":" + sets.sumOf { (it.rir ?: -1) + 2 } + ":" + sets.sumOf { (it.reps ?: 0) + (it.durationS ?: 0.0).toInt() } }
+        val nextTime = when {
+            workout == null -> emptyMap()
+            nextTimeNow == nextTimeKey -> _state.value.nextTime
+            else -> nextTimeIn(sets).also { nextTimeKey = nextTimeNow }
         }
         _state.update { st ->
             if (st.closing) return@update st.copy(profile = profile)
@@ -345,6 +392,8 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
                 defs = ordered.map { it.exerciseSlug }.distinct().associateWith { def(it) },
                 dayForm = service.dayForm(workout.id),
                 firstTime = firstTime,
+                lastTime = lastTime,
+                nextTime = nextTime,
                 weekly = weekly,
             )
         }
@@ -512,6 +561,16 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             else -> current.set.copy(reps = value.toInt().coerceIn(0, 999))
         }
         replaceLocal(set)
+        completeCurrent()
+    }
+
+    /**
+     * The reserve answer as the tap that logs the active set as planned (owner 2026-11-21: one tap per set, and the
+     * coach keeps the reserve of every set). The sets after it move with the answer at once.
+     */
+    fun completeWithReserve(rir: Int) {
+        val current = _state.value.current?.takeIf { !it.set.isCompleted } ?: return
+        replaceLocal(current.set.copy(rir = rir.coerceIn(0, 3)))
         completeCurrent()
     }
 

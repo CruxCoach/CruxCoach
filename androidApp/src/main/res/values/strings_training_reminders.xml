@@ -16,6 +16,6 @@
     <string name="trr_notify_weigh_text">The trend counts, not the single value. Tap to log it.</string>
     <string name="trr_notify_measure_title">Monthly measuring round</string>
     <string name="trr_notify_measure_text">Log your circumferences? Takes two minutes – skip it whenever you like.</string>
-    <string name="trr_benchmarks">Performance values</string>
+    <string name="trr_benchmarks">Strength values</string>
     <string name="trr_benchmarks_hint">What you can do per exercise – the basis for planned loads.</string>
 </resources>

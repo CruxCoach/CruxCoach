@@ -10,7 +10,7 @@
     <string name="trv_area_push">Druck</string>
     <string name="trv_area_legs">Beine</string>
     <string name="trv_area_core">Rumpf</string>
-    <string name="trv_area_antagonist">Antagonisten</string>
+    <string name="trv_area_antagonist">Ausgleich</string>
     <string name="trv_area_mobility">Mobilität</string>
     <string name="trv_value_sets">%1$s / %2$d–%3$d\u00A0Sätze</string>
     <string name="trv_value_sessions">%1$s / %2$d Einheiten</string>

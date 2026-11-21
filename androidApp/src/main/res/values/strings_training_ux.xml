@@ -131,4 +131,5 @@
         <item quantity="other">%d personal bests</item>
     </plurals>
     <string name="tru_set_weight_goal">Weight goal</string>
+    <string name="tru_equipment_more">+ %1$d more</string>
 </resources>

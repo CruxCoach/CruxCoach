@@ -50,7 +50,7 @@
     <string name="trp_rir_question_reps">How many more reps would have been possible?</string>
     <string name="trp_rir_question_seconds">How many more seconds would have been possible?</string>
     <string name="trp_record">New best: %1$s</string>
-    <string name="trp_benchmark_raised">Performance value raised: %1$s</string>
+    <string name="trp_benchmark_raised">Strength value raised: %1$s</string>
     <string name="trp_benchmark_first">Starting value learned: %1$s</string>
     <string name="trp_capacity_e1rm">max. 1\u00A0rep at %1$s</string>
     <string name="trp_capacity_ten">10\u00A0s at %1$s</string>

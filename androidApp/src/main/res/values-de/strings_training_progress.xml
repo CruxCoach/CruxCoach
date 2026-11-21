@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Die Steigerung in Worten: letztes Mal, nächstes Mal und der Schritt dazwischen (Owner 2026-11-21). -->
+<resources>
+    <string name="trpr_sets_reps">%1$d × %2$d</string>
+    <string name="trpr_sets_seconds">%1$d × %2$d s</string>
+    <string name="trpr_seconds_list">%1$s s</string>
+    <string name="trpr_step_same">gleich</string>
+    <string name="trpr_last_time">Letztes Mal %1$s</string>
+    <string name="trpr_next_time">Nächstes Mal %1$s</string>
+    <string name="trpr_done_reserve">Geschafft. Wie viele wären noch gegangen?</string>
+    <string name="trpr_done_reserve_planned">%1$s geschafft. Wie viele wären noch gegangen?</string>
+    <string name="trpr_done_rir_cd">Geschafft, Reserve %1$s</string>
+    <string name="trpr_next_title">Nächstes Mal</string>
+    <string name="trpr_today">Heute %1$s</string>
+    <string name="trpr_next_step">Nächste Stufe: %1$s</string>
+    <string name="trpr_step_taken">Ab jetzt %1$s statt %2$s.</string>
+    <string name="trpr_my_exercises">Meine Übungen</string>
+    <string name="trpr_all_exercises">Alle %1$d Übungen</string>
+    <string name="trpr_start_now">Start %1$s · jetzt %2$s</string>
+</resources>

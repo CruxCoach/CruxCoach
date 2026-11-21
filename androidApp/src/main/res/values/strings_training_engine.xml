@@ -2,14 +2,14 @@
 <!-- FEAT-071 recommendation engine: reasons, evidence, feedback, blocks, exclusions, trends -->
 <resources>
     <string name="tre_block_build">Build · week %1$d/%2$d</string>
-    <string name="tre_block_deload">Deload week</string>
+    <string name="tre_block_deload">Lighter week</string>
     <string name="tre_block_event">Today is your day</string>
-    <string name="tre_block_info_text">Training runs in simple cycles: one intro week, three build weeks, one lighter deload week. A trip or competition date adds a taper over the last ten days. Tired check-ins or a finger-load spike can bring the deload forward – the calendar is only one signal.</string>
-    <string name="tre_block_intro">Intro week</string>
+    <string name="tre_block_info_text">Training runs in simple cycles: one easier week to get going, three build weeks, one lighter week to recover. A trip or competition date adds a taper over the last ten days. Tired check-ins or a finger-load spike can bring the deload forward – the calendar is only one signal.</string>
+    <string name="tre_block_intro">Easy start</string>
     <string name="tre_block_taper">Taper: %1$d\u00A0days to go</string>
     <string name="tre_board_plan">%1$s · %2$d\u00A0min</string>
     <string name="tre_conf_high">Precise</string>
-    <string name="tre_conf_info_text">Basic: little data yet, so the coach stays careful. Personal: your logbook, performance values or several weeks of history shape the picks. Precise: all of that plus your coach setup. More data never makes a suggestion riskier – only better matched.</string>
+    <string name="tre_conf_info_text">Basic: little data yet, so the coach stays careful. Personal: your logbook, strength values or several weeks of history shape the picks. Precise: all of that plus your coach setup. More data never makes a suggestion riskier – only better matched.</string>
     <string name="tre_conf_info_title">How well the coach knows you</string>
     <string name="tre_conf_low">Basic</string>
     <string name="tre_conf_medium">Personal</string>
@@ -73,9 +73,9 @@
     <string name="tre_menu_details">Details</string>
     <string name="tre_more_actions">More actions</string>
     <string name="tre_reason_addon">You climb today – a short block of antagonists and core after the session, not a second session.</string>
-    <string name="tre_reason_block_deload">Deload week: fewer sets, same exercises – recovery is part of the plan.</string>
+    <string name="tre_reason_block_deload">Lighter week: fewer sets, same exercises – recovery is part of the plan.</string>
     <string name="tre_reason_block_event">Today is your trip or competition – only light mobility, arrive fresh.</string>
-    <string name="tre_reason_block_intro">Intro week: a little less volume to get going.</string>
+    <string name="tre_reason_block_intro">Easy start: a little less volume to get going.</string>
     <string name="tre_reason_block_taper">Taper before your date: less volume, intensity stays.</string>
     <string name="tre_reason_climbing_day">You usually climb today – warm up well, the board is the main session.</string>
     <string name="tre_reason_finger_none">You prefer no finger training off the wall – the board covers your fingers.</string>
