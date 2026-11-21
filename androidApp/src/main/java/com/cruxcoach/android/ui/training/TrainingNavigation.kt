@@ -11,6 +11,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.cruxcoach.android.ui.common.ScreenErrorBoundary
+import com.cruxcoach.android.ui.navigation.goBack
 import com.cruxcoach.android.ui.training.athlete.AthleteSettingsScreen
 import com.cruxcoach.android.ui.training.athlete.InjuriesScreen
 import com.cruxcoach.android.ui.training.athlete.WeeklyReviewScreen
@@ -30,7 +31,7 @@ import com.cruxcoach.android.ui.training.workout.WorkoutSummaryScreen
  * new surface reports itself instead of taking the board app down.
  */
 fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
-    val back: () -> Unit = { nav.popBackStack() }
+    val back: () -> Unit = { nav.goBack() }
     fun go(route: String) = nav.navigate(route) { launchSingleTop = true }
     /** The training view, for a guided routine and a free training alike. */
     @androidx.compose.runtime.Composable
@@ -49,7 +50,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
         restoreState = true
     }
     /** Leaving the training area from a tab returns to the board browser. */
-    val leave: () -> Unit = { if (!nav.popBackStack(TrainingRoutes.TODAY, inclusive = true)) nav.popBackStack() }
+    val leave: () -> Unit = { if (!nav.popBackStack(TrainingRoutes.TODAY, inclusive = true)) nav.goBack() }
     fun tabBar(tab: TrainingTab): @Composable () -> Unit = { TrainingTabBar(tab) { goTab(it) } }
     /** Workouts ⇄ exercises inside the Training tab: replaces the half, keeps one entry on the stack. */
     fun switchTraining(route: String) = nav.navigate(route) {
@@ -225,7 +226,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
     }
     screen(TrainingRoutes.CUSTOM_EXERCISE, "CustomExercise", back) {
         CustomExerciseScreen(onBack = back, onSaved = { slug ->
-            nav.popBackStack()
+            nav.goBack()
             go(TrainingRoutes.exerciseDetail(slug))
         })
     }

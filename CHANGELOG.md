@@ -619,6 +619,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   field as it lit. A colour's only foot hold within a climber's reach never
   gets both feet, a drawn field never lights more holds than the board takes,
   and the number of players stays adjustable when no field fits.
+- Tapping a screen's back arrow several times in a row no longer ends on a
+  black screen that only closing the app got rid of. The arrow now stops at
+  the first screen, as the system's Back always did.
 - The hang timer's spoken countdown can find the phone's text-to-speech engine
   on Android 11 and newer: the app now declares that it looks for one. Without
   an engine the timer still beeps and vibrates; no engine is required.

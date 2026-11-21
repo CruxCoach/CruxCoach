@@ -15,6 +15,7 @@ import com.cruxcoach.android.spraywall.SprayWallFeature
 import com.cruxcoach.android.spraywall.SprayWallRepository
 import com.cruxcoach.android.ui.common.ScreenErrorBoundary
 import com.cruxcoach.android.ui.navigation.Routes
+import com.cruxcoach.android.ui.navigation.goBack
 import com.cruxcoach.domain.spraywall.SprayGym
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -62,7 +63,7 @@ object SprayWallRoutes {
 }
 
 fun NavGraphBuilder.sprayWallGraph(nav: NavHostController) {
-    val back: () -> Unit = { nav.popBackStack() }
+    val back: () -> Unit = { nav.goBack() }
     fun go(route: String) = nav.navigate(route) { launchSingleTop = true }
     val wallArg = navArgument(SprayWallRoutes.ARG_WALL) { type = NavType.StringType }
     val firstArg = navArgument(SprayWallRoutes.ARG_FIRST) { type = NavType.BoolType; defaultValue = false }
@@ -134,11 +135,11 @@ fun NavGraphBuilder.sprayWallGraph(nav: NavHostController) {
         SprayClimbEditorScreen(
             onBack = back,
             onSaved = { uuid ->
-                nav.popBackStack()
+                nav.goBack()
                 if (!isEdit) go(SprayWallRoutes.climb(uuid))
             },
             onDeleted = {
-                nav.popBackStack()
+                nav.goBack()
                 // The climb's own page is gone too.
                 nav.popBackStack(SprayWallRoutes.CLIMB, inclusive = true)
             },
@@ -157,7 +158,7 @@ fun NavGraphBuilder.sprayWallGraph(nav: NavHostController) {
  * Not to the list by name, which is not on the back stack when the map opened the wall.
  */
 internal fun leaveDeletedWall(nav: NavController) {
-    if (!nav.popBackStack(SprayWallRoutes.WALL, inclusive = true)) nav.popBackStack()
+    if (!nav.popBackStack(SprayWallRoutes.WALL, inclusive = true)) nav.goBack()
 }
 
 private fun NavGraphBuilder.screen(
