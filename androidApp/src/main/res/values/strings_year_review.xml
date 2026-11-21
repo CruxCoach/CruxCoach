@@ -168,7 +168,7 @@
     <string name="yr_share_show_name">Show my name</string>
     <string name="yr_share_show_problems">Show problem names</string>
     <string name="yr_share_show_dates">Show exact dates</string>
-    <string name="yr_share_hint">The image is drawn on this phone. It carries your numbers and a small CruxCoach wordmark, nothing else.</string>
+    <string name="yr_share_hint">The image is drawn on this phone. It carries your numbers and a small CruxCoach wordmark. Your name, problem names and exact dates are on it only when you switch them on here.</string>
     <string name="yr_share_send">Share image</string>
     <string name="yr_share_chooser">Share your year</string>
     <string name="yr_share_failed">The image could not be shared.</string>

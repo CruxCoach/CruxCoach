@@ -206,7 +206,7 @@ fun InjuriesScreen(
                 } else {
                     Card(Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.tra_pause_open, pauseReasonLabel(open.reason), open.startDay),
+                            Text(stringResource(R.string.tra_pause_open, pauseReasonLabel(open.reason), pauseSpan(open.startDay, null)),
                                 modifier = Modifier.weight(1f))
                             TextButton(onClick = { viewModel.endPause(open) }) { Text(stringResource(R.string.trt_pause_end)) }
                         }
@@ -216,7 +216,7 @@ fun InjuriesScreen(
             items(state.pauses.filter { it.endDay != null }.take(10), key = { it.id }) { p ->
                 ListItem(
                     headlineContent = { Text(pauseReasonLabel(p.reason)) },
-                    supportingContent = { Text("${p.startDay} – ${p.endDay}") },
+                    supportingContent = { Text(pauseSpan(p.startDay, p.endDay)) },
                     trailingContent = { TextButton(onClick = { viewModel.deletePause(p) }) { Text(stringResource(R.string.tr_action_delete)) } },
                 )
             }
@@ -263,6 +263,13 @@ fun InjuriesScreen(
         }
     }
 }
+
+/**
+ * A pause's days as the injury card above writes its date: "09.11.2026", "09.11.2026 – 16.11.2026".
+ * The rows showed the stored form, "2026-11-09".
+ */
+internal fun pauseSpan(startDay: String, endDay: String?): String =
+    listOfNotNull(startDay, endDay).joinToString(" – ") { com.cruxcoach.android.ui.training.coach.formatIsoDay(it) }
 
 @Composable
 private fun pauseReasonLabel(r: PauseReason): String = stringResource(when (r) {

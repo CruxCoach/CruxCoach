@@ -87,6 +87,18 @@ data class WeeklyReviewState(
  * which structures carried the load, where strength went — kept separate from
  * the fast logging screens on purpose.
  */
+/**
+ * The trend weight's change over the week from [start] to [end], or null when no weigh-in falls
+ * after the week's first day: both ends are then the same older value, and the review read
+ * "Trend weight: 0 kg this week" for a week without any weighing.
+ */
+internal fun weekTrendChange(trend: List<TrendWeight.Point>, start: LocalDate, end: LocalDate): Double? {
+    if (trend.none { it.day > start && it.day <= end }) return null
+    val before = trend.lastOrNull { it.day <= start }?.trend ?: return null
+    val after = trend.lastOrNull { it.day <= end }?.trend ?: return null
+    return after - before
+}
+
 @HiltViewModel
 class WeeklyReviewViewModel @Inject constructor(
     private val service: AthleteService,
@@ -146,8 +158,6 @@ class WeeklyReviewViewModel @Inject constructor(
             }.filter { it.second > 0 }
 
             val trend = service.weightTrend()
-            val startTrend = trend.lastOrNull { it.day <= start }?.trend
-            val endTrend = trend.lastOrNull { it.day <= end }?.trend
             val food = repo.foodLogBetween(start.toString(), end.toString())
             val loggedDays = food.map { it.day }.toSet()
             // The targets the nutrition screen set for each logged day (holistic audit P2-18): protein and carbohydrate
@@ -183,7 +193,7 @@ class WeeklyReviewViewModel @Inject constructor(
                 setsByCategory = weekSets.filter { it.setType != SetType.WARMUP }.groupBy { catalog.fallbackFor(it.exerciseSlug).category }
                     .map { it.key to it.value.size }.sortedByDescending { it.second },
                 domainDays = domainDays,
-                weightChangeKg = if (startTrend != null && endTrend != null) endTrend - startTrend else null,
+                weightChangeKg = weekTrendChange(trend, start, end),
                 proteinAvg = if (loggedDays.isNotEmpty()) food.sumOf { it.proteinG ?: 0.0 } / loggedDays.size else null,
                 proteinTarget = dayTargets.takeIf { it.isNotEmpty() }?.map { it.proteinG }?.average()?.roundToInt()
                     ?: profile.ownProteinG ?: service.fuelTargets(null, profile)?.proteinG,

@@ -410,11 +410,11 @@ internal fun DayHeader(dateKey: String, count: Int, onRecap: (() -> Unit)? = nul
         stringResource(R.string.day_fr), stringResource(R.string.day_sa),
         stringResource(R.string.day_su)
     )
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     val label = try {
         val date = LocalDate.parse(dateKey)
         val dayName = dayNames[date.dayOfWeek.value - 1]
-        val formatted = "${dateKey.substring(8, 10)}.${dateKey.substring(5, 7)}.${dateKey.substring(0, 4)}"
-        "$dayName, $formatted"
+        "$dayName, ${dayHeaderDate(date, locale)}"
     } catch (_: Exception) {
         formatDate(dateKey)
     }
@@ -461,6 +461,10 @@ internal fun DayHeader(dateKey: String, count: Int, onRecap: (() -> Unit)? = nul
         }
     }
 }
+
+/** A day header's date in the app language: "17.12.2026", "Dec 17, 2026". It was German everywhere. */
+internal fun dayHeaderDate(date: LocalDate, locale: java.util.Locale): String =
+    date.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM).withLocale(locale))
 
 internal fun formatDate(isoDate: String): String {
     return try {

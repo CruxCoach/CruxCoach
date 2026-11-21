@@ -441,7 +441,12 @@ internal fun BoardSelectionDialog(
                                         option.gymShare?.let { GymShareText(it, flagRare = false) }
                                     }
                                 },
-                                onClick = { option.onSelect(); boardMenuExpanded = false },
+                                // Choosing the board that is already chosen changes nothing: every
+                                // option also resets the size below it, and "Confirm" went grey.
+                                onClick = {
+                                    if (option.label != selectedBoardLabel) option.onSelect()
+                                    boardMenuExpanded = false
+                                },
                             )
                         }
                     }

@@ -600,6 +600,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   sends stopped the sharing for a moment; the others lost the board, and until
   they were back the sharing phone lit every climb it swiped to, also with
   "Multiple connections" set to "Tap to send".
+- Board picker: choosing the board that is already chosen from the list no
+  longer clears the size or version below it; "Confirm" went grey until the
+  size was tapped again.
+- Main menu: during an unfinished guided tour, a tap beside the open menu or
+  a swipe closes it again; only Back or a menu entry did.
+- Logbook: the day headings write the date in the app language ("Thu, Dec
+  17, 2026"); they were German in English too.
+- Year in review: the note on the share sheet no longer says the image
+  carries "nothing else" than your numbers; it names what the switches below
+  it add (your name, problem names, exact dates).
+- Weekly review: a week without a weigh-in no longer reads "Trend weight:
+  0 kg this week"; the line is left out.
+- Injuries: the pause rows write their dates like the injury card above
+  ("09.11.2026", "Nov 9, 2026"), not as "2026-11-09".
 - Knot: every spacing is a real step. Medium and Wide widen the field where
   it is too narrow for the colours to spread (solo about 1.2, 1.8 and 2.4 m),
   until the colours really are farther apart than at the closer spacing; a

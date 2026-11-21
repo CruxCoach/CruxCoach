@@ -39,6 +39,14 @@ internal class BrowserTour(context: Context) {
     fun unlisten(listener: SharedPreferences.OnSharedPreferenceChangeListener) = prefs.unregisterOnSharedPreferenceChangeListener(listener)
 }
 
+/**
+ * The main menu's swipe and tap-beside gestures. While the tour runs, a swipe from the edge must
+ * not pull the menu over a spotlight; an open menu still closes the usual ways. With the gestures
+ * off altogether, a menu opened during an unfinished tour only closed with Back or an entry.
+ */
+internal fun menuGesturesEnabled(menuOpen: Boolean, step: TourStep): Boolean =
+    menuOpen || step == TourStep.INACTIVE || step == TourStep.DONE
+
 @Composable
 internal fun rememberBrowserTour(): Pair<BrowserTour, TourStep> {
     val context = LocalContext.current
