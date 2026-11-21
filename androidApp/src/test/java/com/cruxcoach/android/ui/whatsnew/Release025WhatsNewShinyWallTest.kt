@@ -12,15 +12,16 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The 0.2.5 dialog collects one line per feature, so the Shiny Wall and wall
- * games lines are matched as parts of the body, not as the whole of it.
+ * The 0.2.5 dialog collects one line per feature, so the Shiny Wall line is
+ * matched as a part of the body, not as the whole of it. The wall games and
+ * spray walls are switched off in 0.2.5, so the dialog must not name them.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
 class Release025WhatsNewShinyWallTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun `the 0_2_5 what's new names Shiny Wall and the wall games`() {
+    @Test fun `the 0_2_5 what's new names Shiny Wall but not the wall games or spray walls`() {
         compose.setContent { MaterialTheme { Release025WhatsNewDialog(onDismiss = {}) } }
         compose.onNodeWithText("New in 0.2.5").assertIsDisplayed()
         // The other features' lines stay.
@@ -30,14 +31,12 @@ class Release025WhatsNewShinyWallTest {
                 "Import your Shiny Wall logbook under Settings → Board accounts & imports.",
             substring = true,
         ).assertIsDisplayed()
-        compose.onNodeWithText(
-            "• Wall games\u00A0– Floor is lava, Endurance, Hold thief, Traverse and the party game Knot, from the main menu or a climb’s menu (“Play as a game”).",
-            substring = true,
-        ).assertIsDisplayed()
+        compose.onNodeWithText("Wall games", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("Spray walls", substring = true).assertDoesNotExist()
     }
 
     @Test @Config(qualifiers = "de")
-    fun `the German 0_2_5 what's new names Shiny Wall and the wall games`() {
+    fun `the German 0_2_5 what's new names Shiny Wall but not the wall games or spray walls`() {
         compose.setContent { MaterialTheme { Release025WhatsNewDialog(onDismiss = {}) } }
         compose.onNodeWithText("Neu in 0.2.5").assertIsDisplayed()
         compose.onNodeWithText("• Community auf Buzz\u00A0– sprich mit den Entwicklern", substring = true).assertIsDisplayed()
@@ -48,9 +47,7 @@ class Release025WhatsNewShinyWallTest {
         ).assertIsDisplayed()
         compose.onNodeWithText("Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten & Importe.", substring = true)
             .assertIsDisplayed()
-        compose.onNodeWithText(
-            "• Wand-Spiele\u00A0– Der Boden ist Lava, Ausdauer, Griffdieb, Quergang und das Partyspiel Knoten, aus dem Hauptmenü oder dem Menü eines Boulders („Als Spiel spielen“).",
-            substring = true,
-        ).assertIsDisplayed()
+        compose.onNodeWithText("Wand-Spiele", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("Spraywände", substring = true).assertDoesNotExist()
     }
 }

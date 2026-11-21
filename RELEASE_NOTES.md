@@ -1,6 +1,6 @@
 # CruxCoach 0.2.5 — Unreleased
 
-This release adds training and nutrition for climbers, statistics that compare your boards, a year in review, Shiny Wall, wall games and spray walls.
+This release adds training and nutrition for climbers, statistics that compare your boards, a year in review and Shiny Wall.
 
 ## Highlights
 - **Training, built for climbers.** A new area in the main menu suggests today's
@@ -29,22 +29,13 @@ This release adds training and nutrition for climbers, statistics that compare y
   without your name, problem names or exact dates unless you switch them on. It
   is in the statistics all year, and a card invites you from 1 December to 31
   January. It is computed on the phone; nothing is uploaded.
-- **Shiny Wall and wall games.** Choose your Shiny Wall (Mini, Standard, Max,
+- **Shiny Wall.** Choose your Shiny Wall (Mini, Standard, Max,
   Full or Max Full) in the board picker, browse its problems with its own
   categories and light them over Bluetooth; gyms with a Shiny Wall appear on the
   board map. Import your Shiny Wall logbook, favourites and lists under Settings
   → Board accounts & imports. The import only reads; your email and password go
   to Shiny Wall's sign-in service, which runs on Google Firebase. Standard walls
-  only; accounts that sign in with Google can't connect. Wall games (Floor is
-  lava, Endurance, Hold thief and Traverse) turn the board into a game on Shiny
-  Wall, Kilter, the other Aurora boards and MoonBoard.
-- **Spray walls.** Photograph your own wall, and the phone suggests the holds;
-  an optional hold model (33 MB, offline once downloaded) finds holds of every
-  colour with their real shape. Set problems with start, hand, foot and finish
-  holds and log them in a private logbook. A wall stays on your phone unless you
-  make it public; then others find it at its gym on the board map. Spray walls
-  are not in the CruxCoach backup, the data export or Android backups, so a
-  private wall is lost with the phone.
+  only; accounts that sign in with Google can't connect.
 
 ## Other improvements
 - **LED effects** for Kilter boards, contributed by Dapeebb: the lit climb can
@@ -83,7 +74,7 @@ This release adds training and nutrition for climbers, statistics that compare y
 ## Compatibility
 CruxCoach 0.2.5 requires **Android 9 or newer**, like 0.2.4, and works without
 Google services. It asks for two new permissions only when you use them: the
-camera (food photos, barcodes, spray walls) and Health Connect. After a phone
+camera (food photos, barcodes) and Health Connect. After a phone
 restart it checks once that the phone has its own Bluetooth name again. The app
 is bigger than 0.2.4, mostly because of the offline food tables. A 0.2.4 backup
 restores in 0.2.5, and 0.2.4 restores a 0.2.5 backup without the training data.

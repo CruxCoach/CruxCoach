@@ -15,6 +15,8 @@ import com.cruxcoach.android.ui.yearreview.TrainingContext
 import com.cruxcoach.android.ui.yearreview.reviewPages
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.domain.yearreview.YearReviewComputer
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import org.junit.Assert.assertEquals
@@ -41,13 +43,18 @@ class SprayWallSwitchTest {
     @Test
     fun `the main menu has spray walls only while the switch is on`() {
         var on by mutableStateOf(true)
-        compose.setContent { MaterialTheme { BrowserMainDrawer(sprayWalls = on) {} } }
+        compose.setContent { MaterialTheme { BrowserMainDrawer(sprayWalls = on, wallGames = true) {} } }
         compose.onNodeWithTag("menu_spray_walls").assertExists()
 
         on = false
         compose.waitForIdle()
         compose.onNodeWithTag("menu_spray_walls").assertDoesNotExist()
         compose.onNodeWithTag("menu_wall_games").assertExists()
+    }
+
+    @Test
+    fun `a failing look for spray walls of mine leaves the menu without the entry`() = runTest {
+        assertFalse(SprayWallFeature.inMenu(enabled = false) { error("no database") }.first())
     }
 
     @Test
