@@ -177,8 +177,15 @@ fun ClimbingDaySheet(
     onAddAnother: (() -> Unit)? = null,
     /** The entry was deleted: the host offers "Rückgängig" (device test D45). */
     onDeleted: (AthleteService.DeletedClimb) -> Unit = {},
+    /** A new entry opens on yesterday ("Gestern geklettert?" under a finger suggestion). */
+    startYesterday: Boolean = false,
 ) {
     LaunchedEffect(editId) { viewModel.load(editId) }
+    val loaded by viewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(loaded.loading) {
+        val today = loaded.today
+        if (startYesterday && editId == null && !loaded.loading && today != null) viewModel.setDay(today.minus(DatePeriod(days = 1)))
+    }
     LaunchedEffect(Unit) { viewModel.deleted.collect { onDeleted(it) } }
     LaunchedEffect(Unit) { viewModel.done.collect { onDismiss() } }
     val s by viewModel.state.collectAsStateWithLifecycle()

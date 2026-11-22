@@ -245,6 +245,7 @@ class TodayCoach(
             known = known,
             unfamiliar = unfamiliar,
             starter = ExerciseFamiliarity.starter(known),
+            firstTraining = trained.isEmpty(),
             varietyDefault = ExerciseFamiliarity.varietyDefault(ExerciseFamiliarity.starter(known)),
         )
         return Built(input, habit, levelOffers, usual)

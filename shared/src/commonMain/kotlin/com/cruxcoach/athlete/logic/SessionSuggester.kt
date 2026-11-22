@@ -279,6 +279,11 @@ data class SuggestionInput(
      * ([ExerciseFamiliarity.isKnown]).
      */
     val known: Set<String> = emptySet(),
+    /**
+     * The athlete never finished a training here: the coach knows nothing about the fingers yet (no logbook, no
+     * climbing day), so the first suggestion is no finger session by itself (owner 2026-11-22). Choosing one still works.
+     */
+    val firstTraining: Boolean = false,
     /** "Don't know it" lately ([PreferenceLearning.unfamiliar]): not the coach's new pick again for now. */
     val unfamiliar: Set<String> = emptySet(),
     /** New to training here ([ExerciseFamiliarity.starter]): the classics first, whatever the grade and the years. */
@@ -564,6 +569,7 @@ object SessionSuggester {
             }
             // The fingers go into tomorrow's board or climbing day fresh (audit P1-5); chosen finger work still runs.
             hardDayTomorrow(input) -> { reasons += SuggestionReason.HARD_DAY_TOMORROW; null }
+            input.firstTraining -> null
             else -> { reasons += SuggestionReason.FINGERS_RESTED; SuggestionFocus.FINGER_STRENGTH }
         } ?: weeklyFocus(ctx, weekly) ?: run {
             val pullLast = lastDay(input, setOf(ExerciseCategoryV2.PULL, ExerciseCategoryV2.PUSH))

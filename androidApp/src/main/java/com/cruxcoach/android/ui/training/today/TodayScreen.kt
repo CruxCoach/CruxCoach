@@ -95,6 +95,8 @@ fun TodayScreen(
     onOpenComeback: (injuryId: String) -> Unit = {},
     /** An exercise's page with its steps ("So geht's" for an exercise new to the athlete, issue #68). */
     onOpenExercise: (slug: String) -> Unit = {},
+    /** "Gestern geklettert?" under a finger suggestion: the climbing entry, opened on yesterday. */
+    onLogClimbingYesterday: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val comebacks by viewModel.comebacks.collectAsStateWithLifecycle()
@@ -197,6 +199,7 @@ fun TodayScreen(
                         onStart = viewModel::startSuggestion,
                         onNext = { askWhy = true },
                         onWhy = { showWhy = true },
+                        onClimbedYesterday = onLogClimbingYesterday,
                         onEdit = { title -> viewModel.editTarget(title).let { (id, from) -> onOpenEditor(id, from) } },
                         onSave = viewModel::saveSuggestion,
                         onOpenPlaylistGenerator = onOpenPlaylistGenerator,
@@ -1264,6 +1267,7 @@ private fun DailySuggestionCard(
     onWhy: () -> Unit,
     onEdit: (String) -> Unit,
     onSave: (String) -> Unit,
+    onClimbedYesterday: () -> Unit = {},
     onOpenPlaylistGenerator: (type: String, minutes: Int) -> Unit = { _, _ -> },
     checkin: @Composable () -> Unit = {},
     onPickPlace: (String) -> Unit = {},
@@ -1438,6 +1442,14 @@ private fun DailySuggestionCard(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 8.dp).clickable(onClickLabel = why, onClick = onWhy).testTag("today_suggestion_reason"),
                 )
+                // The coach only knows what is logged: climbing yesterday that is not in the app is one tap to add,
+                // and the suggestion follows (owner 2026-11-22).
+                if (it == SuggestionReason.FINGERS_RESTED) {
+                    TextButton(onClick = onClimbedYesterday, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+                        contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.testTag("today_climbed_yesterday")) {
+                        Text(stringResource(R.string.trt_climbed_yesterday))
+                    }
+                }
             }
             // Little energy lately before maximal finger work: one supportive line and "lighter" as one tap (P2-17).
             val energyHint = remember(state.energy, s, state.catalog) {

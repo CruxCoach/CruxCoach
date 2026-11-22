@@ -188,6 +188,7 @@
     <string name="trt_adjust_edit">Übungen bearbeiten</string>
     <string name="trt_form_good">Fühle mich gut</string>
     <string name="trt_form_tired">Müde</string>
+    <string name="trt_climbed_yesterday">Gestern geklettert? Eintragen</string>
     <string name="trt_form_more">Genauer</string>
     <string name="trt_sugg_week_title">Deine Woche planen</string>
     <string name="trt_sugg_week_text">Sag dem Coach, an welchen Tagen du kletterst. Er plant den Rest drumherum.</string>

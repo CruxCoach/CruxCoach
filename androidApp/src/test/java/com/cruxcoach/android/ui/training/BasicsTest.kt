@@ -61,7 +61,8 @@ class BasicsTest : AthleteScreenTest() {
         assertEquals(ExperienceBand.Y3_5, p.coach.experience)
         // The coach's guard rails for growing climbers and from 40 on read the age band.
         assertEquals(AgeBand.Y18_39, p.coach.ageBand)
-        assertTrue(p.equipmentConfigured && EquipmentV2.HANGBOARD in p.equipment)
+        // "At home" ticks bar, bands and dumbbells; a hangboard only when the athlete adds it.
+        assertTrue(p.equipmentConfigured && EquipmentV2.PULL_UP_BAR in p.equipment && EquipmentV2.HANGBOARD !in p.equipment)
         assertNull(p.birthYear)
         assertNull(repo.latest(BodyMetric.WEIGHT.key))
     }
