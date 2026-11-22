@@ -58,6 +58,12 @@ class ReferenceCoach(private val run: SimRun) {
     /** Trainings in which a quality got its stimulus (two sets close to failure), for the report. */
     val effective = mutableMapOf<Quality, Int>()
 
+    /** A set as the reference planned it and the athlete did it, for the day-by-day look at a weaker quality. */
+    data class Replayed(val day: Int, val slug: String, val setType: SetType, val loadKg: Double?, val reps: Int?, val durationS: Double?,
+                        val trueReserve: Double)
+
+    val replayed = mutableListOf<Replayed>()
+
     fun replay(): Map<Quality, Double> {
         run.days.forEach(::day)
         return athlete.value.toMap()
@@ -124,6 +130,7 @@ class ReferenceCoach(private val run: SimRun) {
                 edgeMm = s.edgeMm,
             )
             val r = athlete.perform(def, planned, persona.alwaysEasy, persona.rirNoise)
+            replayed += Replayed(d.day, def.slug, s.setType, planned.loadKg, r.reps, r.durationS, r.trueReserve)
             if (s.setType != SetType.WARMUP && def.kind != ExerciseKind.CLIMB) {
                 athlete.tire(def, r.trueReserve)
                 if (r.trueReserve <= 4.0) hard.merge(athlete.qualityOf(def), 1, Int::plus)
@@ -156,9 +163,13 @@ class ReferenceCoach(private val run: SimRun) {
         val top = def.defaults.repsMax ?: def.defaults.repsMin ?: 8
         val bottom = (def.defaults.repsMin ?: top).coerceAtMost(top)
         if (loaded(def)) {
-            // No estimate yet: where the app started this exercise. (After a step along the chain there is always one.)
+            // No estimate yet: where the app started this exercise – with the load the athlete lifted there. A start far
+            // beyond them they lower by hand ([Simulator.lowerIfFarTooHeavy]), and it is the same athlete here: replayed
+            // at the planned load, the reference "trained" by failing after a few repetitions (wrist curls at 5 kg for
+            // 13: 5, 4 and 3 done) and was credited with the stimulus. (After a step along the chain there is always
+            // an estimate.)
             val e = state.e1rm ?: return Target(def, first.targetReps ?: first.reps ?: top, null,
-                (first.targetLoadKg ?: first.loadKg ?: 0.0).takeIf { appDef.slug == def.slug } ?: 0.0)
+                (first.loadKg ?: first.targetLoadKg ?: 0.0).takeIf { appDef.slug == def.slug } ?: 0.0)
             val step = ProgressionAdvisor.increment(def, persona.smallestIncrementKg)
             fun repsAt(load: Double): Int = (30.0 * (e / total(def, load).coerceAtLeast(1.0) - 1.0) - need).roundToInt()
             var load = StrengthMath.roundTo(logged(def, e / (1.0 + (top + need) / 30.0)), persona.smallestIncrementKg)
@@ -275,6 +286,45 @@ object ReferenceComparison {
             val trained = run.days.any { d -> d.sets.any { it.setType == SetType.WORK && probe.qualityOf(run.catalog.fallbackFor(it.slug)) == q } }
             if (!trained) null
             else Row(run.persona.id, q, run.persona.start(q), app.getValue(q), reference.getValue(q), appTrainings[q] ?: 0, coach.effective[q] ?: 0)
+        }
+    }
+
+    /**
+     * Why a quality ended where it did: every training with work for one of [qualities], the app's sets next to the
+     * reference's, each with the reserve the athlete truly had (a set counts towards the stimulus from 4 down). Written
+     * for the qualities that came out weaker.
+     */
+    fun days(run: SimRun, qualities: Set<Quality>): String = buildString {
+        val coach = ReferenceCoach(run)
+        coach.replay()
+        val probe = SimAthlete(run.persona, Random(1))
+        fun quality(slug: String) = probe.qualityOf(run.catalog.fallbackFor(slug))
+        fun line(sets: List<Triple<String, String, Double>>): String = sets.groupBy { it.first }.entries.joinToString("; ") { (slug, rows) ->
+            slug.substringAfter('.') + ": " + rows.joinToString(", ") { "${it.second} (${"%.0f".format(it.third)})" }
+        }.ifEmpty { "–" }
+        fun what(loadKg: Double?, reps: Int?, durationS: Double?): String =
+            (loadKg?.let { "${"%.1f".format(it)} kg × " } ?: "") + (reps?.toString() ?: durationS?.let { "${"%.0f".format(it)} s" } ?: "?")
+        appendLine("# ${run.persona.title}: the coach's sets against the reference's")
+        qualities.forEach { q ->
+            appendLine()
+            appendLine("## ${q.name.lowercase()}")
+            appendLine()
+            appendLine("Load × repetitions or seconds done, in brackets the reserve the athlete truly had. A training gives the quality its")
+            appendLine("stimulus with two sets at a reserve of 4 or less.")
+            appendLine()
+            appendLine("| Day | App | Reference | Stimulus app / reference |")
+            appendLine("|---|---|---|---|")
+            run.days.forEach { d ->
+                val app = d.sets.filter { it.setType != SetType.WARMUP && quality(it.slug) == q }
+                val ref = coach.replayed.filter { it.day == d.day && it.setType != SetType.WARMUP && quality(it.slug) == q }
+                if (app.isEmpty() && ref.isEmpty()) return@forEach
+                val appHard = app.count { it.trueReserve <= 4.0 } >= 2
+                val refHard = ref.count { it.trueReserve <= 4.0 } >= 2
+                appendLine("| ${d.date} ${d.date.dayOfWeek.name.lowercase().take(3)} | " +
+                    line(app.map { Triple(it.slug, what(it.loadKg, it.reps, it.durationS), it.trueReserve) }) + " | " +
+                    line(ref.map { Triple(it.slug, what(it.loadKg, it.reps, it.durationS), it.trueReserve) }) + " | " +
+                    "${if (appHard) "yes" else "–"} / ${if (refHard) "yes" else "–"} |")
+            }
         }
     }
 

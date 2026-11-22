@@ -41,6 +41,21 @@ object SimReport {
             appendLine("| ${i + 1}$away | $phases | $trained/$planned | $climbed | $focus | $sets | ${if (weekFlags == 0) "–" else weekFlags} |")
         }
         appendLine()
+        // The week as the coach planned it: the last whole build week, what it asked for and what was done.
+        r.days.chunked(7).lastOrNull { w -> w.size == 7 && w.last().weekEnd != null && w.all { !it.away && it.block?.phase == com.cruxcoach.athlete.logic.BlockPhase.BUILD } }?.let { week ->
+            appendLine("## The week's targets")
+            appendLine()
+            appendLine("Week ${week.first().day / 7 + 1}, the last whole build week: hard sets per area (finger work in sessions; hard climbing days count).")
+            appendLine()
+            appendLine("| Area | Goal | Up to | Done | From climbing |")
+            appendLine("|---|---|---|---|---|")
+            week.last().weekEnd!!.filter { !it.target.isOff }.forEach { a ->
+                val finger = a.area == com.cruxcoach.athlete.logic.VolumeArea.FINGER
+                appendLine("| ${a.area.name.lowercase()} | ${a.goal}${if (finger) " sessions" else ""} | ${if (finger) "${a.target.maxSets} sets off the wall" else a.target.maxSets.toString()} | " +
+                    "${if (finger) "${a.sessions} sessions, ${a.doneSets} sets" else a.doneSets.toString()} | ${"%.1f".format(a.climbingCredit)} |")
+            }
+            appendLine()
+        }
         appendLine("## Key exercises")
         appendLine()
         val measured = r.convergence.map { it.slug }.toSet()
