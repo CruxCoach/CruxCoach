@@ -185,6 +185,25 @@ class NextTargetsTest {
     }
 
     @Test
+    fun aNextExerciseOutOfReachLetsRepetitionsGoOnAboveTheRange() {
+        // Simulation 2026-11-22: a single-leg glute bridge at home, its next exercise needs a barbell and a bench. The
+        // training raises the later sets itself after "3+", so not every set is answered "3+" – and the plan stood at
+        // 17 for four weeks. With no exercise to step on to, reserve is enough, as at the end of a chain.
+        val chained = pushUp.copy(harder = "push.diamond_push_up")
+        val easy = training(chained, "w1", 1_000, target = 15, done = listOf(15, 15, 15), rir = listOf(3, 3, 2))
+        fun plan(stepOn: Boolean?) = NextTargets.plan(chained, item(chained), maxReps(18), easy, null, 70.0, 1.0, Steps.FULL, stepOn = stepOn)
+        assertEquals(NextTargets.Next(reps = 16, move = Move.UP, atTop = true), plan(stepOn = false))
+        // Within reach it is the better step: the repetitions wait, the next exercise is on offer.
+        assertEquals(NextTargets.Next(reps = 15, move = Move.REPEAT, atTop = true), plan(stepOn = true))
+        // Not said: whether the chain has a next exercise at all.
+        assertEquals(NextTargets.Next(reps = 15, move = Move.REPEAT, atTop = true), plan(stepOn = null))
+        // Hard stays hard, in reach or not.
+        val hard = training(chained, "w1", 1_000, target = 15, done = listOf(15, 15, 15), rir = listOf(1, 0, 0))
+        assertEquals(NextTargets.Next(reps = 15, move = Move.REPEAT),
+            NextTargets.plan(chained, item(chained), maxReps(18), hard, null, 70.0, 1.0, Steps.FULL, stepOn = false))
+    }
+
+    @Test
     fun underTheRangeWithNothingLighterToPlanIsTimeForTheEasierExercise() {
         // Four push-ups where eight are the least: the plan cannot get lighter, the easier exercise is the step.
         val bad = training(pushUp, "w1", 1_000, target = 8, done = listOf(5, 4, 3), rir = listOf(0, 0, 0))

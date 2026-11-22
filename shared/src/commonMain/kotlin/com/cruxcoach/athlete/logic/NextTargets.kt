@@ -133,6 +133,12 @@ object NextTargets {
         steps: Steps,
         exceptWorkout: String? = null,
         now: Long? = null,
+        /**
+         * The athlete can step on to the next exercise of the chain ([ExerciseDefinition.harder]): there is one, and
+         * the place has what it needs. Null: whether the chain has one at all. Where the next exercise is out of reach
+         * (a hip thrust asks for a barbell and a bench), repetitions are the only lever left.
+         */
+        stepOn: Boolean? = null,
     ): Next {
         val base = LoadPrescriber.prescribe(def, item, capacity, bodyweightKg, incrementKg)
         // A load written into the workout is the plan's load, here as in the planner: the tip must say what is planned.
@@ -170,7 +176,7 @@ object NextTargets {
         // The athlete's newer word (an entered value, a test, a load lowered by hand) decides.
         if (capacity?.statedAt != null && capacity.statedAt > lastAt) return checked(valueOnly())
         val next = when (kind) {
-            CapacityKind.MAX_REPS -> reps(def, item, last, steps)
+            CapacityKind.MAX_REPS -> reps(def, item, last, steps, stepOn ?: (def.harder != null))
             CapacityKind.MAX_SECONDS -> seconds(def, item, last, steps)
             CapacityKind.E1RM_TOTAL -> if (item.loadKg != null) none else loaded(def, item, base, capacity, past, bodyweightKg, incrementKg, steps)
             CapacityKind.TEN_SECOND_MAX -> if (item.loadKg != null) none else hold(def, item, base, capacity, past, bodyweightKg, incrementKg, steps)
@@ -202,7 +208,7 @@ object NextTargets {
 
     // ── Body-weight repetitions ──────────────────────────────────────
 
-    private fun reps(def: ExerciseDefinition, item: RoutineItem, last: List<ExerciseSet>, steps: Steps): Next? {
+    private fun reps(def: ExerciseDefinition, item: RoutineItem, last: List<ExerciseSet>, steps: Steps, stepOn: Boolean): Next? {
         val sets = last.filter { it.reps != null }
         // A training without targets (sets logged freely, one all-out set) is no rung to stand on.
         if (sets.isEmpty() || sets.none { it.targetReps != null }) return null
@@ -222,10 +228,13 @@ object NextTargets {
         val mayGrow = steps >= Steps.GENTLE
         val next = when {
             !mayGrow -> anchor
-            // Above the range only what is clearly easy still grows where the chain has a next exercise: that is the
-            // better step. Without one, repetitions are the only lever left and go on with reserve – no cap, each
-            // step needs the athlete's own answer (a cap left band work too easy for good, simulation 2026-11-21).
-            aboveTop -> if (r.veryEasy || (r.easy && def.harder == null)) anchor + unit else anchor
+            // Above the range only what is clearly easy still grows where the athlete can step on to the next exercise
+            // of the chain: that is the better step. Without one – the end of a chain, or a next exercise the place
+            // has no equipment for – repetitions are the only lever left and go on with reserve: no cap, each step
+            // needs the athlete's own answer (a cap left band work too easy for good, simulation 2026-11-21; a
+            // single-leg glute bridge stood at 17 for four weeks at home, its next exercise needs a barbell,
+            // simulation 2026-11-22).
+            aboveTop -> if (r.veryEasy || (r.easy && !stepOn)) anchor + unit else anchor
             r.veryEasy && steps == Steps.FULL -> anchor + 2 * unit
             r.easy -> anchor + unit
             else -> anchor

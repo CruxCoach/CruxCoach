@@ -700,6 +700,7 @@ class AthleteService @Inject constructor(
             steps = steps,
             now = now(),
             stepHistory = untrimmed(history),
+            stepOn = canStepOn(def),
         )
         val factor = if (item.warmup || item.test) 1.0 else ReadinessModifiers.loadFactorFor(def, modifier)
         // The training remembers what today's form changed, so the player can say why and offer "as planned".
@@ -881,7 +882,21 @@ class AthleteService @Inject constructor(
         val def = catalog.fallbackFor(item.slug)
         val capacity = capacityFor(def, side, item.edgeMm?.toDouble(), item.grip, ctx.bodyweight)
             ?: startEstimate(def, ctx.bodyweight).takeIf { item.loadKg == null && history.none { it.isCompleted && it.setType != SetType.WARMUP } }
-        return NextTargets.plan(def, item, capacity, untrimmed(history), side, ctx.bodyweight, ctx.increment, steps, exceptWorkout, now = ctx.now)
+        return NextTargets.plan(def, item, capacity, untrimmed(history), side, ctx.bodyweight, ctx.increment, steps, exceptWorkout, now = ctx.now,
+            stepOn = canStepOn(def))
+    }
+
+    /**
+     * The next exercise of [def]'s chain is one the athlete can step on to here: the same job, not excluded, and the
+     * place has its equipment ([nextTime] offers nothing else). Where it is out of reach, the plan lets the
+     * repetitions go on above their range ([NextTargets.plan]) – the plan and the tip read it the same way.
+     */
+    private fun canStepOn(def: com.cruxcoach.athlete.catalog.ExerciseDefinition): Boolean {
+        val to = def.harder?.let { catalog[it] } ?: return false
+        val profile = repo.profile()
+        val owned = profile.equipment.takeIf { profile.equipmentConfigured }
+        return to.category == def.category && to.slug !in profile.excludedExercises &&
+            (owned == null || to.equipment.all { e -> com.cruxcoach.athlete.catalog.EquipmentV2.satisfied(e, owned) })
     }
 
     /** One row of Today's card: the last training's work sets and what today's training plans. */
