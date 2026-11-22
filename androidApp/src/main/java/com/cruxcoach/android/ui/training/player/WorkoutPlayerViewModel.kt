@@ -121,6 +121,11 @@ data class PlayerState(
     /** The exercise a pain swap brought in, for the confirmation. */
     val painNewDef: ExerciseDefinition? = null,
     val completedCount: Int = 0,
+    /**
+     * The training was started from the card of a climbing or board day: its warm-up comes before the climbing, the
+     * rest of it after ([climbingComesNow]).
+     */
+    val climbingDay: Boolean = false,
     val closing: Boolean = false,
     // ── Pages (owner 2026-10-17: one screen per exercise with all its sets) ──
     val pages: List<PlayerPage> = emptyList(),
@@ -273,6 +278,8 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     private var weeklyKey: String? = null
     /** Workout and exercises [PlayerState.firstTime] was read for. */
     private var firstTimeKey: String? = null
+    /** Whether the training came from a climbing day's card, by the training and its done sets (see [onData]). */
+    private var climbingDayKey: Pair<String, Boolean>? = null
     /** Workout and exercises [PlayerState.lastTime] was read for. */
     private var lastTimeKey: String? = null
 
@@ -354,6 +361,13 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             else -> lastTimeIn(workout, sets).also { lastTimeKey = firstTimeNow }
         }
         val nextTime = if (workout == null) emptyMap() else nextTimeIn(sets)
+        // Read with the weekly numbers, so again only when a set was done: the start writes the training first and the
+        // ledger's line after it, and the first look can come in between.
+        val climbingDay = when {
+            workout == null || weeklyNow == null -> false
+            weeklyNow == climbingDayKey?.first -> climbingDayKey?.second == true
+            else -> startedFromClimbingDay(workout).also { climbingDayKey = weeklyNow to it }
+        }
         _state.update { st ->
             if (st.closing) return@update st.copy(profile = profile)
             if (workout == null) return@update st.copy(phase = PlayerPhase.NO_WORKOUT, workout = null, sets = emptyList(),
@@ -404,9 +418,21 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
                 lastTime = lastTime,
                 nextTime = nextTime,
                 weekly = weekly,
+                climbingDay = climbingDay,
             )
         }
     }
+
+    /**
+     * The training was started from today's card on a climbing or board day: the ledger's line of the start names the
+     * kind. A workout of the athlete's own, a starter workout or a training typed in has no such line.
+     */
+    private fun startedFromClimbingDay(workout: Workout): Boolean = runCatching {
+        service.repo.suggestionEventsForDay(workout.day).any {
+            it.kind == com.cruxcoach.athlete.model.SuggestionEventKind.STARTED && it.workoutId == workout.id &&
+                it.focus == com.cruxcoach.athlete.logic.SuggestionFocus.BOARD_DAY.name
+        }
+    }.getOrDefault(false)
 
     private fun onRestTimer(timer: RestTimerState) {
         val st = _state.value

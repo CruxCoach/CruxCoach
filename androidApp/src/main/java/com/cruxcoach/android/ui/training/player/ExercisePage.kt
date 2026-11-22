@@ -603,7 +603,14 @@ private fun DoneRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPage,
                 }
             }
             set.rir?.let {
-                Text(stringResource(if (reserveInSeconds(def)) R.string.trpg_rir_short_seconds else R.string.trw_rir_short, it),
+                Text(when {
+                        // A long plain hold was asked in steps of five seconds: the row says those seconds, not the level
+                        // the answer is stored as.
+                        coarseReserve(set, def) -> stringResource(R.string.trpg_rir_short_seconds_coarse,
+                            com.cruxcoach.athlete.logic.NextTargets.coarseReserveLabel(it))
+                        reserveInSeconds(def) -> stringResource(R.string.trpg_rir_short_seconds, it)
+                        else -> stringResource(R.string.trw_rir_short, it)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = if (latest) Modifier.clip(MaterialTheme.shapes.small)
@@ -622,7 +629,7 @@ private fun LatestDoneExtras(set: ExerciseSet, def: ExerciseDefinition, state: P
     val asks = askReserve && set.setType == SetType.WORK && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG, ExerciseKind.TIME)
     // A long plain hold is asked in steps that mean something there (0, 5, 10, 15+ s): "1, 2 or 3+ seconds more" after
     // a 30-second side plank said nothing (Nokia walk 2026-11-22). The answer is stored as the same four levels.
-    val coarse = com.cruxcoach.athlete.logic.NextTargets.longPlainHold(def, (set.targetDurationS ?: set.durationS)?.roundToInt())
+    val coarse = coarseReserve(set, def)
     Column(Modifier.padding(start = 48.dp, bottom = 4.dp)) {
         if (asks) ReserveChoice(set, reserveInSeconds(def), actions, "player_rir_", Modifier.padding(bottom = 4.dp), coarse = coarse)
         state.feedback?.takeIf { it.def.slug == def.slug }?.let { fb ->
@@ -667,7 +674,7 @@ private fun EditingRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPa
             }
             SetSteppers(set, def, units, state.profile.smallestIncrementKg, actions.onUpdate, Modifier.padding(top = 8.dp))
             if (set.setType != SetType.WARMUP && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG, ExerciseKind.TIME)) {
-                ReserveChoice(set, reserveInSeconds(def), actions, "player_review_rir_", Modifier.padding(top = 12.dp))
+                ReserveChoice(set, reserveInSeconds(def), actions, "player_review_rir_", Modifier.padding(top = 12.dp), coarse = coarseReserve(set, def))
             }
             // "Fertig" below when both do not fit in a row ("D/o" at the largest font).
             LabelBesideOrAbove(modifier = Modifier.padding(top = 8.dp), label = {
@@ -788,6 +795,10 @@ internal fun NumberChip(
 /** A timed hold's reserve is in seconds: it is added to the hold time (BenchmarkLogic). */
 private fun reserveInSeconds(def: ExerciseDefinition): Boolean = def.kind == ExerciseKind.TIME || def.kind == ExerciseKind.HANG
 
+/** The reserve of [set] is asked and shown in steps of five seconds ([com.cruxcoach.athlete.logic.NextTargets.longPlainHold]). */
+private fun coarseReserve(set: ExerciseSet, def: ExerciseDefinition): Boolean =
+    com.cruxcoach.athlete.logic.NextTargets.longPlainHold(def, (set.targetDurationS ?: set.durationS)?.roundToInt())
+
 /** "How many more?" (seconds for a timed hold) with 0, 1, 2, 3+ in one row; a second tap takes the answer back. */
 @Composable
 private fun ReserveChoice(
@@ -800,7 +811,7 @@ private fun ReserveChoice(
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
             listOf(0, 1, 2, 3).forEach { value ->
                 val label = when {
-                    coarse -> if (value == 3) "15+" else (value * 5).toString()
+                    coarse -> com.cruxcoach.athlete.logic.NextTargets.coarseReserveLabel(value)
                     value == 3 -> stringResource(R.string.trw_rir_3plus)
                     else -> value.toString()
                 }

@@ -379,6 +379,20 @@ fun TodayScreen(
             }
         }
     }
+    // The climbing day taken back (a second tap on its chip, or another kind of training chosen): one line with
+    // "Rückgängig" as well.
+    state.noClimbTodayUndo?.let { before ->
+        val text = stringResource(R.string.trt_no_climb_today_done)
+        LaunchedEffect(before) {
+            viewModel.consumeNoClimbTodayUndo()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoNoClimbToday(before)
+                }
+            }
+        }
+    }
     // "Heute klettere ich": one line with "Rückgängig".
     state.climbTodayUndo?.let { before ->
         val text = stringResource(R.string.trt_climb_today_done)
@@ -1045,7 +1059,7 @@ private fun FoodTile(state: TodayState, onOpen: () -> Unit, modifier: Modifier) 
             t != null -> stringResource(R.string.trf_progress_g, protein, t.proteinG)
             else -> stringResource(R.string.trf_value_g, protein)
         },
-        progress = t?.let { if (it.proteinG > 0) protein.toFloat() / it.proteinG else 0f },
+        progress = foodTileProgress(state.profile.showCalories, (state.kcalToday ?: 0.0).roundToInt(), energyGoal, protein, t?.proteinG),
         supporting = if (t == null) stringResource(R.string.tru_tile_food_no_target)
             else stringResource(R.string.tru_tile_food_macros, state.carbsToday.roundToInt(), t.carbsG, protein, t.proteinG, state.fatToday.roundToInt(), t.fatG),
         tag = "today_fuel", onClick = onOpen, modifier = modifier,

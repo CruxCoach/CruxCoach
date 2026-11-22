@@ -82,6 +82,19 @@ object DayPlans {
         return profile.copy(datePlan = plan)
     }
 
+    /**
+     * [date] is no climbing or board day after all (a second tap on "Heute klettere ich", or another kind of training
+     * chosen for the day): its own entry goes, so the standard week applies again – a training planned there is back,
+     * as "Rückgängig" brings it back. Only where the day would still be a climbing day (the standard week plans the
+     * climbing, or it is a usual climbing weekday) it is planned as free. A day without climbing planned stays as it is.
+     */
+    fun withoutClimbing(profile: AthleteProfile, date: LocalDate, today: LocalDate): AthleteProfile {
+        val planned = entry(profile, date)
+        if (planned != PLAN_BOARD && !isClimb(planned)) return profile
+        val back = withDay(profile, date, null, today)
+        return if (climbingPlanned(back, date)) withDay(profile, date, PLAN_FREE, today) else back
+    }
+
     /** Swaps what [from] and [to] plan ("move this day"), each as its own date entry. */
     fun swap(profile: AthleteProfile, from: LocalDate, to: LocalDate, today: LocalDate): AthleteProfile {
         if (from == to) return profile
