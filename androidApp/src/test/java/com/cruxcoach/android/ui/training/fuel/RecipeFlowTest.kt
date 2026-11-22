@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.training.fuel
 import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsNotEnabled
 import com.cruxcoach.android.ui.training.AthleteScreenTest
 import android.app.Application
 import androidx.compose.ui.semantics.SemanticsActions
@@ -81,10 +82,9 @@ class RecipeFlowTest : AthleteScreenTest() {
 
         // Changing it keeps the id: one ingredient less, one portion.
         waitForTag("fuel_foods_sheet")
-        // The sheet starts with the meal and the ways of adding; the recipe sits further down its list.
-        compose.waitUntil(WAIT_MS) {
-            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_recipe_edit_${item.id}")); true }.getOrDefault(false)
-        }
+        // The dish saved a moment ago stands first, under "My dishes"; what can be done with it is behind its "⋮".
+        scrollTo("fuel_foods_list", "fuel_dish_${item.id}")
+        click("fuel_food_menu_${item.id}")
         click("fuel_recipe_edit_${item.id}")
         waitForTag("fuel_recipe_ingredient_1")
         click("fuel_recipe_remove_1")
@@ -105,9 +105,8 @@ class RecipeFlowTest : AthleteScreenTest() {
         waitForTag("fuel_list")
         waitForTag("fuel_my_foods")
         click("fuel_my_foods")
-        compose.waitUntil(WAIT_MS) {
-            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_food_delete_cheese")); true }.getOrDefault(false)
-        }
+        scrollTo("fuel_foods_list", "fuel_food_cheese")
+        click("fuel_food_menu_cheese")
         click("fuel_food_delete_cheese")
         waitForTag("fuel_food_delete_dialog")
         assertTrue(repo.foodItems().any { it.id == "cheese" })
@@ -119,7 +118,43 @@ class RecipeFlowTest : AthleteScreenTest() {
         compose.waitUntil(WAIT_MS) {
             runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_food_milk")); true }.getOrDefault(false)
         }
+        // Picking an ingredient offers nothing to do with a food but to pick it.
+        compose.onAllNodesWithTag("fuel_food_menu_milk").assertCountEquals(0)
         compose.onAllNodesWithTag("fuel_food_delete_milk").assertCountEquals(0)
+    }
+
+    @Test
+    fun `the amount of an ingredient is changed by a tap, and a name another dish has cannot be taken`() {
+        val milk = repo.foodItem("milk")!!
+        repo.saveRecipe("porridge", Recipe("Porridge", 1, listOf(Recipe.ingredient(milk, 300.0))))
+        repo.saveRecipe("shake", Recipe("Shake", 1, listOf(Recipe.ingredient(milk, 500.0))))
+        val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context),
+            OffRepository(context).apply { source = { "".reader().buffered() }; assetVersion = { "t" } }).tracked()
+        render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
+        waitForTag("fuel_list")
+        click("fuel_my_foods")
+        scrollTo("fuel_foods_list", "fuel_dish_porridge")
+        click("fuel_food_menu_porridge")
+        click("fuel_recipe_edit_porridge")
+        waitForTag("fuel_recipe_ingredient_0")
+
+        // 300 ml of milk become 260: a tap on the ingredient, no removing and searching it again.
+        click("fuel_recipe_ingredient_0")
+        waitForTag("fuel_amount_grams")
+        compose.onNodeWithTag("fuel_amount_grams").performTextReplacement("260")
+        click("fuel_amount_confirm")
+        // 260, not 250: the water card on the day behind the sheet says "250 ml" of its glass.
+        waitForText("260\u00A0ml")
+
+        // "Shake" is another dish: two dishes of one name could not be told apart when logging.
+        compose.onNodeWithTag("fuel_recipe_name").performTextReplacement("shake")
+        waitForTag("fuel_recipe_name_taken")
+        compose.onNodeWithTag("fuel_recipe_save").assertIsNotEnabled()
+        compose.onNodeWithTag("fuel_recipe_name").performTextReplacement("Porridge")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("fuel_recipe_name_taken", useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
+        click("fuel_recipe_save")
+        compose.waitUntil(WAIT_MS) { repo.recipe("porridge")?.ingredients?.singleOrNull()?.grams == 260.0 }
+        assertEquals(2, repo.foodItems().count { it.source == Recipe.SOURCE })
     }
 
 }

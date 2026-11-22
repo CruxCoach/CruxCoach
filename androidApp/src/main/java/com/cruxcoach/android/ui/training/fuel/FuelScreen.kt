@@ -77,6 +77,8 @@ fun FuelScreen(
     var recipeDraft by remember { mutableStateOf<RecipeDraft?>(null) }
     var pickingIngredient by remember { mutableStateOf(false) }
     var ingredientFor by remember { mutableStateOf<FoodItem?>(null) }
+    /** The ingredient of [recipeDraft] (by its place) whose amount is being changed. */
+    var ingredientEdit by remember { mutableStateOf<Int?>(null) }
     val onlyWeighedText = stringResource(R.string.trf_recipe_only_weighed)
     /** A logged entry being changed: by amount when its food is known, else as a quick entry. */
     var editing by remember { mutableStateOf<FoodLogEntry?>(null) }
@@ -84,8 +86,13 @@ fun FuelScreen(
     var scanMiss by remember { mutableStateOf<String?>(null) }
     var createBarcode by remember { mutableStateOf<String?>(null) }
     var copyConfirm by remember { mutableStateOf(false) }
-    // "Als Mahlzeit speichern": the meal whose foods become one dish, asked for its name.
+    // "Als Gericht speichern": the meal whose foods become one dish, asked for its name.
     var savingMeal by remember { mutableStateOf<Meal?>(null) }
+    /**
+     * What was logged since the add sheet opened, newest last. The sheet stays open after each food and confirms it
+     * (Nokia walk 2026-11-22: four foods for one meal meant opening the sheet four times).
+     */
+    var logged by remember { mutableStateOf(emptyList<FoodLogEntry>()) }
     val mealSavedText = stringResource(R.string.trf_meal_saved)
     /** The meal that "+" or the add button chose; every way of adding starts with it. */
     var addMeal by remember { mutableStateOf(FuelViewModel.mealForHour(java.time.LocalTime.now().hour)) }
@@ -105,11 +112,12 @@ fun FuelScreen(
         value = microDay?.let { photoViewModel.microWeek(it, state.profile.sex, state.profile.birthYear) }
     }
     val foodsById = remember(state.foods) { state.foods.associateBy { it.id } }
+    /** Saved dishes by their food id: a dish's name is its own, so one tap never has to choose between two. */
+    val dishNames = remember(state.foods) { state.foods.filter { it.source == Recipe.SOURCE }.associate { it.id to it.name } }
     val isDrink: (FoodLogEntry) -> Boolean = { e ->
         foodsById[e.foodItemId]?.let { FuelUnits.isDrink(it.id, it.name, it.servingLabel) } ?: FuelUnits.isDrink(e.foodItemId, e.name)
     }
     val deletedText = stringResource(R.string.trf_deleted)
-    val relogText = stringResource(R.string.trf_recent_logged)
     val waterRemovedText = stringResource(R.string.trf_water_removed)
     val undoText = stringResource(R.string.trf_undo)
     val weightSavedText = stringResource(R.string.tru_weight_saved)
@@ -133,7 +141,9 @@ fun FuelScreen(
         }
     }
 
-    fun openAdd(meal: Meal) { addMeal = meal; foodsOpen = true }
+    fun openAdd(meal: Meal) { addMeal = meal; logged = emptyList(); foodsOpen = true }
+    /** A food went into the log: the add sheet shows it on top and stays for the next one, at the meal it went to. */
+    fun confirmLogged(entry: FoodLogEntry) { addMeal = entry.meal; logged = logged + entry; foodsOpen = true }
     /** The add button's meal: by the time of day, or "after training" within two hours of one today (holistic audit P2-15). */
     fun mealNow(): Meal = FuelViewModel.mealFor(System.currentTimeMillis(), java.time.LocalTime.now().hour,
         state.lastTrainingEndedAt.takeIf { state.isToday })
@@ -199,8 +209,14 @@ fun FuelScreen(
                 val meals = MAIN_MEALS + Meal.entries.filter { it !in MAIN_MEALS && byMeal.containsKey(it) }
                 meals.forEach { meal ->
                     item(key = "meal_${meal.name}") {
-                        MealCard(meal, byMeal[meal], state.entries.filter { it.meal == meal }, state.profile.showCalories, units, isDrink,
-                            onAdd = { openAdd(meal) }, onEdit = { editing = it }, onDelete = ::deleteEntry, onSaveMeal = { savingMeal = meal })
+                        val foods = state.entries.filter { it.meal == meal }
+                        // A meal that already is a saved dish says so; saving it again made a second dish of that name.
+                        val savedAs = remember(foods, state.dishes, dishNames) {
+                            if (foods.size < 2) null else Recipe.savedDish(foods, state.dishes)?.let { dishNames[it] }
+                        }
+                        MealCard(meal, byMeal[meal], foods, state.profile.showCalories, units, isDrink,
+                            onAdd = { openAdd(meal) }, onEdit = { editing = it }, onDelete = ::deleteEntry, onSaveMeal = { savingMeal = meal },
+                            savedAs = savedAs)
                     }
                 }
                 if (state.entries.isNotEmpty() && state.previousDayCount > 0) {
@@ -250,25 +266,29 @@ fun FuelScreen(
     if (quickAdd) {
         QuickAddSheet(
             initialMeal = addMeal,
-            onDismiss = { quickAdd = false },
-            onSave = { name, meal, nutrients, remember -> viewModel.quickAdd(name, meal, nutrients, remember); quickAdd = false },
+            // Plain values are one food like any other: back to the add sheet, which confirms it.
+            onDismiss = { quickAdd = false; foodsOpen = true },
+            onSave = { name, meal, nutrients, remember -> confirmLogged(viewModel.quickAdd(name, meal, nutrients, remember)); quickAdd = false },
         )
     }
     if (foodsOpen) {
         FoodsSheet(
             foods = state.foods,
             onDismiss = { foodsOpen = false },
-            onPick = { amountFor = FoodPhotoViewModel.withPiece(it); foodsOpen = false },
+            // The sheet stays under the amount dialog: "cancel" there comes back to the search, and after logging the
+            // next food is one tap away.
+            onPick = { amountFor = FoodPhotoViewModel.withPiece(it) },
             onToggleFavorite = viewModel::toggleFavorite,
             onDelete = viewModel::deleteFood,
-            onCreate = { createFood = true; foodsOpen = false },
+            // The sheet stays under "new food" as well: "cancel" there comes back to it.
+            onCreate = { createFood = true },
             searchBls = photoViewModel::search,
-            onPickBls = { amountFor = FoodPhotoViewModel.blsFoodItem(it); foodsOpen = false },
+            onPickBls = { amountFor = FoodPhotoViewModel.blsFoodItem(it) },
             searchProducts = photoViewModel::searchProducts,
-            onPickProduct = { amountFor = FoodPhotoViewModel.offFoodItem(it); foodsOpen = false },
+            onPickProduct = { amountFor = FoodPhotoViewModel.offFoodItem(it) },
             // Scanning is the "Scannen" tile below the field; no second scan icon inside the search field.
             searchUsda = photoViewModel::searchUsda,
-            onPickUsda = { amountFor = FoodPhotoViewModel.usdaFoodItem(it); foodsOpen = false },
+            onPickUsda = { amountFor = FoodPhotoViewModel.usdaFoodItem(it) },
             productsPreparing = productsState is OffRepository.State.Preparing,
             onCreateRecipe = { recipeDraft = RecipeDraft(id = null); foodsOpen = false },
             onEditRecipe = { item ->
@@ -279,18 +299,19 @@ fun FuelScreen(
             meal = addMeal,
             onMealChange = { addMeal = it },
             recent = state.recentByMeal[addMeal].orEmpty(),
-            onRelog = { entry ->
-                foodsOpen = false
-                val added = viewModel.relog(entry, addMeal)
-                scope.launch {
-                    snackbar.currentSnackbarData?.dismiss()
-                    if (snackbar.showSnackbar(relogText.format(entry.name), undoText, duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed) {
-                        viewModel.deleteEntry(added)
-                    }
-                }
-            },
+            onRelog = { entry -> confirmLogged(viewModel.relog(entry, addMeal)) },
             showCalories = state.profile.showCalories,
             units = units,
+            // One tap logs a dish with its usual amount; one without a portion to log asks for the amount.
+            onLogDish = { dish ->
+                val entry = viewModel.logUsual(dish, addMeal, state.lastByFood[dish.id])
+                if (entry != null) { confirmLogged(entry) } else { amountFor = dish }
+            },
+            lastByFood = state.lastByFood,
+            logged = logged,
+            dayEntries = state.entries,
+            // "Undo" takes the entry back; a food that became one of "my foods" on the way stays, as it always did.
+            onUndoLogged = { entry -> viewModel.deleteEntry(entry); logged = logged - entry },
             addActions = {
                 FoodAddActions(
                     photoAvailable = photoState.support is com.cruxcoach.athlete.logic.VisionSupport.Supported && !photoState.tooSlow,
@@ -307,8 +328,14 @@ fun FuelScreen(
         AmountDialog(
             item = item,
             initialMeal = addMeal,
-            onDismiss = { amountFor = null },
-            onConfirm = { meal, portions, grams -> viewModel.addFood(item, meal, portions, grams); amountFor = null },
+            // Back to the add sheet either way: with the search as it was after "cancel" (a scanned or new food
+            // closed the sheet on its way here), with the confirmation after logging.
+            onDismiss = { amountFor = null; foodsOpen = true },
+            onConfirm = { meal, portions, grams ->
+                val entry = viewModel.addFood(item, meal, portions, grams)
+                amountFor = null
+                if (entry != null) { confirmLogged(entry) } else { foodsOpen = true }
+            },
             units = units,
             showCalories = state.profile.showCalories,
             last = state.lastByFood[item.id],
@@ -316,9 +343,11 @@ fun FuelScreen(
     }
     if (createFood) {
         CreateFoodDialog(
-            onDismiss = { createFood = false; createBarcode = null },
+            onDismiss = { createFood = false; createBarcode = null; foodsOpen = true },
             onSave = { name, brand, per100, servingG, label ->
-                viewModel.createFood(name, brand, per100, servingG, label, barcode = createBarcode)
+                // A food is created to be logged: its amount is asked at once, above the add sheet (it used to land at
+                // the end of "my foods", to be found and tapped again).
+                amountFor = viewModel.createFood(name, brand, per100, servingG, label, barcode = createBarcode)
                 createFood = false
                 createBarcode = null
                 foodsOpen = true
@@ -351,6 +380,8 @@ fun FuelScreen(
                 searchUsda = photoViewModel::searchUsda,
                 onPickUsda = { pick(FoodPhotoViewModel.usdaFoodItem(it)) },
                 title = stringResource(R.string.trf_recipe_pick),
+                showCalories = state.profile.showCalories,
+                units = units,
             )
         } else if (ingredientFor == null) {
             RecipeSheet(
@@ -360,7 +391,12 @@ fun FuelScreen(
                 onChange = { recipeDraft = it },
                 onAddIngredient = { pickingIngredient = true },
                 onSave = { recipe -> viewModel.saveRecipe(draft.id, recipe); recipeDraft = null; foodsOpen = true },
-                onDismiss = { recipeDraft = null },
+                onDismiss = { recipeDraft = null; ingredientEdit = null },
+                // Only a name typed now is refused: dishes that already share one (saved twice before this was checked)
+                // can still be changed, and renamed apart.
+                nameTaken = Recipe.namesake(draft.name, dishNames, except = draft.id) != null &&
+                    draft.name.trim().lowercase() != dishNames[draft.id]?.trim()?.lowercase(),
+                onEditIngredient = { ingredientEdit = it },
             )
         }
     }
@@ -380,6 +416,30 @@ fun FuelScreen(
             forRecipe = true,
             showCalories = state.profile.showCalories,
         )
+    }
+    // An ingredient's amount is changed where it stands, above the dish's sheet.
+    ingredientEdit?.let { index ->
+        recipeDraft?.ingredients?.getOrNull(index)?.let { ingredient ->
+            AmountDialog(
+                item = FoodItem(id = ingredient.foodItemId, name = ingredient.name, kcalPer100 = ingredient.kcalPer100,
+                    proteinPer100 = ingredient.proteinPer100, carbsPer100 = ingredient.carbsPer100, fatPer100 = ingredient.fatPer100,
+                    source = FuelViewModel.SOURCE_USER),
+                initialMeal = addMeal,
+                onDismiss = { ingredientEdit = null },
+                onConfirm = { _, _, grams ->
+                    if (grams != null) {
+                        recipeDraft = recipeDraft?.let { d ->
+                            d.copy(ingredients = d.ingredients.mapIndexed { i, old -> if (i == index) old.copy(grams = grams) else old })
+                        }
+                    }
+                    ingredientEdit = null
+                },
+                units = units,
+                editing = FoodLogEntry(id = "ingredient", day = "", loggedAt = 0, meal = addMeal, name = ingredient.name, amountG = ingredient.grams),
+                forRecipe = true,
+                showCalories = state.profile.showCalories,
+            )
+        }
     }
     editing?.let { entry ->
         val item = entry.foodItemId?.let { foodsById[it] }
@@ -414,12 +474,12 @@ fun FuelScreen(
                     if (item != null) amountFor = item else scanMiss = code
                 }
             },
-            onDismiss = { scanning = false },
+            onDismiss = { scanning = false; foodsOpen = true },
         )
     }
     scanMiss?.let { code ->
         AlertDialog(
-            onDismissRequest = { scanMiss = null },
+            onDismissRequest = { scanMiss = null; foodsOpen = true },
             modifier = Modifier.testTag("fuel_scan_miss"),
             title = { Text(stringResource(R.string.trf_scan_not_found_title)) },
             text = { Text(stringResource(R.string.trf_scan_not_found, code)) },
@@ -428,7 +488,7 @@ fun FuelScreen(
                     Text(stringResource(R.string.trf_scan_create))
                 }
             },
-            dismissButton = { TextButton(onClick = { scanMiss = null }) { Text(stringResource(R.string.tr_action_cancel)) } },
+            dismissButton = { TextButton(onClick = { scanMiss = null; foodsOpen = true }) { Text(stringResource(R.string.tr_action_cancel)) } },
         )
     }
     if (photoOpen) {
@@ -454,8 +514,9 @@ fun FuelScreen(
     }
     savingMeal?.let { meal ->
         val foods = state.entries.filter { it.meal == meal }
-        SaveMealDialog(foods, onDismiss = { savingMeal = null }, onSave = { name ->
-            viewModel.saveRecipe(null, com.cruxcoach.athlete.logic.Recipe.fromEntries(name, foods))
+        // A name another dish has replaces that dish (the dialog says so) instead of making a second one.
+        SaveMealDialog(foods, dishNames, onDismiss = { savingMeal = null }, onSave = { name, replace ->
+            viewModel.saveRecipe(replace, Recipe.fromEntries(name, foods))
             savingMeal = null
             scope.launch { snackbar.showSnackbar(mealSavedText) }
         })
@@ -998,12 +1059,15 @@ fun grams(value: Double): String = formatNumber(value, if (value < 10) 1 else 0)
 private fun kcalText(kcal: Double, estimated: Boolean): String =
     stringResource(if (estimated) R.string.trf_kcal_estimated else R.string.trf_kcal_value, kcal.roundToInt())
 
-/** "P 32 · K 85 · F 14 g", plus kcal when calories are shown. */
+/**
+ * "470 kcal · K 85 · P 32 · F 14 g": energy (while calories are shown), carbohydrates, protein and fat, in the order of
+ * the day's rings and of the tile on Today (owner 2026-11-22: always all of them; the lines read "P · K · F · kcal").
+ */
 @Composable
 fun macrosText(protein: Double?, carbs: Double?, fat: Double?, energy: MacroTotals.Energy?, showCalories: Boolean): String {
     val macros = stringResource(R.string.trf_entry_macros_g,
         protein?.let(::grams) ?: "–", carbs?.let(::grams) ?: "–", fat?.let(::grams) ?: "–")
-    return if (showCalories && energy != null) macros + " · " + kcalText(energy.kcal, energy.estimated) else macros
+    return if (showCalories && energy != null) kcalText(energy.kcal, energy.estimated) + " · " + macros else macros
 }
 
 @Composable
@@ -1011,6 +1075,8 @@ private fun MealCard(
     meal: Meal, totals: MacroTotals?, entries: List<FoodLogEntry>, showCalories: Boolean,
     units: UnitSystem, isDrink: (FoodLogEntry) -> Boolean,
     onAdd: () -> Unit, onEdit: (FoodLogEntry) -> Unit, onDelete: (FoodLogEntry) -> Unit, onSaveMeal: () -> Unit = {},
+    /** The name of the saved dish that holds exactly this meal; null while it is none. */
+    savedAs: String? = null,
 ) {
     Card(Modifier.fillMaxWidth().testTag("fuel_meal_${meal.name.lowercase()}")) {
         Column(Modifier.padding(vertical = 4.dp)) {
@@ -1033,8 +1099,17 @@ private fun MealCard(
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                 EntryRow(entry, showCalories, FuelUnits.unitFor(units, isDrink(entry)), onEdit = { onEdit(entry) }, onDelete = { onDelete(entry) })
             }
-            // Several foods eaten together: saved as one dish, they are one tap next time.
-            if (entries.size >= 2) {
+            // Several foods eaten together: saved as one dish, they are one tap next time. A meal that already is a
+            // dish says which one instead of offering to save it once more.
+            if (savedAs != null) {
+                Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp).testTag("fuel_meal_saved_${meal.name.lowercase()}"),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.BookmarkAdded, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.trf_meal_saved_as, savedAs), style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else if (entries.size >= 2) {
                 TextButton(onClick = onSaveMeal, modifier = Modifier.padding(start = 4.dp).testTag("fuel_save_meal_${meal.name.lowercase()}")) {
                     Icon(Icons.Default.BookmarkAdd, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                     Text(stringResource(R.string.trf_meal_save))
@@ -1044,24 +1119,37 @@ private fun MealCard(
     }
 }
 
-/** The name of the dish a meal is saved as; the foods' names are the first guess. */
+/**
+ * The name of the dish a meal is saved as; the foods' names are the first guess. A name another dish already has
+ * ([dishNames], by food id) replaces that dish – said before the tap – so two dishes never share a name.
+ */
 @Composable
-private fun SaveMealDialog(entries: List<FoodLogEntry>, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+private fun SaveMealDialog(
+    entries: List<FoodLogEntry>,
+    dishNames: Map<String, String>,
+    onDismiss: () -> Unit,
+    onSave: (name: String, replace: String?) -> Unit,
+) {
     var name by rememberSaveable { mutableStateOf(entries.take(3).joinToString(" + ") { it.name }.take(60)) }
+    val namesake = Recipe.namesake(name, dishNames)
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("fuel_save_meal_dialog"),
         title = { Text(stringResource(R.string.trf_meal_save)) },
         text = {
             Column {
                 Text(stringResource(R.string.trf_meal_save_text, entries.size), style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(value = name, onValueChange = { name = it.take(60) }, singleLine = true,
                     label = { Text(stringResource(R.string.trf_recipe_name)) },
+                    supportingText = namesake?.let { id ->
+                        { Text(stringResource(R.string.trf_meal_name_taken, dishNames[id].orEmpty()), modifier = Modifier.testTag("fuel_save_meal_taken")) }
+                    },
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("fuel_save_meal_name"))
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(name.trim()) }, enabled = name.isNotBlank(), modifier = Modifier.testTag("fuel_save_meal_confirm")) {
-                Text(stringResource(R.string.tr_action_save))
+            TextButton(onClick = { onSave(name.trim(), namesake) }, enabled = name.isNotBlank(), modifier = Modifier.testTag("fuel_save_meal_confirm")) {
+                Text(stringResource(if (namesake != null) R.string.trf_meal_replace else R.string.tr_action_save))
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.tr_action_cancel)) } },

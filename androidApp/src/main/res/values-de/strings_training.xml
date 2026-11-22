@@ -96,8 +96,8 @@
     <string name="tr_dayload_rest">Ruhetag</string>
     <string name="tr_dayload_light">Lockerer Tag</string>
     <string name="tr_dayload_moderate">Trainingstag</string>
-    <string name="tr_dayload_hard">Harter Trainingstag</string>
-    <string name="tr_dayload_very_hard">Sehr harter Tag</string>
+    <string name="tr_dayload_hard">Fordernder Tag</string>
+    <string name="tr_dayload_very_hard">Sehr fordernder Tag</string>
 
     <string name="tr_settype_warmup">Aufwärmen</string>
     <string name="tr_settype_work">Arbeitssatz</string>

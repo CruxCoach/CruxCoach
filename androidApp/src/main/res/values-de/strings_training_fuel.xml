@@ -17,25 +17,27 @@
     <string name="trf_needs_weight">Trag dein Körpergewicht ein, dann berechnet CruxCoach deine Ziele für Protein, Kohlenhydrate, Fett und Wasser.</string>
     <string name="trf_protein">Protein</string>
     <string name="trf_protein_info">Für Kletternde reichen meist 1,4–2,0\u00A0g Protein pro kg Körpergewicht am Tag, verteilt auf mehrere Mahlzeiten. Dein Bereich: %1$d–%2$d\u00A0g.</string>
-    <string name="trf_carbs">Kohlenhydrate – passend zum Training</string>
-    <string name="trf_carbs_info_title">Warum mehr an Trainingstagen?</string>
     <string name="trf_carbs_info">Kohlenhydrate sind der Treibstoff für harte Züge und die Erholung. Für deinen Tag (%1$s) empfiehlt CruxCoach %2$s\u00A0g pro kg. Für Kletternde nennt die Literatur je nach Belastung 3–7\u00A0g pro kg.</string>
-    <string name="trf_carbs_per_kg">%1$s\u00A0g/kg</string>
     <string name="trf_day_planned">%1$s (geplant: %2$s)</string>
     <string name="trf_planned_board">Board %1$d\u00A0min</string>
     <string name="trf_planned_training">Training %1$d\u00A0min</string>
-    <string name="trf_carbs_tomorrow_hard">Morgen harter Tag: heute Abend kohlenhydratreich hilft.</string>
+    <string name="trf_carbs_tomorrow_hard">Morgen fordernder Tag: Ein kohlenhydratreiches Abendessen hilft.</string>
     <string name="trf_carbs_planned">Heute geplant: %1$s. Bis es erledigt ist, rechnen die heutigen Ziele schon damit – was du vor der Einheit isst, ist ihr Treibstoff. Frühere Tage und die Energiekarte zählen nur, was du eingetragen hast.</string>
     <string name="trf_water">Wasser</string>
     <string name="trf_hc_switch">Mahlzeiten und Wasser an Health Connect senden</string>
     <string name="trf_hc_hint">Jedes eingetragene Lebensmittel und jedes Glas Wasser wird in Health Connect geschrieben; geänderte oder gelöschte Einträge werden dort angepasst, sobald du Ernährung öffnest. Schaltest du das aus, bleibt schon Geschriebenes in Health Connect; lösch es dort, wenn du willst.</string>
-    <string name="trf_meal_save">Als Mahlzeit speichern</string>
-    <string name="trf_meal_save_text">Die %1$d Lebensmittel werden ein Gericht. Beim nächsten Mal trägst du es mit einem Tipp ein.</string>
-    <string name="trf_meal_saved">Gespeichert. Du findest die Mahlzeit beim Eintragen unter deinen Lebensmitteln.</string>
-    <string name="trf_recipe_new">Rezept</string>
-    <string name="trf_recipe_title">Rezept</string>
-    <string name="trf_recipe_edit">Rezept bearbeiten</string>
+    <string name="trf_meal_save">Als Gericht speichern</string>
+    <string name="trf_meal_save_text">Die %1$d Lebensmittel werden ein Gericht. Beim nächsten Mal trägst du es mit einmal Tippen ein.</string>
+    <string name="trf_meal_saved">Gericht gespeichert. Beim Eintragen steht es oben unter „Meine Gerichte“.</string>
+    <string name="trf_meal_saved_as">Als Gericht gespeichert: %1$s</string>
+    <string name="trf_meal_name_taken">„%1$s“ gibt es schon. Speichern ersetzt dieses Gericht – oder gib einen anderen Namen ein.</string>
+    <string name="trf_meal_replace">Ersetzen</string>
+    <string name="trf_recipe_new">Gericht</string>
+    <string name="trf_recipe_title">Gericht</string>
+    <string name="trf_recipe_edit">Gericht bearbeiten</string>
     <string name="trf_recipe_name">Name des Gerichts</string>
+    <string name="trf_recipe_name_taken">Diesen Namen hat schon ein anderes Gericht.</string>
+    <string name="trf_recipe_amount_change">Menge ändern</string>
     <string name="trf_recipe_ingredients">Zutaten (Rohgewicht)</string>
     <string name="trf_recipe_add">Zutat hinzufügen</string>
     <string name="trf_recipe_add_confirm">Hinzufügen</string>
@@ -44,7 +46,7 @@
     <string name="trf_recipe_portions">Portionen</string>
     <string name="trf_recipe_cooked">Gewicht fertig (%1$s, optional)</string>
     <string name="trf_recipe_cooked_hint">Wiege das fertige Gericht, wenn möglich: Nudeln und Reis nehmen Wasser auf, Fleisch verliert es. Ohne Angabe teilen die Portionen das Rohgewicht.</string>
-    <string name="trf_recipe_per_portion">Pro Portion (%1$s): %2$s\u00A0g Protein · %3$s\u00A0g Kohlenhydrate · %4$s\u00A0g Fett</string>
+    <string name="trf_recipe_per_portion">Pro Portion (%1$s): %3$s\u00A0g Kohlenhydrate · %2$s\u00A0g Protein · %4$s\u00A0g Fett</string>
     <string name="trf_foods_usda_title">US-Lebensmittel (USDA)</string>
     <string name="trf_usda_attribution">Lebensmitteldaten: USDA FoodData Central (gemeinfrei)</string>
     <string name="trf_micro_title">Eisen, Calcium, Vitamin D · 7\u00A0Tage</string>
@@ -56,7 +58,7 @@
         <item quantity="one">Geschätzt aus %1$d\u00A0%% deiner Einträge an %2$d\u00A0Tag. Allgemeine Lebensmittel (BLS, USDA) zählen; Markenprodukte und Schnelleinträge haben keine Werte.</item>
         <item quantity="other">Geschätzt aus %1$d\u00A0%% deiner Einträge an %2$d\u00A0Tagen. Allgemeine Lebensmittel (BLS, USDA) zählen; Markenprodukte und Schnelleinträge haben keine Werte.</item>
     </plurals>
-    <string name="trf_micro_info">Eine Schätzung aus deinen Einträgen, neben den EFSA-Referenzwerten für Erwachsene: Eisen 16\u00A0mg für Frauen vor der Menopause, sonst 11\u00A0mg; Calcium 1000\u00A0mg bis 24\u00A0Jahre, danach 950\u00A0mg; Vitamin D 15\u00A0µg, das die Haut im Sommer auch selbst bildet. Wer als Kletterer wenig isst, kommt hier zuerst zu kurz. Bleibt ein Wert über Wochen niedrig, lohnt ein Gespräch mit Ärztin, Arzt oder Sporternährungsberatung – vor allem bei Müdigkeit oder Verletzungen. Das ist keine Diagnose.</string>
+    <string name="trf_micro_info">Eine Schätzung aus deinen Einträgen, neben den EFSA-Referenzwerten für Erwachsene: Eisen 16\u00A0mg für Frauen vor der Menopause, sonst 11\u00A0mg; Calcium 1000\u00A0mg bis 24\u00A0Jahre, danach 950\u00A0mg; Vitamin D 15\u00A0µg, das die Haut im Sommer auch selbst bildet. Wer klettert und wenig isst, kommt hier zuerst zu kurz. Bleibt ein Wert über Wochen niedrig, lohnt ein Gespräch mit Ärztin, Arzt oder Sporternährungsberatung – vor allem bei Müdigkeit oder Verletzungen. Das ist keine Diagnose.</string>
     <string name="trf_entry_edit">Bearbeiten</string>
     <string name="trf_edit_title">Eintrag bearbeiten</string>
     <string name="trf_water_add">+%1$s</string>
@@ -65,20 +67,17 @@
     <string name="trf_unit_oz">oz</string>
     <string name="trf_unit_floz">fl oz</string>
     <string name="trf_unit_cups">Cups (US)</string>
-    <string name="trf_water_entry_desc">%1$s, tippen zum Entfernen</string>
     <string name="trf_kcal_value">%1$d\u00A0kcal</string>
     <string name="trf_kcal_estimated">≈\u00A0%1$d\u00A0kcal</string>
     <string name="trf_value_g">%1$d\u00A0g</string>
     <string name="trf_to_go">noch %1$d\u00A0g</string>
     <string name="trf_reached">Ziel erreicht</string>
     <string name="trf_fat">Fett</string>
-    <string name="trf_fat_share">%1$d\u00A0%% der Energie · Richtwert %2$d–%3$d\u00A0%%</string>
     <string name="trf_fat_info" formatted="false">Fett transportiert die Vitamine A, D, E und K und wird für Hormone gebraucht. Sporternährungs-Empfehlungen für Athletinnen und Athleten nennen etwa 20–35\u00A0% der Energie aus Fett; weniger als 20\u00A0% wird nicht empfohlen. Der Anteil wird aus deinen eingetragenen Werten für Protein, Kohlenhydrate und Fett berechnet.</string>
     <string name="trf_fat_target_energy">Fettziel: Fett füllt auf, was Protein und Kohlenhydrate von deinem Energieziel übrig lassen – mindestens 20\u00A0%% und höchstens 35\u00A0%% davon (heute %1$d–%2$d\u00A0g).</string>
     <string name="trf_fat_target_weight">Fettziel: etwa 1\u00A0g pro kg Körpergewicht (%1$d–%2$d\u00A0g). Mit Größe und Geburtsjahr richtet es sich nach deinem Energieziel.</string>
     <string name="trf_fat_share_today">Heute stammen %1$d\u00A0%% deiner Energie aus Fett.</string>
     <string name="trf_progress_g">%1$d / %2$d\u00A0g</string>
-    <string name="trf_quick_add">Schnell eintragen</string>
     <string name="trf_my_foods">Meine Lebensmittel</string>
     <string name="trf_copy_previous">Wie gestern</string>
     <string name="trf_copy_confirm_title">Einträge vom Vortag übernehmen?</string>
@@ -87,9 +86,8 @@
         <item quantity="other">%d Einträge werden übernommen.</item>
     </plurals>
     <string name="trf_copy_confirm">Übernehmen</string>
-    <string name="trf_empty_day">Noch nichts eingetragen. Ein grober Eintrag reicht – genau zählen musst du nicht.</string>
-    <string name="trf_entry_macros">P\u00A0%1$s · K\u00A0%2$s · F\u00A0%3$s</string>
-    <string name="trf_entry_macros_g">P\u00A0%1$s · K\u00A0%2$s · F\u00A0%3$s\u00A0g</string>
+    <string name="trf_entry_macros">K\u00A0%2$s · P\u00A0%1$s · F\u00A0%3$s</string>
+    <string name="trf_entry_macros_g">K\u00A0%2$s · P\u00A0%1$s · F\u00A0%3$s\u00A0g</string>
     <string name="trf_entry_portions">%1$s\u00A0× Portion</string>
     <string name="trf_entry_menu">Optionen für %1$s</string>
     <string name="trf_deleted">Eintrag gelöscht</string>
@@ -107,7 +105,6 @@
     <string name="trf_qa_optional">Alle Werte sind optional – schätzen ist völlig okay.</string>
     <string name="trf_qa_remember">Auch als Lebensmittel merken</string>
 
-    <string name="trf_foods_search">Eigene Lebensmittel und Datenbank durchsuchen</string>
     <string name="trf_find_food">Lebensmittel suchen</string>
     <string name="trf_foods_bls_title">Lebensmitteldatenbank (BLS)</string>
     <string name="trf_foods_bls_hint">Tippe mindestens zwei Buchstaben, um 7.140 Lebensmittel aus dem Bundeslebensmittelschlüssel zu durchsuchen.</string>
@@ -129,12 +126,10 @@
     <string name="trf_describe_hint">Mengen wie „80\u00A0g“, „2 Scheiben“ oder „ein Glas“ machen das Ergebnis genauer. Du kannst auch mit dem Mikrofon der Tastatur sprechen.</string>
     <string name="trf_describe_go">Auswerten</string>
     <string name="trf_foods_empty">Noch keine gespeicherten Lebensmittel. Leg eins an oder merk dir einen Schnelleintrag.</string>
-    <string name="trf_foods_new">Neues Lebensmittel</string>
     <string name="trf_food_per_portion">pro Portion</string>
     <string name="trf_food_per_100">pro 100\u00A0g</string>
     <string name="trf_food_favorite">Als Favorit markieren</string>
     <string name="trf_food_unfavorite">Aus Favoriten entfernen</string>
-    <string name="trf_food_delete">Lebensmittel löschen</string>
     <string name="trf_food_delete_confirm_title">„%1$s“ löschen?</string>
     <string name="trf_food_delete_confirm_text">Es verschwindet aus deinen Lebensmitteln; was du schon eingetragen hast, bleibt, wie es ist.</string>
 
@@ -158,4 +153,17 @@
     <string name="trf_recent_title">Wieder eintragen</string>
     <string name="trf_recent_log">%1$s wieder eintragen</string>
     <string name="trf_recent_logged">Eingetragen: %1$s</string>
+
+    <!-- Mehrere Lebensmittel für eine Mahlzeit und Gerichte mit einem Tipp (Nokia-Durchgang 22.11.2026) -->
+    <plurals name="trf_logged_meal">
+        <item quantity="one">%2$s: %1$d Eintrag</item>
+        <item quantity="other">%2$s: %1$d Einträge</item>
+    </plurals>
+    <string name="trf_dishes_title">Meine Gerichte</string>
+    <string name="trf_dishes_all">Alle %1$d Gerichte zeigen</string>
+    <string name="trf_dish_log">%1$s eintragen</string>
+    <string name="trf_one_portion">1\u00A0Portion</string>
+    <string name="trf_food_new">Lebensmittel</string>
+    <string name="trf_food_choose_amount">Menge wählen</string>
+    <string name="trf_food_is_favorite">Favorit</string>
 </resources>

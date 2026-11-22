@@ -105,8 +105,8 @@
     <string name="tr_dayload_rest">Rest day</string>
     <string name="tr_dayload_light">Light day</string>
     <string name="tr_dayload_moderate">Training day</string>
-    <string name="tr_dayload_hard">Hard training day</string>
-    <string name="tr_dayload_very_hard">Very hard day</string>
+    <string name="tr_dayload_hard">Demanding day</string>
+    <string name="tr_dayload_very_hard">Very demanding day</string>
 
     <!-- Set types -->
     <string name="tr_settype_warmup">Warm-up</string>
