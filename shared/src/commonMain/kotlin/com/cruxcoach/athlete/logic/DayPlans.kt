@@ -178,16 +178,24 @@ object DayPlans {
      * What to point out in [days] from today on (advice, nothing is locked): hard days back to back, finger training
      * before a hard day. [fingerWork] says whether a planned entry trains the fingers.
      */
-    fun warnings(days: List<Day>, today: LocalDate, fingerWork: (String) -> Boolean): List<Warning> =
+    fun warnings(days: List<Day>, today: LocalDate, seasoned: Boolean = false, fingerWork: (String) -> Boolean): List<Warning> =
         days.zipWithNext().mapNotNull { (a, b) ->
+            // Someone who has climbed for years plans hard days in a row on purpose: for them only a limit day counts
+            // (owner 2026-11-22: a pro who trains every day is not told every week that it is too much).
+            fun counts(i: ClimbIntensity?) = if (seasoned) i == ClimbIntensity.LIMIT else hard(i)
             when {
                 b.date < today -> null
-                hard(a.hardness) && hard(b.hardness) -> Warning(WarningKind.HARD_BACK_TO_BACK, b.date, a.date)
-                a.date >= today && a.hint == Hint.ROUTINE && a.entry != null && hard(b.hardness) && fingerWork(a.entry) ->
+                counts(a.hardness) && counts(b.hardness) -> Warning(WarningKind.HARD_BACK_TO_BACK, b.date, a.date)
+                a.date >= today && a.hint == Hint.ROUTINE && a.entry != null && counts(b.hardness) && fingerWork(a.entry) ->
                     Warning(WarningKind.FINGERS_BEFORE_HARD, b.date, a.date)
                 else -> null
             }
         }
+
+    /** More than five years of climbing as an adult: the planner's warnings keep to limit days ([warnings]). */
+    fun seasoned(coach: com.cruxcoach.athlete.model.CoachProfile): Boolean =
+        coach.experience == com.cruxcoach.athlete.model.ExperienceBand.OVER_5 &&
+            coach.ageBand != com.cruxcoach.athlete.model.AgeBand.UNDER_16 && coach.ageBand != com.cruxcoach.athlete.model.AgeBand.Y16_17
 
     /**
      * A free day for the training [entry] that had to give way on [from] (owner 2026-10-19: "the rest adjusts"):

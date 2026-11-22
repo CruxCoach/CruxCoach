@@ -56,6 +56,9 @@ import javax.inject.Inject
 /** How far ahead the planner shows days (owner 2026-10-19: "two days later", also over a weekend). */
 internal const val PLANNER_DAYS = 14
 
+/** Settings prefix: planner warnings the athlete acknowledged (kind and the two days). */
+internal const val WARNING_SEEN = "planwarn.seen."
+
 data class DayPlannerState(
     val loading: Boolean = true,
     val today: LocalDate? = null,
@@ -106,8 +109,19 @@ class DayPlannerViewModel @Inject constructor(private val service: AthleteServic
             else runCatching { LocalDate.parse(day) }.getOrNull()?.let { it to a.climbIntensity }
         }.toMap()
         val days = DayPlans.preview(profile, today, PLANNER_DAYS, today, pauses, logged)
-        val warnings = DayPlans.warnings(days, today) { fingerWork(it, routines) }
+        // Read once ("Verstanden"), a warning about the same two days stays away.
+        val seen = service.repo.settingsWithPrefix(WARNING_SEEN).keys
+        val warnings = DayPlans.warnings(days, today, DayPlans.seasoned(profile.coach)) { fingerWork(it, routines) }
+            .filter { warningKey(it) !in seen }
         _state.update { it.copy(loading = false, today = today, profile = profile, routines = routines, days = days, warnings = warnings) }
+    }
+
+    private fun warningKey(w: DayPlans.Warning) = WARNING_SEEN + w.kind.name + "." + w.other + "." + w.date
+
+    /** "Verstanden" on a warning: the advice was read; the athlete decides. */
+    fun dismiss(w: DayPlans.Warning) = io {
+        service.repo.putSetting(warningKey(w), "1")
+        _state.update { s -> s.copy(warnings = s.warnings - w) }
     }
 
     /** A planned training trains the fingers (a hangboard or block exercise beyond the warm-up). */
@@ -251,7 +265,10 @@ fun DayPlannerSheet(onDismiss: () -> Unit, viewModel: DayPlannerViewModel = hilt
                             stringResource(R.string.trdp_warn_back_to_back, plannerDayLabel(w.other, today), plannerDayLabel(w.date, today))
                         DayPlans.WarningKind.FINGERS_BEFORE_HARD ->
                             stringResource(R.string.trdp_warn_fingers_before, plannerDayLabel(w.other, today), plannerDayLabel(w.date, today))
-                    }, style = MaterialTheme.typography.bodySmall)
+                    }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { viewModel.dismiss(w) }, modifier = Modifier.testTag("day_planner_warning_seen")) {
+                        Text(stringResource(R.string.action_understood))
+                    }
                 }
             }
             state.days.forEach { day ->

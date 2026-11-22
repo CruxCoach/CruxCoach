@@ -189,6 +189,9 @@
     <string name="trt_form_good">Feeling good</string>
     <string name="trt_form_tired">Tired</string>
     <string name="trt_climbed_yesterday">Climbed yesterday? Log it</string>
+    <string name="trt_climb_today">Climbing today</string>
+    <string name="trt_climb_today_done">Today is a climbing day now.</string>
+    <string name="trt_insist">Anyway: %1$s</string>
     <string name="trt_form_more">More detail</string>
     <string name="trt_sugg_week_title">Plan your week</string>
     <string name="trt_sugg_week_text">Tell the coach on which days you climb. It plans the rest around them.</string>

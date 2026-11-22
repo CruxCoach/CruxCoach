@@ -4,6 +4,7 @@ import com.cruxcoach.athlete.catalog.ExerciseCatalog
 import com.cruxcoach.athlete.logic.DayActivity
 import com.cruxcoach.athlete.logic.DayPlans
 import com.cruxcoach.athlete.logic.PlannedTraining
+import com.cruxcoach.athlete.logic.PreferenceLearning
 import com.cruxcoach.athlete.model.*
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
@@ -111,6 +112,33 @@ class DayPlansTest {
                 DayPlans.Warning(DayPlans.WarningKind.FINGERS_BEFORE_HARD, day(5), day(4))),
             warnings,
         )
+    }
+
+    @Test
+    fun aSeasonedClimberIsOnlyWarnedAboutLimitDays() {
+        // Owner 2026-11-22: a pro who plans hard days in a row is not told every week that it is too much.
+        var p = DayPlans.withDay(AthleteProfile(), day(1), limit, monday)
+        p = DayPlans.withDay(p, day(2), DayPlans.Climb(ClimbingDayKind.OUTDOOR, ClimbIntensity.HARD).entry, monday)
+        p = DayPlans.withDay(p, day(4), fingers, monday)
+        p = DayPlans.withDay(p, day(5), PLAN_BOARD, monday)
+        val days = DayPlans.preview(p, monday, 7, monday)
+        assertTrue(DayPlans.warnings(days, monday, seasoned = true) { it == fingers }.isEmpty())
+        // Two limit days in a row are pointed out to everyone.
+        val twice = DayPlans.preview(DayPlans.withDay(p, day(2), limit, monday), monday, 7, monday)
+        assertEquals(listOf(DayPlans.Warning(DayPlans.WarningKind.HARD_BACK_TO_BACK, day(2), day(1))),
+            DayPlans.warnings(twice, monday, seasoned = true) { it == fingers })
+        assertTrue(DayPlans.seasoned(CoachProfile(experience = ExperienceBand.OVER_5, ageBand = AgeBand.Y18_39)))
+        assertTrue(!DayPlans.seasoned(CoachProfile(experience = ExperienceBand.Y3_5)) && !DayPlans.seasoned(CoachProfile(experience = ExperienceBand.OVER_5, ageBand = AgeBand.Y16_17)))
+    }
+
+    @Test
+    fun trainingPastTheWeeksDaysTwiceTeachesTheCoach() {
+        fun anyway(id: String, day: LocalDate) = SuggestionEvent(id, day.toString(), 1_000, SuggestionEventKind.FEEDBACK, PreferenceLearning.TRAIN_ANYWAY)
+        val today = day(20)
+        assertTrue(!PreferenceLearning.trainsPastWeekDays(listOf(anyway("a", day(5)), anyway("b", day(6))), today))
+        assertTrue(PreferenceLearning.trainsPastWeekDays(listOf(anyway("a", day(5)), anyway("b", day(13))), today))
+        // Long ago it says nothing.
+        assertTrue(!PreferenceLearning.trainsPastWeekDays(listOf(anyway("a", day(5)), anyway("b", day(13))), day(13 + 50)))
     }
 
     @Test
