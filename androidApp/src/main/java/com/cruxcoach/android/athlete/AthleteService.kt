@@ -700,7 +700,7 @@ class AthleteService @Inject constructor(
             steps = steps,
             now = now(),
             stepHistory = untrimmed(history),
-            stepOn = canStepOn(def),
+            stepOn = canStepOn(def, stepOffers(steps)),
         )
         val factor = if (item.warmup || item.test) 1.0 else ReadinessModifiers.loadFactorFor(def, modifier)
         // The training remembers what today's form changed, so the player can say why and offer "as planned".
@@ -813,24 +813,8 @@ class AthleteService @Inject constructor(
         val noted = plannedSets(workoutId)
         val setsOf = planned.groupBy { it.exerciseSlug to it.side }.mapValues { (key, rows) -> max(rows.size, noted[key] ?: 0) }
         val steps = runCatching { planStepsAfter(workoutId) }.getOrDefault(NextTargets.Steps.CAREFUL)
-        val ctx = PlanContext()
-        val profile = repo.profile()
-        val owned = profile.equipment.takeIf { profile.equipmentConfigured }
-        fun there(def: com.cruxcoach.athlete.catalog.ExerciseDefinition) =
-            owned == null || def.equipment.all { e -> com.cruxcoach.athlete.catalog.EquipmentV2.satisfied(e, owned) }
-        val known = runCatching { ExerciseFamiliarity.known(repo.trainedExercises().associate { it.slug to it.trainings }, repo.allBenchmarks()) }
-            .getOrDefault(emptySet())
-        val choice = profile.coach.exerciseChoice
-        val classics = choice != ExerciseChoice.OPEN && (choice == ExerciseChoice.CLASSICS || ExerciseFamiliarity.starter(known))
-        val steppedFrom = runCatching {
-            PreferenceLearning.keptEffect(PreferenceLearning.kept(
-                repo.suggestionEventsSince(now() - PreferenceLearning.LEDGER_DAYS * 24L * 3600 * 1000), today(), profile.learningResets)).resting.keys
-        }.getOrDefault(emptySet())
-        val fingerSteps = steps == NextTargets.Steps.FULL && CoachLogic.fingerMaxAllowed(profile.coach)
-        fun offered(from: com.cruxcoach.athlete.catalog.ExerciseDefinition, to: com.cruxcoach.athlete.catalog.ExerciseDefinition) =
-            to.category == from.category && there(to) && to.slug !in steppedFrom && to.slug !in profile.excludedExercises &&
-                !(classics && to.familiarity == com.cruxcoach.athlete.catalog.Familiarity.SPECIAL && to.slug !in known) &&
-                (fingerSteps || com.cruxcoach.athlete.catalog.LoadDomain.FINGER !in to.domains)
+        val ctx = PlanContext(steps)
+        val offered = ctx.offered
         val lines = work.groupBy { it.exerciseSlug to it.side }.mapNotNull { (key, done) ->
             val def = catalog[key.first] ?: return@mapNotNull null
             if (def.kind == com.cruxcoach.athlete.catalog.ExerciseKind.CLIMB || def.kind == com.cruxcoach.athlete.catalog.ExerciseKind.INTERVAL) return@mapNotNull null
@@ -867,14 +851,62 @@ class AthleteService @Inject constructor(
      * that does not count as "last time" (the one being planned).
      */
     fun nextTarget(item: RoutineItem, side: Side? = null, exceptWorkout: String? = null, steps: NextTargets.Steps = planSteps()): NextTargets.Next =
-        nextTarget(item, side, exceptWorkout, steps, PlanContext(), repo.history(item.slug, 60))
+        nextTarget(item, side, exceptWorkout, steps, PlanContext(steps), repo.history(item.slug, 60))
 
     /** What every plan of one moment shares, read once for a whole card or summary. */
     private inner class PlanContext(
+        steps: NextTargets.Steps,
         val bodyweight: Double? = currentBodyweight(),
         val increment: Double = repo.profile().smallestIncrementKg,
         val now: Long = now(),
-    )
+    ) {
+        /** Whether an exercise may be offered as the step from another ([stepOffers]). */
+        val offered = stepOffers(steps)
+    }
+
+    /**
+     * Whether an exercise of a chain may be offered as the step from another: it does the same job (the same category:
+     * a scapular push-up does not step to a push exercise), the place has the equipment, it is not excluded, the athlete
+     * did not step away from it lately (no back and forth), it is no Special exercise for someone still with the
+     * classics (new to training here, or "mostly classics"), and, for finger work, nothing keeps loads careful
+     * ([steps]) and maximal finger work is allowed at all.
+     *
+     * The summary's "next time" offers by it ([nextTime]) and the plan reads it the same way ([canStepOn]): where the
+     * next exercise will not be offered, repetitions go on above their range. What it needs from the ledger and the
+     * training history is read on first use, once.
+     */
+    private fun stepOffers(steps: NextTargets.Steps): (com.cruxcoach.athlete.catalog.ExerciseDefinition, com.cruxcoach.athlete.catalog.ExerciseDefinition) -> Boolean {
+        val profile = repo.profile()
+        val owned = profile.equipment.takeIf { profile.equipmentConfigured }
+        val known by lazy {
+            runCatching { ExerciseFamiliarity.known(repo.trainedExercises().associate { it.slug to it.trainings }, repo.allBenchmarks()) }.getOrDefault(emptySet())
+        }
+        val classics by lazy {
+            val choice = profile.coach.exerciseChoice
+            choice != ExerciseChoice.OPEN && (choice == ExerciseChoice.CLASSICS || ExerciseFamiliarity.starter(known))
+        }
+        val steppedFrom by lazy {
+            runCatching {
+                PreferenceLearning.keptEffect(PreferenceLearning.kept(
+                    repo.suggestionEventsSince(now() - PreferenceLearning.LEDGER_DAYS * 24L * 3600 * 1000), today(), profile.learningResets)).resting.keys
+            }.getOrDefault(emptySet())
+        }
+        val fingerSteps = steps == NextTargets.Steps.FULL && CoachLogic.fingerMaxAllowed(profile.coach)
+        return { from, to ->
+            to.category == from.category && (owned == null || to.equipment.all { e -> com.cruxcoach.athlete.catalog.EquipmentV2.satisfied(e, owned) }) &&
+                to.slug !in profile.excludedExercises && to.slug !in steppedFrom &&
+                !(to.familiarity == com.cruxcoach.athlete.catalog.Familiarity.SPECIAL && classics && to.slug !in known) &&
+                (fingerSteps || com.cruxcoach.athlete.catalog.LoadDomain.FINGER !in to.domains)
+        }
+    }
+
+    /**
+     * The next exercise of [def]'s chain is one the athlete will be offered here ([stepOffers]). Where it is out of
+     * reach, the plan lets the repetitions go on above their range ([NextTargets.plan]).
+     */
+    private fun canStepOn(def: com.cruxcoach.athlete.catalog.ExerciseDefinition,
+                          offered: (com.cruxcoach.athlete.catalog.ExerciseDefinition, com.cruxcoach.athlete.catalog.ExerciseDefinition) -> Boolean): Boolean =
+        def.harder?.let { catalog[it] }?.let { offered(def, it) } ?: false
 
     private fun nextTarget(
         item: RoutineItem, side: Side?, exceptWorkout: String?, steps: NextTargets.Steps, ctx: PlanContext, history: List<ExerciseSet>,
@@ -883,20 +915,7 @@ class AthleteService @Inject constructor(
         val capacity = capacityFor(def, side, item.edgeMm?.toDouble(), item.grip, ctx.bodyweight)
             ?: startEstimate(def, ctx.bodyweight).takeIf { item.loadKg == null && history.none { it.isCompleted && it.setType != SetType.WARMUP } }
         return NextTargets.plan(def, item, capacity, untrimmed(history), side, ctx.bodyweight, ctx.increment, steps, exceptWorkout, now = ctx.now,
-            stepOn = canStepOn(def))
-    }
-
-    /**
-     * The next exercise of [def]'s chain is one the athlete can step on to here: the same job, not excluded, and the
-     * place has its equipment ([nextTime] offers nothing else). Where it is out of reach, the plan lets the
-     * repetitions go on above their range ([NextTargets.plan]) – the plan and the tip read it the same way.
-     */
-    private fun canStepOn(def: com.cruxcoach.athlete.catalog.ExerciseDefinition): Boolean {
-        val to = def.harder?.let { catalog[it] } ?: return false
-        val profile = repo.profile()
-        val owned = profile.equipment.takeIf { profile.equipmentConfigured }
-        return to.category == def.category && to.slug !in profile.excludedExercises &&
-            (owned == null || to.equipment.all { e -> com.cruxcoach.athlete.catalog.EquipmentV2.satisfied(e, owned) })
+            stepOn = canStepOn(def, ctx.offered))
     }
 
     /** One row of Today's card: the last training's work sets and what today's training plans. */
@@ -908,7 +927,7 @@ class AthleteService @Inject constructor(
      * [addItem]) the row shows that load and no step – a tired day is no step back. One-sided work shows one side.
      */
     fun rowTargets(items: List<RoutineItem>, steps: NextTargets.Steps, modifier: ReadinessModifier?): Map<String, RowTargets> {
-        val ctx = PlanContext()
+        val ctx = PlanContext(steps)
         return items.associate { item ->
             val def = catalog.fallbackFor(item.slug)
             val side = if (def.unilateral) Side.RIGHT else null
