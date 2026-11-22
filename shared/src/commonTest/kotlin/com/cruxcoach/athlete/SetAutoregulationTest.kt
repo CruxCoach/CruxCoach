@@ -119,6 +119,21 @@ class SetAutoregulationTest {
     }
 
     @Test
+    fun theReserveAnswerAfterAStepDownToBodyWeightChangesNothingMore() {
+        // The player asks twice for one set: when it is done, and again when the reserve is answered. The next sets
+        // then hold the first step already; read from them, the second answer gave the kilo back and took a repetition.
+        val lunge = weightedPull.copy(slug = "legs.walking_lunge", category = ExerciseCategoryV2.LEGS)
+        val done = set(reps = 10, targetReps = 12, load = 1.0)
+        val planned = set(targetReps = 12, load = 1.0, done = false)
+        val first = SetAutoregulation.adjust(lunge, done, planned, 1.0)
+        assertEquals(-1.0, first?.loadDeltaKg)
+        val afterFirst = SetAutoregulation.apply(lunge, planned, first!!)
+        assertEquals(0.0, afterFirst.loadKg)
+        val second = SetAutoregulation.adjust(lunge, done.copy(rir = 0), afterFirst, 1.0)
+        assertNull(SetAutoregulation.difference(second, first))
+    }
+
+    @Test
     fun feelingOutAGuessMovesTenPercentBothWaysAndPastTheGuess() {
         // Owner 2026-10-10: a guessed start load is felt out – 32 kg held easily goes to 35, a hold that ends early to 29.
         val next = set(load = 32.0, target = 10.0, done = false)

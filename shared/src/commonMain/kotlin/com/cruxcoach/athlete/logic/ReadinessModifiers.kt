@@ -135,10 +135,11 @@ object ReadinessModifiers {
      * Scales one prescribed load by [factor] of the total load: added weight
      * for body-weight-plus work (more assistance when it goes below zero),
      * the lifted weight for external loads. Body-weight-only work has no load.
-     * Work that no band or pulley can assist (lunges, sit-ups) stays at body
-     * weight at the least, as in the plan ([LoadPrescriber.assistable]): a
-     * tired day planned weighted sit-ups at "−3 kg" (training simulation
-     * 2026-11-22).
+     * Work that no band or pulley can assist (lunges, sit-ups,
+     * [LoadPrescriber.assistable]) scales what is added only: body weight is
+     * the least there, as in the plan. A tired day planned weighted sit-ups at
+     * "−3 kg" (training simulation 2026-11-22). Scaled this way the way back
+     * ("as planned", a factor above 1) leaves body weight at body weight too.
      */
     fun scaleLoad(def: ExerciseDefinition, loadKg: Double?, bodyweightKg: Double?, factor: Double, incrementKg: Double): Double? {
         if (loadKg == null || factor == 1.0) return loadKg
@@ -146,9 +147,8 @@ object ReadinessModifiers {
             LoadMode.EXTERNAL -> StrengthMath.roundTo(max(0.0, loadKg * factor), incrementKg)
             LoadMode.BODYWEIGHT_PLUS -> {
                 val bw = bodyweightKg?.takeIf { it > 0 }
-                val scaled = if (bw == null) StrengthMath.roundTo(if (loadKg > 0) loadKg * factor else loadKg, incrementKg)
-                    else StrengthMath.roundTo((bw + loadKg) * factor - bw, incrementKg)
-                if (scaled < 0.0 && !LoadPrescriber.assistable(def)) max(scaled, min(loadKg, 0.0)) else scaled
+                if (bw == null || !LoadPrescriber.assistable(def)) StrengthMath.roundTo(if (loadKg > 0) loadKg * factor else loadKg, incrementKg)
+                else StrengthMath.roundTo((bw + loadKg) * factor - bw, incrementKg)
             }
             else -> loadKg
         }

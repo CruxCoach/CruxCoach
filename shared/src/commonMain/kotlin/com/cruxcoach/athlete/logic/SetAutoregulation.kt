@@ -107,8 +107,9 @@ object SetAutoregulation {
         return when {
             missed || rir == 0 -> {
                 val reason = if (missed) AdjustReason.MISSED_REPS else AdjustReason.NO_RESERVE
-                // What can come off: a step, or what is left above body weight where nothing can assist.
-                val drop = if (unassisted(def)) minOf(step, max(0.0, next?.targetLoadKg ?: next?.loadKg ?: done.loadKg ?: 0.0)) else step
+                // What can come off: a step, or what is left above body weight where nothing can assist. Read from the
+                // set just done: the next sets may hold this very step already, when the reserve answer comes in after it.
+                val drop = if (unassisted(def)) minOf(step, max(0.0, done.loadKg ?: 0.0)) else step
                 if (loaded && done.loadKg != null && drop > 1e-9) SetAdjustment(loadDeltaKg = -drop, reason = reason)
                 else {
                     val plannedReps = next?.targetReps ?: target ?: return null
@@ -135,8 +136,8 @@ object SetAutoregulation {
                     ?.let { if (def.load == LoadMode.EXTERNAL) LoadRules.logged(def, it) else it } ?: done.loadKg
                 // Feeling out drops the full step (about 10 %); otherwise about 5 % of the total load.
                 val drop = if (feel) step else max(step, StrengthMath.roundTo(total * HOLD_LOAD_SHARE, step))
-                // Lifted weight cannot go below zero; added weight may turn into assistance, where there is such a thing.
-                val limited = if (def.load == LoadMode.EXTERNAL || unassisted(def)) minOf(drop, max(0.0, (next?.targetLoadKg ?: done.loadKg))) else drop
+                // Lifted weight cannot go below zero; added weight may turn into assistance.
+                val limited = if (def.load == LoadMode.EXTERNAL) minOf(drop, max(0.0, (next?.targetLoadKg ?: done.loadKg))) else drop
                 if (limited <= 0.0) null else SetAdjustment(loadDeltaKg = -limited, reason = AdjustReason.HOLD_FAILED)
             }
             failed -> {

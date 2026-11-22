@@ -328,12 +328,15 @@ class ReadinessModifiersTest {
         val block = def("finger.one_arm_pickup", load = LoadMode.EXTERNAL)
         assertEquals(27.0, ReadinessModifiers.scaleLoad(block, 30.0, 70.0, 0.9, 1.0))
         assertNull(ReadinessModifiers.scaleLoad(block, null, 70.0, 0.9, 1.0))
-        // A pull-up at body weight gets some assistance on a tired day; a sit-up or a lunge cannot be assisted and stays
-        // at body weight (simulation 2026-11-22: weighted sit-ups planned at −3 kg).
+        // A pull-up at body weight gets some assistance on a tired day; a sit-up or a lunge cannot be assisted: only
+        // what is added scales, body weight is the least (simulation 2026-11-22: weighted sit-ups planned at −3 kg).
         assertEquals(-7.0, ReadinessModifiers.scaleLoad(pullUp, 0.0, 70.0, 0.9, 1.0))
         val sitUp = ExerciseDefinition("core.weighted_sit_up", ExerciseCategoryV2.CORE, ExerciseKind.LOAD_REPS, LoadMode.BODYWEIGHT_PLUS)
         assertEquals(0.0, ReadinessModifiers.scaleLoad(sitUp, 0.0, 70.0, 0.9, 1.0))
-        assertEquals(2.0, ReadinessModifiers.scaleLoad(sitUp, 10.0, 70.0, 0.9, 1.0))
+        assertEquals(18.0, ReadinessModifiers.scaleLoad(sitUp, 20.0, 70.0, 0.9, 1.0))
+        // The way back ("as planned") leaves body weight at body weight and gives the added weight back.
+        assertEquals(0.0, ReadinessModifiers.scaleLoad(sitUp, 0.0, 70.0, 1 / 0.9, 1.0))
+        assertEquals(20.0, ReadinessModifiers.scaleLoad(sitUp, 18.0, 70.0, 1 / 0.9, 1.0))
     }
 }
 
