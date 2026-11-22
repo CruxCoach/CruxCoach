@@ -22,8 +22,9 @@ Code: `androidApp/src/test/java/com/cruxcoach/android/athlete/sim/`.
   SIM_FULL=1 SIM_ONLY=pulley-injury,masters-55 ./gradlew …   # some personas only
   ```
 
-  Reports are written to `androidApp/build/training-simulation/`: one Markdown file per persona and
-  `overview.md`. Every run is reproducible: each persona has a fixed seed.
+  Reports are written to `androidApp/build/training-simulation/`: one Markdown file per persona,
+  `overview.md` and `reference.md` (see "The reference coach"). Every run is reproducible: each
+  persona has a fixed seed.
 
 ## What runs
 
@@ -141,6 +142,8 @@ strength and apart from the plan's rules:
 | `home-classics` | `home-hangboard` with "Mostly classics" |
 | `new-no-setup` | A new user who answers none of the coach setup; a pull-up bar and a mat |
 | `picky` | `home-hangboard`, but taps "Another suggestion" on about a third of the training days and swaps one exercise for one of its alternatives on about four in ten |
+| `advanced-7a` | Over five years, boulders 7A, four days a week: a hard board day and a limit day, trains the day after the hard one and again two days later |
+| `elite-7c-plus` | Over five years, boulders 7C+, six days a week: two limit days and a hard day, trains the day after a limit day |
 | `comeback-skipper` | `pulley-comeback`, but skips about half of the plan's sessions and keeps the stage when the plan proposes a step back |
 | `comeback-eager` | `pulley-comeback`, but on half of the climbing days the stage allows climbs one level harder |
 | `comeback-late` | `pulley-comeback`, but starts the plan two weeks after the injury, at stage 2 |
@@ -163,7 +166,7 @@ that misfires is caught instead of confirmed.
 | Group | Check | Threshold and source |
 |---|---|---|
 | Safety | No max finger work (loaded strength hangs, campus) during an open finger injury (one-handed work for the healthy hand of a one-hand injury excepted), the return ramp, or for young or first-year climbers | Growing climbers risk finger growth-plate injuries (Morrison & Schöffl 2007; Schöffl et al. 2015) |
-| Safety | No max finger work within 48 h after a hard or limit climbing day (72 h at 55+) | Hörst 2016; longer recovery with age (Fell & Williams 2008) |
+| Safety | No max finger work within 48 h after a hard or limit climbing day (72 h at 55+). A seasoned climber under 40 (personas `advanced-7a`, `elite-7c-plus`) may train the day after a hard day; the advanced one waits a day after a limit session, the elite one does not | Hörst 2016; longer recovery with age (Fell & Williams 2008); the steps for seasoned climbers: owner 2026-11-22 |
 | Safety | No suggested exercise that lists an open injury's region as a contraindication (injuries of pain ≥ 4), unless a comeback plan has reached the stage from which training outside the plan may load the spot again (fingers stage 5, other regions stage 3), or it is one-sided work the athlete did with the healthy side only and that does not load the injured region on the other side as well (the catalogue's `bothSides`) | The comeback plan's own stages (owner 2026-10-20) |
 | Safety | Climbers under 18: no campus, no one-arm or max finger work | Morrison & Schöffl 2007 |
 | Safety | 55+: max finger sessions at least 72 h apart | Fell & Williams 2008 |
@@ -184,6 +187,10 @@ that misfires is caught instead of confirmed.
 | Plan | A suggested training lasts at most 1.3 × the chosen length (+5 min) | – |
 | Plan | No full training is suggested once the week's training days (climbing included) are used up, and "training days done" is not said while days are left | – |
 | Plan | At least six different exercises in every eight full trainings (the block after climbing is meant to repeat) | – |
+| Plan | A seasoned climber under 40 (the persona says who is one) is not told to recover from climbing on a day without climbing – except an advanced climber the day after a limit session | Owner 2026-11-22: a hard day holds finger work back the same day only, a limit day the next one too for an advanced climber and not for an elite one |
+| Plan | A seasoned climber gets finger training suggested on the training day after a hard day (an elite climber: after a limit day too) in at least half of the whole build weeks from week 3 on that were trained as planned (judged from two such weeks on) | Owner 2026-11-22 |
+| Plan | In those weeks the coach asks an elite climber for three finger sessions (an advanced one for two at least; hard climbing days count), and the week reaches them | Owner 2026-11-22 |
+| Plan | In those weeks the coach suggests no finger training by itself once the week's finger days (hard and limit climbing days, days with finger sets, each day counted) reach what the week asks for | For a seasoned climber the finger training of the day after climbing is a session of its own: the coach puts it there |
 | Stacking | A suggested training has at least three work sets and 12 minutes | – |
 | Choice | Beginners (personas of the beginner level), weeks 1–4: no Special exercise they do not know yet | Novices start with simple exercises and proper technique; complexity grows with training status (ACSM 2009) |
 | Choice | Beginners, weeks 1–4: at least 70 % of the main exercises (warm-ups and mobility aside) are Basic or known to them; with "Mostly classics" 80 % outside the finger work, for the whole run, and no Special exercise they do not know | ACSM 2009; the shares are the values of the proposal in issue #68 |
@@ -220,6 +227,14 @@ The table gives, per persona and quality (pull, push, legs, core, prehab), the g
 capacity with both coaches and the trainings in which the quality got its stimulus. A quality
 counts as weaker when the app's gain is more than one percentage point behind the reference's,
 and the full run fails when there is one.
+
+For every weaker quality the run writes `<persona>-reference.md`: each training with work for it,
+the app's sets next to the reference's, with the reserve the athlete truly had. `SIM_DETAIL=legs,prehab`
+writes it for these qualities of every compared persona of the run that trained them, weaker or not
+(personas with an injury are not compared).
+
+The first training of an exercise starts where the app started, with the load the athlete lifted
+there: a planned load far beyond them they lower by hand, in the replay as in the app's run.
 
 ## Sources
 

@@ -21,6 +21,12 @@ import com.cruxcoach.android.athlete.sim.SimAthlete.Quality
 /** Where a simulated athlete starts and how fast they can improve. */
 enum class Level { BEGINNER, INTERMEDIATE, ADVANCED }
 
+/**
+ * A climber the coach leaves more to (owner 2026-11-22): what the athlete is, said by the persona. The checks hold the
+ * coach to it without asking the coach's own classification.
+ */
+enum class Seasoned { ADVANCED, ELITE }
+
 /** Climbing on a weekday, logged by hand after the session. */
 data class Climb(val kind: ClimbingDayKind, val minutes: Int, val intensity: ClimbIntensity)
 
@@ -113,6 +119,8 @@ data class Persona(
     val events: List<Event> = emptyList(),
     /** Days from the start to a trip or competition (taper). */
     val targetInDays: Int? = null,
+    /** Advanced (about 7A, four days a week) or elite (7C and up, five days and more), after more than five years. */
+    val seasoned: Seasoned? = null,
 ) {
     /** Starting value of a quality, % body weight (see [SimAthlete]). */
     fun start(q: Quality): Double {
@@ -164,7 +172,7 @@ data class Persona(
         private fun board(minutes: Int, i: ClimbIntensity) = Climb(ClimbingDayKind.OTHER_BOARD, minutes, i)
 
         /** Every persona of the full run. */
-        val ALL: List<Persona> get() = BASE + CHOICE + CARD + COMEBACK + REGIONS
+        val ALL: List<Persona> get() = BASE + CHOICE + CARD + SEASONED + COMEBACK + REGIONS
 
         private val BASE: List<Persona> = listOf(
             Persona("beginner-board", "Beginner on the board, nothing else",
@@ -299,6 +307,34 @@ data class Persona(
                     "for one of its alternatives on about four in ten.",
                 seed = 2121, weeks = 10, anotherShare = 0.3, swapShare = 0.4)
         })
+
+        /**
+         * The coach leaves more to a seasoned climber (owner 2026-11-22): one persona per step. The advanced one trains
+         * the day after a hard climbing day, the elite one the day after a limit day – where the usual rules keep finger
+         * work away – and neither climbs on the day after that, so nothing else stands against finger training there.
+         * The advanced one trains again two days later with no climbing around it: the day that shows whether the
+         * finger training of the day after climbing counted as one of the week's sessions.
+         */
+        private val SEASONED: List<Persona> = listOf(
+            Persona("advanced-7a", "Advanced boulderer at 7A, four days a week",
+                "Over five years, boulders 7A. A hard board session on Monday and a limit session in the gym on Saturday, " +
+                    "trains on Tuesday and Thursday with hangboard, bar and weights.",
+                seed = 1515, weeks = 10, level = Level.ADVANCED, bodyweightKg = 69.0,
+                coach = coach(CoachGoal.CLIMB_HARDER, ExperienceBand.OVER_5, AgeBand.Y18_39, 4, setOf(1, 6),
+                    setOf(ClimbingContext.HOME_BOARD, ClimbingContext.GYM_BOULDER), FingerPreference.HANGBOARD).copy(currentGrade = "7A"),
+                equipment = HOME + setOf(EquipmentV2.PLATES, EquipmentV2.BOARD), trainingDays = setOf(2, 4),
+                climbing = mapOf(1 to board(100, ClimbIntensity.HARD), 6 to boulder(120, ClimbIntensity.LIMIT)),
+                seasoned = Seasoned.ADVANCED),
+            Persona("elite-7c-plus", "Elite boulderer at 7C+, six days a week",
+                "Over five years, boulders 7C+. Limit sessions on the board on Monday and Saturday, a hard gym session on " +
+                    "Thursday, trains on Tuesday, Wednesday and Friday in a gym with hangboard, block and weights.",
+                seed = 1616, weeks = 10, level = Level.ADVANCED, bodyweightKg = 66.0,
+                coach = coach(CoachGoal.CLIMB_HARDER, ExperienceBand.OVER_5, AgeBand.Y18_39, 6, setOf(1, 4, 6),
+                    setOf(ClimbingContext.GYM_BOARD, ClimbingContext.GYM_BOULDER), FingerPreference.HANGBOARD).copy(currentGrade = "7C+"),
+                equipment = GYM + setOf(EquipmentV2.HANGBOARD, EquipmentV2.PICKUP_BLOCK, EquipmentV2.BOARD), trainingDays = setOf(2, 3, 5),
+                climbing = mapOf(1 to board(120, ClimbIntensity.LIMIT), 4 to boulder(120, ClimbIntensity.HARD), 6 to board(100, ClimbIntensity.LIMIT)),
+                seasoned = Seasoned.ELITE),
+        )
 
         /** Comeback plans the athlete does not follow to the letter (issue #59 follow-up), each from `pulley-comeback`. */
         private val COMEBACK: List<Persona> = BASE.first { it.id == "pulley-comeback" }.let { p ->

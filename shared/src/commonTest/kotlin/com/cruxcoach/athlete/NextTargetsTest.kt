@@ -185,6 +185,25 @@ class NextTargetsTest {
     }
 
     @Test
+    fun aNextExerciseOutOfReachLetsRepetitionsGoOnAboveTheRange() {
+        // Simulation 2026-11-22: a single-leg glute bridge at home, its next exercise needs a barbell and a bench. The
+        // training raises the later sets itself after "3+", so not every set is answered "3+" – and the plan stood at
+        // 17 for four weeks. With no exercise to step on to, reserve is enough, as at the end of a chain.
+        val chained = pushUp.copy(harder = "push.diamond_push_up")
+        val easy = training(chained, "w1", 1_000, target = 15, done = listOf(15, 15, 15), rir = listOf(3, 3, 2))
+        fun plan(stepOn: Boolean?) = NextTargets.plan(chained, item(chained), maxReps(18), easy, null, 70.0, 1.0, Steps.FULL, stepOn = stepOn)
+        assertEquals(NextTargets.Next(reps = 16, move = Move.UP, atTop = true), plan(stepOn = false))
+        // Within reach it is the better step: the repetitions wait, the next exercise is on offer.
+        assertEquals(NextTargets.Next(reps = 15, move = Move.REPEAT, atTop = true), plan(stepOn = true))
+        // Not said: whether the chain has a next exercise at all.
+        assertEquals(NextTargets.Next(reps = 15, move = Move.REPEAT, atTop = true), plan(stepOn = null))
+        // Hard stays hard, in reach or not.
+        val hard = training(chained, "w1", 1_000, target = 15, done = listOf(15, 15, 15), rir = listOf(1, 0, 0))
+        assertEquals(NextTargets.Next(reps = 15, move = Move.REPEAT),
+            NextTargets.plan(chained, item(chained), maxReps(18), hard, null, 70.0, 1.0, Steps.FULL, stepOn = false))
+    }
+
+    @Test
     fun underTheRangeWithNothingLighterToPlanIsTimeForTheEasierExercise() {
         // Four push-ups where eight are the least: the plan cannot get lighter, the easier exercise is the step.
         val bad = training(pushUp, "w1", 1_000, target = 8, done = listOf(5, 4, 3), rir = listOf(0, 0, 0))
@@ -393,6 +412,24 @@ class NextTargetsTest {
         val fixed = item(lunge).copy(repsMin = 20, repsMax = 20)
         val close = Capacity(CapacityKind.E1RM_TOTAL, 107.64, 63.0)
         assertEquals(LoadTarget(0.0, 19, null, close), LoadPrescriber.prescribe(lunge, fixed, close, 63.0, 2.5))
+    }
+
+    @Test
+    fun repetitionsTakenOffWithinATrainingAtBodyWeightStillReadAsTooHard() {
+        // Lunges cannot be assisted: at body weight a set without reserve takes a repetition off the next sets, not a
+        // kilo. Read against those lowered targets the training counted as reached, the plan said "the same again" for
+        // good, and the easier exercise was never offered.
+        val lunge = def("legs.walking_lunge", ExerciseKind.LOAD_REPS, LoadMode.BODYWEIGHT_PLUS,
+            defaults = Prescription(sets = 3, repsMin = 12, repsMax = 20)).copy(category = ExerciseCategoryV2.LEGS, easier = "legs.reverse_lunge")
+        // A value that plans 12 at body weight: 70 kg × (1 + (12 + 2) / 30).
+        val value = oneRepMax(70.0 * (1.0 + 14.0 / 30.0))
+        fun sets(targets: List<Int>, done: List<Int>, rir: List<Int?>) =
+            training(lunge, "w1", 1_000, target = 12, done = done, rir = rir, load = 0.0).mapIndexed { i, s -> s.copy(targetReps = targets[i]) }
+        val fading = sets(targets = listOf(12, 11, 10), done = listOf(12, 11, 10), rir = listOf(0, 0, 0))
+        assertEquals(NextTargets.Next(reps = 12, loadKg = 0.0, move = Move.DOWN, atBottom = true), next(lunge, fading, value))
+        // Reached as planned, only hard: the same again, and no step back on offer.
+        val hard = sets(targets = listOf(12, 12, 12), done = listOf(12, 12, 12), rir = listOf(1, 1, 0))
+        assertEquals(NextTargets.Next(reps = 12, loadKg = 0.0, move = Move.REPEAT), next(lunge, hard, value))
     }
 
     @Test

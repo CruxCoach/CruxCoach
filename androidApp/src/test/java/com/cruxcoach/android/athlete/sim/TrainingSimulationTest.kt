@@ -102,6 +102,13 @@ class TrainingSimulationTest {
         val rows = runs.flatMap { (r, _) -> ReferenceComparison.compare(r) }
         write("reference.md", ReferenceComparison.report(rows))
         val weaker = ReferenceComparison.weaker(rows)
+        // Where it came out weaker: the sets of both coaches side by side, to see why.
+        val detail = System.getenv("SIM_DETAIL")?.split(',')?.map { it.trim().lowercase() }?.toSet()
+        runs.forEach { (r, _) ->
+            val qualities = rows.filter { it.persona == r.persona.id && (it in weaker || detail?.contains(it.quality.name.lowercase()) == true) }
+                .map { it.quality }.toSet()
+            if (qualities.isNotEmpty()) write("${r.persona.id}-reference.md", ReferenceComparison.days(r, qualities))
+        }
         assertTrue("weaker than the reference progression: " + weaker.joinToString { "${it.persona}/${it.quality.name.lowercase()} " +
             "${"%.1f".format(it.appGain)} against ${"%.1f".format(it.referenceGain)}" }, weaker.isEmpty())
     }

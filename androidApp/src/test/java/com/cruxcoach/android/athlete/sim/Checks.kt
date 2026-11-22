@@ -51,6 +51,10 @@ enum class Check(val group: String, val title: String) {
     TRAINING_DAYS("Plan", "A full training suggested after the week's training days are used up"),
     DAYS_LEFT("Plan", "Recovery suggested although training days are left"),
     VARIETY("Plan", "Too little variety"),
+    SEASONED_HELD_BACK("Plan", "A seasoned climber held back after climbing for longer than their step allows"),
+    SEASONED_FINGER_DAY("Plan", "A seasoned climber rarely got finger training on the free day after a climbing day"),
+    SEASONED_FINGER_WEEK("Plan", "A seasoned climber's week asked for, or reached, too few finger sessions"),
+    SEASONED_FINGER_MORE("Plan", "Finger training suggested to a seasoned climber whose week already held its finger sessions"),
     STACKING("Stacking", "Reductions stacked into a pointless session"),
     SPECIAL_FOR_BEGINNER("Choice", "Special exercise for a beginner who does not know it (weeks 1–4)"),
     FEW_FAMILIAR("Choice", "Too few well-known exercises for a beginner (weeks 1–4) or with “Mostly classics”"),
@@ -104,6 +108,23 @@ object Checks {
         if (region == com.cruxcoach.athlete.model.InjuryRegion.FINGER) com.cruxcoach.athlete.logic.InjuryAdvisor.FINGER_OPEN_STAGE
         else com.cruxcoach.athlete.logic.InjuryAdvisor.REGION_OPEN_STAGE
 
+    /**
+     * The days after a climbing day of [intensity] on which max finger work comes too soon: one after a hard or limit
+     * day (48 h), two at 55+ (72 h). A seasoned climber under 40 trains the day after a hard day, an elite one the day
+     * after a limit day as well; an advanced one waits a day after a limit session (owner 2026-11-22).
+     */
+    fun daysWithoutMaxFinger(p: Persona, intensity: ClimbIntensity?): Int {
+        if (intensity != ClimbIntensity.HARD && intensity != ClimbIntensity.LIMIT) return 0
+        val age = p.coach.ageBand
+        return when {
+            age == AgeBand.Y55_PLUS -> FINGER_RECOVERY_MASTERS_H / 24 - 1
+            age == AgeBand.Y40_54 -> FINGER_RECOVERY_H / 24 - 1
+            p.seasoned == Seasoned.ELITE -> 0
+            p.seasoned == Seasoned.ADVANCED -> if (intensity == ClimbIntensity.LIMIT) 1 else 0
+            else -> FINGER_RECOVERY_H / 24 - 1
+        }
+    }
+
     fun isMaxFinger(def: ExerciseDefinition): Boolean =
         (LoadDomain.FINGER in def.domains && (def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL) &&
             (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL) && "strength" in def.tags) ||
@@ -133,7 +154,6 @@ object Checks {
         val p = r.persona
         val coach = p.coach
         val youth = coach.ageBand == AgeBand.UNDER_16 || coach.ageBand == AgeBand.Y16_17
-        val masters = coach.ageBand == AgeBand.Y55_PLUS || coach.ageBand == AgeBand.Y40_54
         val novice = coach.experience == ExperienceBand.UNDER_1
         val days = r.days.filter { !it.away }
 
@@ -157,10 +177,9 @@ object Checks {
                 "${maxFinger.joinToString { it.slug }} suggested during $forbidden")
 
             if (maxFinger.isNotEmpty()) {
-                val window = (if (masters && coach.ageBand == AgeBand.Y55_PLUS) FINGER_RECOVERY_MASTERS_H else FINGER_RECOVERY_H) / 24
                 // Strictly less than the window: a Thursday-evening limit session allows max hangs on Saturday evening.
-                val hardBefore = days.filter { it.day in (d.day - window + 1) until d.day }
-                    .firstOrNull { it.climbed?.intensity == ClimbIntensity.HARD || it.climbed?.intensity == ClimbIntensity.LIMIT }
+                val hardBefore = days.filter { it.day < d.day }
+                    .firstOrNull { d.day - it.day <= daysWithoutMaxFinger(p, it.climbed?.intensity) }
                 if (hardBefore != null) flags += Flag(Check.FINGER_AFTER_HARD_CLIMB, d.day,
                     "${maxFinger.first().slug} ${d.day - hardBefore.day} day(s) after ${hardBefore.climbed!!.intensity.name.lowercase()} climbing")
             }
@@ -330,7 +349,72 @@ object Checks {
         }
         comeback(r, flags)
         familiarity(r, flags)
+        seasoned(r, flags)
         return flags
+    }
+
+    /** Finger sessions a week the coach asks an elite climber for; everyone else with finger equipment gets two at least. */
+    const val ELITE_FINGER_SESSIONS = 3
+    const val FINGER_SESSIONS = 2
+
+    /**
+     * The coach leaves more to a seasoned climber under 40 (owner 2026-11-22): the day after a hard day is free for
+     * finger work – for an elite climber the day after a limit day too, an advanced one waits that day – and an elite
+     * week holds three finger sessions. Read from what the athlete was shown: the reasons on the card, the kind of
+     * training suggested, the week's count. The persona says who is seasoned ([Persona.seasoned]).
+     */
+    private fun seasoned(r: SimRun, flags: MutableList<Flag>) {
+        val p = r.persona
+        val step = p.seasoned ?: return
+        if (p.coach.ageBand == AgeBand.Y40_54 || p.coach.ageBand == AgeBand.Y55_PLUS) return
+        val days = r.days.filter { !it.away }
+        fun before(d: DayTrace): ClimbIntensity? = r.days.getOrNull(d.day - 1)?.climbed?.intensity
+
+        // Told to recover from climbing on a day without climbing: only an advanced climber, the day after a limit session.
+        val recovery = setOf(com.cruxcoach.athlete.logic.SuggestionReason.RECOVERY_AFTER_VOLUME,
+            com.cruxcoach.athlete.logic.SuggestionReason.RECOVERY_AFTER_HARD, com.cruxcoach.athlete.logic.SuggestionReason.RECOVERY_AFTER_LIMIT)
+        days.forEach { d ->
+            val said = d.suggestion?.reasons.orEmpty().filter { it in recovery }
+            if (said.isEmpty() || d.climbed != null) return@forEach
+            val waits = step == Seasoned.ADVANCED && before(d) == ClimbIntensity.LIMIT &&
+                said == listOf(com.cruxcoach.athlete.logic.SuggestionReason.RECOVERY_AFTER_LIMIT)
+            if (!waits) flags += Flag(Check.SEASONED_HELD_BACK, d.day,
+                "${said.joinToString { it.name.lowercase() }} on a day without climbing (the day before: ${before(d)?.name?.lowercase() ?: "no"} climbing)")
+        }
+
+        // Whole build weeks after the careful start, trained as planned, nothing open.
+        val weeks = days.groupBy { it.day / 7 }.values.filter { w ->
+            w.size == 7 && w.first().day >= com.cruxcoach.athlete.logic.ClimbingLoad.CAREFUL_START_DAYS &&
+                w.all { it.block?.phase == BlockPhase.BUILD && it.activeInjuries.isEmpty() && it.returnState == null } &&
+                w.none { it.skipped } && w.count { it.trained } >= w.count { it.date.dayOfWeek.ordinal + 1 in p.trainingDays }
+        }
+        // The free day after climbing, on a day the athlete trains: finger training is suggested there in at least half of the weeks.
+        fun free(d: DayTrace) = d.climbed == null && d.date.dayOfWeek.ordinal + 1 in p.trainingDays &&
+            (before(d) == ClimbIntensity.HARD || (before(d) == ClimbIntensity.LIMIT && step == Seasoned.ELITE))
+        val judged = weeks.filter { w -> w.any(::free) }
+        val withFinger = judged.count { w -> w.any { free(it) && it.suggestion?.focus == SuggestionFocus.FINGER_STRENGTH } }
+        if (judged.size >= 2 && withFinger * 2 < judged.size) flags += Flag(Check.SEASONED_FINGER_DAY, judged.last().last().day,
+            "finger training on the training day after a climbing day in $withFinger of ${judged.size} build weeks")
+
+        // The week's finger sessions (hard climbing days count): what the coach asks for, and what the week reached.
+        val asked = if (step == Seasoned.ELITE) ELITE_FINGER_SESSIONS else FINGER_SESSIONS
+        weeks.forEach { w ->
+            val finger = w.last().weekEnd?.firstOrNull { it.area == com.cruxcoach.athlete.logic.VolumeArea.FINGER } ?: return@forEach
+            if (finger.goal < asked) flags += Flag(Check.SEASONED_FINGER_WEEK, w.last().day,
+                "the week asks for ${finger.goal} finger sessions, the week of an ${step.name.lowercase()} climber holds $asked")
+            else if (finger.effective < finger.goal) flags += Flag(Check.SEASONED_FINGER_WEEK, w.last().day,
+                "%.1f finger sessions against a goal of %d".format(finger.effective, finger.goal))
+            // A finger day right after another one is a session of its own for a seasoned climber – the coach itself
+            // puts finger training on the day after climbing. Once the week's finger days (hard and limit climbing
+            // days, days with finger sets) reach what the week asks for, it suggests no more of it by itself.
+            var held = 0
+            w.forEach { d ->
+                if (held >= finger.goal && d.climbed == null && d.suggestion?.focus == SuggestionFocus.FINGER_STRENGTH) flags += Flag(Check.SEASONED_FINGER_MORE, d.day,
+                    "finger training suggested after $held finger days this week, the week asks for ${finger.goal}")
+                val climbedHard = d.climbed?.intensity == ClimbIntensity.HARD || d.climbed?.intensity == ClimbIntensity.LIMIT
+                if (climbedHard || d.sets.any { it.setType == SetType.WORK && r.catalog[it.slug]?.category == ExerciseCategoryV2.FINGER }) held++
+            }
+        }
     }
 
     /**

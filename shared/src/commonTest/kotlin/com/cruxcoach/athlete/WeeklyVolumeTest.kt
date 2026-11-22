@@ -230,6 +230,42 @@ class WeeklyVolumeTest {
     }
 
     @Test
+    fun aSeasonedClimbersFingerDayRightAfterAnotherCounts() {
+        // The coach suggests finger work to an advanced climber the day after a hard day: that session is one of the week's.
+        val advanced = profile.copy(coach = CoachProfile(experience = ExperienceBand.OVER_5, ageBand = AgeBand.Y18_39,
+            trainingDaysPerWeek = 4, currentGrade = "7A"))
+        assertEquals(1, WeeklyVolume.fingerGapDays(advanced))
+        // Everyone else, a seasoned climber from 40 on, and what the last weeks show.
+        assertEquals(2, WeeklyVolume.fingerGapDays(profile))
+        assertEquals(2, WeeklyVolume.fingerGapDays(advanced.copy(coach = advanced.coach.copy(ageBand = AgeBand.Y40_54))))
+        assertEquals(2, WeeklyVolume.fingerGapDays(advanced.copy(coach = advanced.coach.copy(trainingDaysPerWeek = 3))))
+        assertEquals(1, WeeklyVolume.fingerGapDays(advanced.copy(coach = advanced.coach.copy(trainingDaysPerWeek = 3)), observedDays = 4))
+
+        val t = WeeklyVolume.targets(advanced, null, emptyList(), 4)
+        // A hard board day on Monday, the coach's finger training on Tuesday.
+        val activities = mapOf(board(day(0), ClimbIntensity.HARD))
+        val tuesday = sets("finger.max_hang", day(1), 5)
+        val counted = progress(WeeklyVolume.progress(tuesday, activities, catalog, monday, t, today = day(3),
+            fingerGapDays = WeeklyVolume.fingerGapDays(advanced)), VolumeArea.FINGER)
+        assertEquals(1, counted.sessions)
+        assertEquals(1.0, counted.climbingCredit, 1e-9)
+        assertEquals(AreaStatus.DONE, counted.status, "two of two: Thursday needs no third finger day")
+        // Two days apart, as for everyone else, Tuesday did not count.
+        val before = progress(WeeklyVolume.progress(tuesday, activities, catalog, monday, t, today = day(3)), VolumeArea.FINGER)
+        assertEquals(0, before.sessions)
+        assertEquals(AreaStatus.BELOW, before.status)
+        // Thursday with the week met: no finger training by itself.
+        val weekly = WeeklyVolume.progress(tuesday, activities, catalog, monday, t, today = day(3), fingerGapDays = 1)
+        val thursday = SuggestionInput(catalog, advanced, day(3), ReadinessEvaluator.evaluate(null, emptyList()), emptyList(),
+            activities = activities.mapKeys { LocalDate.parse(it.key) }, recentSets = tuesday, weekly = weekly, weekStart = monday)
+        val s = SessionSuggester.suggest(thursday)
+        assertTrue(s.focus != SuggestionFocus.FINGER_STRENGTH, "${s.focus}")
+        assertTrue(SuggestionReason.WEEKLY_TARGET in s.reasons, "${s.reasons}")
+        val asBefore = SessionSuggester.suggest(thursday.copy(weekly = WeeklyVolume.progress(tuesday, activities, catalog, monday, t, today = day(3))))
+        assertEquals(SuggestionFocus.FINGER_STRENGTH, asBefore.focus, "counted two days apart the week stood at one of two")
+    }
+
+    @Test
     fun twoHardBoardDaysMeetTheFingerWeekSoNoFingerMain() {
         val t = WeeklyVolume.targets(profile, null, emptyList(), 3)
         val activities = mapOf(board(day(0), ClimbIntensity.HARD), board(day(3), ClimbIntensity.HARD))

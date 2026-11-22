@@ -328,6 +328,14 @@ class ReadinessModifiersTest {
         val block = def("finger.one_arm_pickup", load = LoadMode.EXTERNAL)
         assertEquals(27.0, ReadinessModifiers.scaleLoad(block, 30.0, 70.0, 0.9, 1.0))
         assertNull(ReadinessModifiers.scaleLoad(block, null, 70.0, 0.9, 1.0))
+        // A pull-up at body weight gets some assistance on a tired day; a sit-up or a lunge cannot be assisted and ends
+        // at body weight (simulation 2026-11-22: weighted sit-ups planned at −3 kg).
+        assertEquals(-7.0, ReadinessModifiers.scaleLoad(pullUp, 0.0, 70.0, 0.9, 1.0))
+        val sitUp = ExerciseDefinition("core.weighted_sit_up", ExerciseCategoryV2.CORE, ExerciseKind.LOAD_REPS, LoadMode.BODYWEIGHT_PLUS)
+        assertEquals(0.0, ReadinessModifiers.scaleLoad(sitUp, 0.0, 70.0, 0.9, 1.0))
+        assertEquals(0.0, ReadinessModifiers.scaleLoad(sitUp, 4.0, 70.0, 0.9, 1.0))
+        // With enough added it is the same share of the total as for everything else: 90 kg × 0.9 = 81 kg.
+        assertEquals(11.0, ReadinessModifiers.scaleLoad(sitUp, 20.0, 70.0, 0.9, 1.0))
     }
 }
 
