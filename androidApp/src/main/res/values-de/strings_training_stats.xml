@@ -5,7 +5,7 @@
     <string name="trs_range_12w">12\u00A0Wochen</string>
     <string name="trs_range_6m">6\u00A0Monate</string>
     <string name="trs_range_1y">1\u00A0Jahr</string>
-    <string name="trs_kind_e1rm">Geschätztes 1RM</string>
+    <string name="trs_kind_e1rm">Geschätztes Maximum</string>
     <string name="trs_kind_ten_second">10-s-Max</string>
     <string name="trs_kind_reps">Max. Wiederholungen</string>
     <string name="trs_kind_seconds">Längste Haltezeit</string>
@@ -67,8 +67,8 @@
     <string name="trs_volume_hint_hang">Sekunden × gehaltenes Gewicht aller Arbeitssätze, beim Hängen samt Körpergewicht.</string>
     <string name="trs_bests">Bestwerte</string>
     <string name="trs_best_load">Gesamtgewicht %1$s</string>
-    <string name="trs_best_e1rm">Geschätztes 1RM %1$s (gesamt)</string>
-    <string name="trs_best_e1rm_lifted">Geschätztes 1RM %1$s</string>
+    <string name="trs_best_e1rm">Geschätztes Maximum %1$s (gesamt)</string>
+    <string name="trs_best_e1rm_lifted">Geschätztes Maximum %1$s</string>
     <string name="trs_sessions">Einheiten</string>
 
     <string name="trs_progress_title">Fortschritt</string>

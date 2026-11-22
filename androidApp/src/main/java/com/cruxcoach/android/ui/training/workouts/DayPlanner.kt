@@ -279,8 +279,9 @@ fun DayPlannerSheet(onDismiss: () -> Unit, viewModel: DayPlannerViewModel = hilt
                         val own = if (day.overridden) stringResource(R.string.trdp_only_this_day) else null
                         listOfNotNull(own, hint).takeIf { it.isNotEmpty() }?.let {
                             Text(it.joinToString(" · "), style = MaterialTheme.typography.bodySmall,
-                                color = if (day.hint == DayPlans.Hint.OPEN || day.hint == DayPlans.Hint.PAUSED) MaterialTheme.colorScheme.onSurfaceVariant
-                                    else CruxCoachDesign.colors.brandAccent)
+                                // Quiet: what the coach does on a day is information, not a warning (the warnings
+                                // have their own card above).
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
