@@ -960,7 +960,7 @@ object SessionSuggester {
             if (latest == null) latest = Evidence.Climbing(daysAgo, a.climbIntensity, a.climbingEfforts, a.climbingMinutes)
             val intensity = a.climbIntensity
             val blocked = if (intensity == null) daysAgo <= 1
-                else daysAgo * 24 < ClimbingLoad.recoveryHours(intensity, ageBand)
+                else daysAgo * 24 < ClimbingLoad.recoveryHours(intensity, ageBand, DayPlans.seasoned(input.coach))
             if (blocked && blocking == null) blocking = when (intensity) {
                 null -> SuggestionReason.FINGERS_LOADED_RECENTLY
                 ClimbIntensity.LIMIT -> SuggestionReason.RECOVERY_AFTER_LIMIT

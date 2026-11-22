@@ -120,5 +120,9 @@ class ClimbingLoadTest {
         assertEquals(36, ClimbingLoad.recoveryHours(ClimbIntensity.VOLUME, null))
         assertEquals(48, ClimbingLoad.recoveryHours(ClimbIntensity.VOLUME, AgeBand.Y40_54))
         assertEquals(84, ClimbingLoad.recoveryHours(ClimbIntensity.LIMIT, AgeBand.Y55_PLUS))
+        // A seasoned climber is held back the same day only, after a limit day the next one too; from 40 on as everyone.
+        assertEquals(24, ClimbingLoad.recoveryHours(ClimbIntensity.HARD, AgeBand.Y18_39, seasoned = true))
+        assertEquals(36, ClimbingLoad.recoveryHours(ClimbIntensity.LIMIT, null, seasoned = true))
+        assertEquals(60, ClimbingLoad.recoveryHours(ClimbIntensity.HARD, AgeBand.Y40_54, seasoned = true))
     }
 }

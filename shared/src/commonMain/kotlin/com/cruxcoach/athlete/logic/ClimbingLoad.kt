@@ -249,8 +249,18 @@ object ClimbingLoad {
     /**
      * Hours before the next maximal finger load after a day of [intensity].
      * Older athletes recover more slowly: +12 h from 40, +24 h from 55.
+     *
+     * [seasoned] (more than five years of climbing, adult, under 40 – [DayPlans.seasoned]): nobody at that level rests
+     * two days after every hard day (owner 2026-11-22). After a hard or a volume day only the same day is held back,
+     * after a limit day the next one too. Trained athletes recover faster, and over weeks 24 h between sessions builds
+     * as much as 48–72 h.
      */
-    fun recoveryHours(intensity: ClimbIntensity, ageBand: AgeBand?): Int {
+    fun recoveryHours(intensity: ClimbIntensity, ageBand: AgeBand?, seasoned: Boolean = false): Int {
+        if (seasoned && ageBand != AgeBand.Y40_54 && ageBand != AgeBand.Y55_PLUS) return when (intensity) {
+            ClimbIntensity.LIMIT -> 36
+            ClimbIntensity.HARD, ClimbIntensity.VOLUME -> 24
+            ClimbIntensity.LIGHT -> 12
+        }
         val base = when (intensity) {
             ClimbIntensity.LIMIT -> 60
             ClimbIntensity.HARD -> 48
