@@ -234,7 +234,8 @@ object WeeklyVolume {
             // elite: the studies find nothing gained beyond about 20 sets a week (16 hard sets of
             // pulling become 20). Trained athletes gain from moderate to high volume, with small returns at the top –
             // so only the room grows, not what the coach asks for (owner 2026-11-22, after the meta-analyses on
-            // weekly set volume: about 12–20 sets per muscle group for trained people). Finger sessions stay at two.
+            // weekly set volume: about 12–20 sets per muscle group for trained people). The finger sets stay as they
+            // are; an elite climber's week spreads them over three sessions (below).
             val room = when {
                 ageFactor != 1.0 || area == VolumeArea.FINGER -> 1.0
                 tier != DayPlans.Tier.STANDARD -> SEASONED_ROOM

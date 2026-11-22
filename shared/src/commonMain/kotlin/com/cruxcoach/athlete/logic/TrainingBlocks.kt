@@ -20,8 +20,9 @@ data class BlockState(
  * A simple, explainable cycle: one intro week, three build weeks, one deload
  * week, repeat. A trip or competition date overrides it with a taper over the
  * last [TAPER_DAYS] days and a rest day on the date itself. Accumulated
- * fatigue (tired check-ins, a finger-load spike) pulls the deload forward
- * from the second build week on, so the calendar is only one signal.
+ * fatigue (tired check-ins) pulls the deload forward from the second build
+ * week on, so the calendar is only one signal; a rising finger load is an
+ * offer on the load card instead, never a start by itself.
  */
 object TrainingBlocks {
 
