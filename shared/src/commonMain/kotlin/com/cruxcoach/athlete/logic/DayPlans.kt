@@ -193,15 +193,19 @@ object DayPlans {
         }
 
     /**
-     * A seasoned climber: more than five years of climbing, an adult, and at least [SEASONED_DAYS] training days a week
-     * (owner 2026-11-22: ten years of climbing once a week is not what the lighter rules are for). The planner's
+     * A seasoned climber: more than five years of climbing, an adult, at least [SEASONED_DAYS] training days a week
+     * and a boulder grade from [SEASONED_GRADE] on (owner 2026-11-22: ten years of climbing once a week is not what the
+     * lighter rules are for, and the grade says whether someone climbs at the level they are meant for). The planner's
      * warnings keep to limit days ([warnings]), recovery after climbing is shorter ([ClimbingLoad.recoveryHours]) and
      * the weekly targets have more room at the top ([WeeklyVolume.targets]).
      */
     const val SEASONED_DAYS = 4
+    /** The boulder grade (Font) a seasoned climber works at, at least; without a grade nobody counts as seasoned. */
+    const val SEASONED_GRADE = "7a"
 
     fun seasoned(coach: com.cruxcoach.athlete.model.CoachProfile): Boolean =
         (coach.trainingDaysPerWeek ?: 0) >= SEASONED_DAYS &&
+        (coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) } ?: 0.0) >= (LogbookSummaries.difficultyOf(SEASONED_GRADE) ?: Double.MAX_VALUE) &&
         coach.experience == com.cruxcoach.athlete.model.ExperienceBand.OVER_5 &&
             coach.ageBand != com.cruxcoach.athlete.model.AgeBand.UNDER_16 && coach.ageBand != com.cruxcoach.athlete.model.AgeBand.Y16_17
 

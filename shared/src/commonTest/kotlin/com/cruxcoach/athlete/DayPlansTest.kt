@@ -127,8 +127,10 @@ class DayPlansTest {
         val twice = DayPlans.preview(DayPlans.withDay(p, day(2), limit, monday), monday, 7, monday)
         assertEquals(listOf(DayPlans.Warning(DayPlans.WarningKind.HARD_BACK_TO_BACK, day(2), day(1))),
             DayPlans.warnings(twice, monday, seasoned = true) { it == fingers })
-        val pro = CoachProfile(experience = ExperienceBand.OVER_5, ageBand = AgeBand.Y18_39, trainingDaysPerWeek = 4)
-        assertTrue(DayPlans.seasoned(pro))
+        val pro = CoachProfile(experience = ExperienceBand.OVER_5, ageBand = AgeBand.Y18_39, trainingDaysPerWeek = 4, currentGrade = "7A")
+        assertTrue(DayPlans.seasoned(pro) && DayPlans.seasoned(pro.copy(currentGrade = "7c+")))
+        // The grade counts too: below 7A, or without a grade, the usual rules apply.
+        assertTrue(!DayPlans.seasoned(pro.copy(currentGrade = "6c+")) && !DayPlans.seasoned(pro.copy(currentGrade = null)))
         // Years alone are not enough: fewer than four training days a week, fewer years or a young climber is not.
         assertTrue(!DayPlans.seasoned(pro.copy(trainingDaysPerWeek = 3)) && !DayPlans.seasoned(pro.copy(trainingDaysPerWeek = null)))
         assertTrue(!DayPlans.seasoned(pro.copy(experience = ExperienceBand.Y3_5)) && !DayPlans.seasoned(pro.copy(ageBand = AgeBand.Y16_17)))
