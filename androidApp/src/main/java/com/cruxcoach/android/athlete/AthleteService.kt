@@ -598,8 +598,6 @@ class AthleteService @Inject constructor(
         val previousLoads = repo.setting(ReadinessModifiers.settingKey(workoutId) + ".loads")
         val previousAsPlanned = repo.setting(ReadinessModifiers.AS_PLANNED_KEY)
         synchronized(structureLock) {
-            val bodyweight = currentBodyweight()
-            val increment = repo.profile().smallestIncrementKg
             repo.transaction {
                 val work = repo.setsFor(workoutId).filter { it.setType == SetType.WORK }
                 val loadsKey = ReadinessModifiers.settingKey(workoutId) + ".loads"
@@ -608,17 +606,21 @@ class AthleteService @Inject constructor(
                     row.split(",").takeIf { it.size == 5 }?.let { f -> f[0] to f.drop(1).map { it.toDoubleOrNull() } }
                 }.toMap()
                 work.filter { !it.isCompleted }.forEach { set ->
-                    val def = catalog.fallbackFor(set.exerciseSlug)
-                    val f = ReadinessModifiers.loadFactorFor(def, m)
-                    fun back(now: Double?, plannedValue: Double?, trimmedValue: Double?): Double? = when {
-                        // Untouched since it was trimmed: exactly the planned value.
-                        planned.containsKey(set.id) && now == trimmedValue -> plannedValue
-                        // Changed since (e.g. after a missed set): scale what is there back up.
-                        f > 0 && f != 1.0 -> ReadinessModifiers.scaleLoad(def, now, set.bodyweightKg ?: bodyweight, 1 / f, increment)
-                        else -> now
-                    }
+                    // What the trim took from this set: its own note, or – for a set added since ("+ set" copies a
+                    // trimmed one) – a note of its exercise block and side. A block without a note lost nothing: the
+                    // trim ended at body weight or rounded back to the same weight, and scaling such a set up by the
+                    // day's factor added weight it never lost (review 2026-11-22: lunges +4 kg, 10 kg → 11 kg).
                     val p = planned[set.id]
-                    val restored = set.copy(targetLoadKg = back(set.targetLoadKg, p?.get(0), p?.get(1)), loadKg = back(set.loadKg, p?.get(2), p?.get(3)))
+                        ?: work.firstOrNull { it.blockIndex == set.blockIndex && it.side == set.side && planned.containsKey(it.id) }?.let { planned[it.id] }
+                    fun back(now: Double?, plannedValue: Double?, trimmedValue: Double?): Double? = when {
+                        now == null || plannedValue == null || trimmedValue == null -> now
+                        // Untouched since it was trimmed: exactly the planned value.
+                        now == trimmedValue -> plannedValue
+                        // Changed since (e.g. after a missed set): what the trim took, on top of what is there.
+                        else -> now + (plannedValue - trimmedValue)
+                    }
+                    val restored = if (p == null) set
+                        else set.copy(targetLoadKg = back(set.targetLoadKg, p[0], p[1]), loadKg = back(set.loadKg, p[2], p[3]))
                     if (restored != set) { changed += set; repo.saveSet(restored) }
                 }
                 val open = work.filter { !it.isCompleted }
