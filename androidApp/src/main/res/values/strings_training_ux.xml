@@ -49,6 +49,8 @@
     <string name="tru_tile_weight_tap">Tap to log</string>
     <string name="tru_open_body">Weight trend and measurements</string>
     <string name="tru_tile_food_protein">Food · protein</string>
+    <string name="tru_tile_food">Food</string>
+    <string name="tru_tile_food_macros">C\u00A0%1$d/%2$d · P\u00A0%3$d/%4$d · F\u00A0%5$d/%6$d\u00A0g</string>
     <string name="tru_tile_food_left">%1$d\u00A0g to go</string>
     <string name="tru_tile_food_reached">Target reached</string>
     <string name="tru_tile_food_no_target">The target needs your weight</string>

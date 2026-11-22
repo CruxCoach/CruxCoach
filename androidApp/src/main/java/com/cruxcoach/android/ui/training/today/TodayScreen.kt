@@ -1028,18 +1028,18 @@ private fun FoodTile(state: TodayState, onOpen: () -> Unit, modifier: Modifier) 
     val protein = state.proteinToday.roundToInt()
     com.cruxcoach.android.ui.training.common.ValueTile(
         icon = Icons.Default.Restaurant, tint = CruxCoachDesign.colors.positive,
-        // The grams are protein: the label says so (device test 2026-10-10: "0 / 111 g" of what?).
-        label = stringResource(R.string.tru_tile_food_protein),
-        value = if (t != null) stringResource(R.string.trf_progress_g, protein, t.proteinG) else stringResource(R.string.trf_value_g, protein),
-        progress = t?.let { if (it.proteinG > 0) protein.toFloat() / it.proteinG else 0f },
-        supporting = when {
-            t == null -> stringResource(R.string.tru_tile_food_no_target)
-            // Energy in the open next to protein: eaten of the need, or of the calorie target while losing weight.
-            state.profile.showCalories && energyGoal != null ->
-                stringResource(R.string.trn_tile_kcal, (state.kcalToday ?: 0.0).roundToInt(), energyGoal)
-            protein >= t.proteinG -> stringResource(R.string.tru_tile_food_reached)
-            else -> stringResource(R.string.tru_tile_food_left, t.proteinG - protein)
+        // All three macros, as on the nutrition page (owner 2026-11-22: protein alone makes no sense); the big number
+        // is the energy when the athlete sees calories, else protein of its target.
+        label = stringResource(R.string.tru_tile_food),
+        value = when {
+            state.profile.showCalories && energyGoal != null -> stringResource(R.string.trn_tile_kcal, (state.kcalToday ?: 0.0).roundToInt(), energyGoal)
+            state.profile.showCalories -> stringResource(R.string.trf_kcal_value, (state.kcalToday ?: 0.0).roundToInt())
+            t != null -> stringResource(R.string.trf_progress_g, protein, t.proteinG)
+            else -> stringResource(R.string.trf_value_g, protein)
         },
+        progress = t?.let { if (it.proteinG > 0) protein.toFloat() / it.proteinG else 0f },
+        supporting = if (t == null) stringResource(R.string.tru_tile_food_no_target)
+            else stringResource(R.string.tru_tile_food_macros, state.carbsToday.roundToInt(), t.carbsG, protein, t.proteinG, state.fatToday.roundToInt(), t.fatG),
         tag = "today_fuel", onClick = onOpen, modifier = modifier,
     )
 }

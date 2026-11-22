@@ -78,6 +78,8 @@ data class TodayState(
     val fuelTargets: FuelTargets.Targets? = null,
     val proteinToday: Double = 0.0,
     val carbsToday: Double = 0.0,
+    val fatToday: Double = 0.0,
+    val carbsToday: Double = 0.0,
     val waterTodayMl: Int = 0,
     /** Energy eaten today (logged kcal, else from the macros); null without entries. */
     val kcalToday: Double? = null,
@@ -396,6 +398,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 lastWeighDay = trend.lastOrNull()?.day?.toString(),
                 fuelTargets = service.fuelTargets(fuelActivity, i.profile),
                 proteinToday = i.food.sumOf { e -> e.proteinG ?: 0.0 },
+                carbsToday = i.food.sumOf { e -> e.carbsG ?: 0.0 },
+                fatToday = i.food.sumOf { e -> e.fatG ?: 0.0 },
                 carbsToday = i.food.sumOf { e -> e.carbsG ?: 0.0 },
                 waterTodayMl = i.water.sumOf { w -> w.ml },
                 kcalToday = i.food.mapNotNull { e -> com.cruxcoach.athlete.logic.MacroTotals.energy(e)?.kcal }.takeIf { it.isNotEmpty() }?.sum(),
