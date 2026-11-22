@@ -619,7 +619,9 @@ private fun DoneRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPage,
 @Composable
 private fun LatestDoneExtras(set: ExerciseSet, def: ExerciseDefinition, state: PlayerState, actions: PageActions, askReserve: Boolean = true) {
     val units = state.profile.units
-    val asks = askReserve && set.setType == SetType.WORK && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG, ExerciseKind.TIME)
+    // A long plain hold is not asked: the engine reads it from its timer ([NextTargets.longPlainHold]).
+    val asks = askReserve && set.setType == SetType.WORK && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG, ExerciseKind.TIME) &&
+        !com.cruxcoach.athlete.logic.NextTargets.longPlainHold(def, (set.targetDurationS ?: set.durationS)?.roundToInt())
     Column(Modifier.padding(start = 48.dp, bottom = 4.dp)) {
         if (asks) ReserveChoice(set, reserveInSeconds(def), actions, "player_rir_", Modifier.padding(bottom = 4.dp))
         state.feedback?.takeIf { it.def.slug == def.slug }?.let { fb ->

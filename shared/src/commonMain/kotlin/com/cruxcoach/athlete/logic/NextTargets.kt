@@ -112,6 +112,13 @@ object NextTargets {
     /** A timed hold at least this long is logged from its timer: done counts as done with reserve. Shorter ones are strength holds and need the answer. */
     const val LONG_HOLD_S = 20
 
+    /**
+     * Whether a hold of [def] planned for [plannedS] seconds is a long plain hold: logged from its timer, no reserve
+     * asked ("how many seconds more: 0, 1, 2, 3+" after a 30-second side plank says nothing – Nokia walk 2026-11-22).
+     */
+    fun longPlainHold(def: ExerciseDefinition, plannedS: Int?): Boolean =
+        def.kind == ExerciseKind.TIME && LoadDomain.FINGER !in def.domains && (plannedS ?: def.defaults.durationS ?: 30) >= LONG_HOLD_S
+
     /** The completed work sets of [side] per training, newest first, without the training [exceptWorkout]. */
     fun sessions(history: List<ExerciseSet>, side: Side?, exceptWorkout: String? = null): List<List<ExerciseSet>> =
         history.filter { it.isCompleted && it.setType == SetType.WORK && it.side == side && it.workoutId != exceptWorkout }
@@ -261,7 +268,7 @@ object NextTargets {
         val done = sets.map { floor(it.durationS!! + 1e-9).toInt() }
         // A long plain hold is logged from its timer: done counts as done. Hangs and short strength holds need the answer.
         val r = read(sets.map { it.durationS!! }, sets.map { it.targetDurationS }, sets.map { it.rir },
-            unknownIsEasy = def.kind == ExerciseKind.TIME && !finger && usual >= LONG_HOLD_S, tolerance = 0.5)
+            unknownIsEasy = longPlainHold(def, usual), tolerance = 0.5)
         val anchor = done.min()
         val target = sets.mapNotNull { it.targetDurationS }.maxOrNull()?.roundToInt() ?: anchor
         val unit = secondsUnit(anchor)
