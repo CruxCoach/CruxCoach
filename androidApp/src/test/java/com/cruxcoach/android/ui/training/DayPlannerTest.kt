@@ -2,12 +2,14 @@ package com.cruxcoach.android.ui.training
 
 import android.app.Application
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.cruxcoach.android.ui.training.today.TodayScreen
 import com.cruxcoach.android.ui.training.today.TodayViewModel
 import com.cruxcoach.android.ui.training.workouts.DayPlannerSheet
 import com.cruxcoach.android.ui.training.workouts.DayPlannerViewModel
+import com.cruxcoach.android.ui.training.workouts.PLANNER_DAYS
 import com.cruxcoach.athlete.logic.BuiltinRoutines
 import com.cruxcoach.athlete.logic.DayPlans
 import com.cruxcoach.athlete.logic.SuggestionFocus
@@ -19,6 +21,7 @@ import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.plus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -35,7 +38,7 @@ class DayPlannerTest : AthleteScreenTest() {
     private val fingers = "builtin:" + BuiltinRoutines.FINGER_BASICS
 
     @Test
-    fun `the owner's example is three taps per day and the days around it follow`() {
+    fun `the owner's example is two taps per day and the days around it follow`() {
         val today = service.today()
         val d1 = today.plus(DatePeriod(days = 1))
         val d3 = today.plus(DatePeriod(days = 3))
@@ -50,16 +53,14 @@ class DayPlannerTest : AthleteScreenTest() {
         compose.waitUntil(WAIT_MS) { vm.state.value.moveOffer != null }
         assertEquals(fingers, vm.state.value.moveOffer!!.entry)
 
+        // A climbing day is the day and how hard: no button after it (owner 2026-11-22: it was a tap too many).
         click("day_planner_day_$d1")
-        click("week_plan_climb_kind_gym_boulder")
         click("week_plan_climb_intensity_volume")
-        click("week_plan_climb_apply")
         val volume = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.VOLUME).entry
         compose.waitUntil(WAIT_MS) { repo.profile().datePlan[d1.toString()] == volume }
 
         click("day_planner_day_$d3")
         click("week_plan_climb_intensity_limit")
-        click("week_plan_climb_apply")
         val limit = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.LIMIT).entry
         compose.waitUntil(WAIT_MS) { repo.profile().datePlan[d3.toString()] == limit }
 
@@ -73,6 +74,36 @@ class DayPlannerTest : AthleteScreenTest() {
         click("day_planner_undo")
         compose.waitUntil(WAIT_MS) { repo.profile().datePlan[d3.toString()] == null }
         assertEquals(volume, repo.profile().datePlan[d1.toString()])
+    }
+
+    @Test
+    fun `without own entries each day shows what the coach proposes, and a tap overrules it`() {
+        val today = service.today()
+        val vm = loaded(DayPlannerViewModel(service))
+        render { DayPlannerSheet(onDismiss = {}, viewModel = vm) }
+        // Owner 2026-11-22: fourteen rows of "Coach decides" said nothing. Every open day has the coach's proposal.
+        compose.waitUntil(WAIT_MS) { vm.state.value.proposals.size == PLANNER_DAYS }
+        waitForTag("day_planner_proposal")
+        waitForTag("day_planner_proposal_$today")
+        waitForText("The coach's proposal for the next 7 days")
+        assertTrue(compose.onAllNodesWithText("Coach decides", useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        // A week of it: three trainings (nothing else is known about this athlete), one mobility day, three rest days.
+        val week = vm.state.value.days.take(7).map { vm.state.value.proposals.getValue(it.date) }
+        val mobility = "builtin:" + BuiltinRoutines.MOBILITY_10
+        assertEquals(3, week.count { it.startsWith("builtin:") && it != mobility })
+        assertEquals(3, week.count { it == PLAN_REST })
+
+        // One tap on a day and one on the choice overrules the coach; "free" says what it stands for.
+        val day = vm.state.value.days.first { vm.state.value.proposals[it.date] == PLAN_REST }.date
+        click("day_planner_day_$day")
+        waitForText("Free – the coach proposes: Rest day")
+        click("week_plan_climb_intensity_hard")
+        val hard = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.HARD).entry
+        compose.waitUntil(WAIT_MS) { repo.profile().datePlan[day.toString()] == hard }
+        // The day is the athlete's now, and the coach plans the others around it: no finger work next to it.
+        compose.waitUntil(WAIT_MS) { vm.state.value.days.firstOrNull { it.date == day }?.entry == hard }
+        compose.waitUntil(WAIT_MS) { day !in vm.state.value.proposals }
+        assertTrue(vm.state.value.proposals.isNotEmpty())
     }
 
     @Test

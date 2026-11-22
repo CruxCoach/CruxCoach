@@ -156,6 +156,19 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         }
     }
 
+    /** Nothing planned: the coach's week above the days and its proposal in each row. */
+    @Test
+    fun dayPlannerCoachWeek() {
+        repo.updateProfile { it.copy(coach = it.coach.copy(climbingDays = setOf(2, 4), trainingDaysPerWeek = 4),
+            equipment = it.equipment + com.cruxcoach.athlete.catalog.EquipmentV2.HANGBOARD) }
+        val vm = loaded(com.cruxcoach.android.ui.training.workouts.DayPlannerViewModel(service))
+        shoot("day-planner-coach-week", { waitForTag("day_planner_proposal") }) {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                com.cruxcoach.android.ui.training.workouts.DayPlannerSheet(onDismiss = {}, viewModel = vm)
+            }
+        }
+    }
+
     @Test
     fun dayPlanChooser() {
         val today = service.today()

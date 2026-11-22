@@ -133,7 +133,7 @@ object DayPlans {
 
     private fun hard(i: ClimbIntensity?) = i == ClimbIntensity.HARD || i == ClimbIntensity.LIMIT
 
-    private fun paused(pauses: List<PausePeriod>, day: LocalDate): Boolean {
+    internal fun paused(pauses: List<PausePeriod>, day: LocalDate): Boolean {
         val d = day.toString()
         return pauses.any { p -> p.startDay <= d && p.endDay.let { it == null || it >= d } }
     }

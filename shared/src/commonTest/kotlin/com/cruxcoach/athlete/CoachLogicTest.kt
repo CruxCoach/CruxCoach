@@ -3,6 +3,10 @@ package com.cruxcoach.athlete
 import com.cruxcoach.athlete.catalog.EquipmentV2
 import com.cruxcoach.athlete.logic.*
 import com.cruxcoach.athlete.model.*
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.plus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -80,6 +84,83 @@ class CoachLogicTest {
         val plan = WeekPlanSuggester.suggest(CoachProfile(climbingDays = setOf(2, 5), trainingDaysPerWeek = 3), logbook,
             listOf(mine), home, emptyList())
         assertTrue("r1" in plan.values, "$plan")
+    }
+
+    private val fingerDay = "builtin:" + BuiltinRoutines.FINGER_BASICS
+    private val pullDay = "builtin:" + BuiltinRoutines.PULL_ANTAGONIST
+    private val legsDay = "builtin:" + BuiltinRoutines.LEGS_BASICS
+    private val coreDay = "builtin:" + BuiltinRoutines.CORE_CLIMBER
+    private val mobilityDay = "builtin:" + BuiltinRoutines.MOBILITY_10
+    private val limitDay = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.LIMIT).entry
+    private val monday = LocalDate.parse("2026-10-19")
+    private fun date(n: Int) = monday.plus(DatePeriod(days = n))
+    private val threeDays = AthleteProfile(equipment = home, coach = CoachProfile(trainingDaysPerWeek = 3))
+    private fun proposals(profile: AthleteProfile, days: List<DayPlans.Day>, pauses: List<PausePeriod> = emptyList()) =
+        WeekPlanSuggester.forDays(profile, LogbookSummary(), emptyList(), emptyList(), days, pauses) { it == fingerDay }
+
+    @Test
+    fun aWeekWithoutClimbingDaysSpreadsItsTrainings() {
+        // Three trainings a week and nothing else known: apart from each other, one mobility day, the rest is rest.
+        val plan = WeekPlanSuggester.suggest(threeDays.coach, LogbookSummary(), emptyList(), home, emptyList())
+        assertEquals(mapOf(1 to fingerDay, 2 to PLAN_REST, 3 to PLAN_REST, 4 to pullDay, 5 to PLAN_REST, 6 to legsDay, 7 to mobilityDay), plan)
+    }
+
+    @Test
+    fun theWeekIsPlannedAroundWhatTheAthletePlannedHimself() {
+        fun around(fixed: WeekPlanSuggester.Fixed) =
+            WeekPlanSuggester.around(threeDays.coach, LogbookSummary(), emptyList(), home, emptyList(), fixed) { it == fingerDay }
+        // His own finger day on Tuesday is one of the week's three trainings, and the coach adds no second finger day.
+        assertEquals(mapOf(1 to mobilityDay, 3 to PLAN_REST, 4 to PLAN_REST, 5 to pullDay, 6 to PLAN_REST, 7 to legsDay),
+            around(WeekPlanSuggester.Fixed(entries = mapOf(2 to fingerDay))))
+        // A climbing day he planned counts as one too; the trainings keep their distance from it.
+        assertEquals(mapOf(1 to fingerDay, 2 to PLAN_REST, 4 to mobilityDay, 5 to PLAN_REST, 6 to pullDay, 7 to PLAN_REST),
+            around(WeekPlanSuggester.Fixed(entries = mapOf(3 to limitDay))))
+        // A rest day of his own stays his: the three trainings go to the other days.
+        assertEquals(mapOf(2 to fingerDay, 3 to mobilityDay, 4 to PLAN_REST, 5 to pullDay, 6 to PLAN_REST, 7 to legsDay),
+            around(WeekPlanSuggester.Fixed(entries = mapOf(1 to PLAN_REST))))
+        // Nothing is proposed within a pause.
+        assertEquals(mapOf(4 to fingerDay, 5 to pullDay, 6 to PLAN_REST, 7 to legsDay),
+            around(WeekPlanSuggester.Fixed(paused = setOf(1, 2, 3))))
+    }
+
+    @Test
+    fun withoutOwnEntriesEveryDayShowsTheSuggestedWeek() {
+        // Owner 2026-11-22: fourteen rows of "the coach decides" said nothing. From a Thursday on, two weeks.
+        val week = WeekPlanSuggester.suggest(threeDays.coach, LogbookSummary(), emptyList(), home, emptyList())
+        val days = DayPlans.preview(threeDays, date(3), 14, date(3))
+        assertEquals(days.associate { it.date to week.getValue(it.date.dayOfWeek.isoDayNumber) }, proposals(threeDays, days))
+    }
+
+    @Test
+    fun theProposalFollowsTheAthletesHardDays() {
+        // A limit day on Wednesday, five days a week: pulling the day before becomes legs, as the planner advises.
+        val five = threeDays.copy(coach = CoachProfile(trainingDaysPerWeek = 5))
+        val limit = DayPlans.withDay(five, date(2), limitDay, monday)
+        assertEquals(
+            mapOf(date(0) to fingerDay, date(1) to legsDay, date(3) to legsDay, date(4) to PLAN_REST, date(5) to coreDay, date(6) to PLAN_REST),
+            proposals(limit, DayPlans.preview(limit, monday, 7, monday)),
+        )
+        // A limit day logged yesterday: no finger work today, the rest of the week as proposed.
+        val after = proposals(threeDays, DayPlans.preview(threeDays, monday, 7, monday, logged = mapOf(date(-1) to ClimbIntensity.LIMIT)))
+        assertEquals(pullDay, after[date(0)])
+        assertEquals(listOf(pullDay, legsDay, mobilityDay), listOf(after[date(3)], after[date(5)], after[date(6)]))
+    }
+
+    @Test
+    fun aFreedClimbingDayAndAPauseGetNoClimbingProposed() {
+        val usual = threeDays.copy(coach = CoachProfile(climbingDays = setOf(2, 4), trainingDaysPerWeek = 3))
+        val climb = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.HARD).entry
+        // "Free" over Tuesday's usual climbing: Thursday stays the climbing day, a second training takes Tuesday's place.
+        val freed = DayPlans.withDay(usual, date(1), PLAN_FREE, monday)
+        assertEquals(
+            mapOf(date(0) to fingerDay, date(1) to PLAN_REST, date(2) to PLAN_REST, date(3) to climb, date(4) to mobilityDay,
+                date(5) to pullDay, date(6) to PLAN_REST),
+            proposals(freed, DayPlans.preview(freed, monday, 7, monday)),
+        )
+        // A pause until Wednesday: nothing for its days, the week's trainings after it.
+        val pause = listOf(PausePeriod("p", PauseReason.HOLIDAY, date(0).toString(), date(2).toString()))
+        assertEquals(mapOf(date(3) to fingerDay, date(4) to pullDay, date(5) to PLAN_REST, date(6) to legsDay),
+            proposals(threeDays, DayPlans.preview(threeDays, monday, 7, monday, pause), pause))
     }
 
     @Test
