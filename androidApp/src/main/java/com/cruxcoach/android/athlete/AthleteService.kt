@@ -1855,11 +1855,8 @@ class AthleteService @Inject constructor(
                 kcal = energies.takeIf { it.isNotEmpty() }?.sumOf { it.kcal },
                 needKcal = needs[i]?.totalKcal,
                 // A day counts for the energy check when it was logged as a whole: two main meals or three meals of any
-                // kind (two snacks made a "day", phone check 2026-11-21) – and only days logged in the exact view. In
-                // the simple view some food is logged for its protein; such days never count, also not after a switch
-                // to "exact" (review 2026-11-21: three of them made a false low-energy warning).
-                complete = profile.fuelExact != false && day != today.toString() &&
-                    (profile.fuelExactSince == null || day >= profile.fuelExactSince!!) &&
+                // kind (two snacks made a "day", phone check 2026-11-21).
+                complete = day != today.toString() &&
                     entries.map { it.meal }.distinct().let { meals ->
                         meals.size >= COMPLETE_DAY_MEALS || meals.count { it in MAIN_MEALS } >= COMPLETE_DAY_MAIN_MEALS
                     })

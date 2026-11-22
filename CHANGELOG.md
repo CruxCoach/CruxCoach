@@ -195,10 +195,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     "missed". The coach's own week puts no finger training on the day before
     climbing, and a climbing day is only called a board session for those who
     climb on boards.
-  - Nutrition has two views. "Simple" shows today's protein and what you ate,
-    and is where you start; "Exact" has energy, macros, water, meals and
-    micronutrients. The energy check only reads days logged as a whole (two
-    main meals or three meals) in the exact view.
+  - The energy check only reads days logged as a whole: two main meals or
+    three meals.
   - Progress opens with "My exercises": where each started and where it stands.
   - Plainer words in German: "Kraftwert" for the value the coach plans from,
     "Ausgleich" for antagonist work, "Leichte Woche", "% Körpergewicht".
