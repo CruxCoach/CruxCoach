@@ -170,15 +170,17 @@ enum class EquipmentV2 {
     companion object {
         /**
          * Gear that can stand in for a required piece: a kettlebell loads a
-         * pick-up block as well as plates do, bands replace a cable, rings
+         * pick-up block as well as plates do, rings
          * make dip bars, two blocks include one. Keeps the "what do you own"
-         * filter from hiding exercises over a technicality.
+         * filter from hiding exercises over a technicality. Bands do not
+         * stand in for a cable (owner 2026-11-22): cable work is planned in
+         * kilos and steps in weight, which a band cannot do ("Rudern am
+         * Kabelzug · 0 kg" at home).
          */
         val SUBSTITUTES: Map<EquipmentV2, Set<EquipmentV2>> = mapOf(
             PLATES to setOf(KETTLEBELL, DUMBBELL, BARBELL),
             DUMBBELL to setOf(KETTLEBELL),
             KETTLEBELL to setOf(DUMBBELL),
-            CABLE to setOf(BANDS),
             DIP_BARS to setOf(RINGS),
             PULL_UP_BAR to setOf(HANGBOARD, RINGS),
             BOARD to setOf(WALL),
