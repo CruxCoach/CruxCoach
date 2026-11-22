@@ -344,7 +344,9 @@ class Simulator(
         athlete.night(day)
         comeback?.night()
         val weekEnd = if (date.dayOfWeek == kotlinx.datetime.DayOfWeek.SUNDAY) runCatching {
-            coach.weeklyProgress(repo.profile(), repo.activeInjuries(), service.activities(days = 8), block, today, weekStart)
+            // The same look back as Today's above: the athlete's step also reads the training days of the last four
+            // weeks ([com.cruxcoach.athlete.logic.DayPlans.observedDays]); eight days showed one a week at most.
+            coach.weeklyProgress(repo.profile(), repo.activeInjuries(), service.activities(days = 7 * 26), block, today, weekStart)
         }.getOrNull() else null
         val load = runCatching { service.loadStatus() }.getOrNull()?.structures?.mapValues { (_, s) ->
             LoadSnapshot(s.acute7, s.chronic28, s.trend)

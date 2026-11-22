@@ -119,7 +119,7 @@ class TodayCoach(
         val workoutDays = repo.workoutsBetween(weekStart.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
         val startMs = weekStart.atStartOfDayIn(zone).toEpochMilliseconds()
         val weekSets = repo.completedSetsSince(startMs).mapNotNull { set -> workoutDays[set.workoutId]?.let { it to set } }
-        return WeeklyVolume.progress(weekSets, activities, catalog, weekStart, targets, today)
+        return WeeklyVolume.progress(weekSets, activities, catalog, weekStart, targets, today, WeeklyVolume.fingerGapDays(profile, observed))
     }
 
     /** The return ramp after a break or a healed finger injury ([ReturnToTraining]); null when training normally. */

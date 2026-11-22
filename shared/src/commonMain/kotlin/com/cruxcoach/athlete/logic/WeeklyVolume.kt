@@ -50,7 +50,8 @@ enum class AreaStatus { BELOW, ON_TRACK, DONE, OVER }
 
 /**
  * The week so far for one area. [doneSets] are logged hard sets; [sessions]
- * the days with such sets (finger days at least 48 h apart);
+ * the days with such sets (finger days at least 48 h apart, for a seasoned
+ * climber every day: [WeeklyVolume.fingerGapDays]);
  * [climbingCredit] what climbing added — finger sessions for FINGER, set
  * equivalents for PULL and CORE. [expectedByNow] is the share of the minimum
  * a steady week would have reached by today.
@@ -88,7 +89,7 @@ data class AreaProgress(
  *
  * | Area | Sets | Sessions | Why |
  * |---|---|---|---|
- * | Finger | ≤ 12 off-wall | 2 | two quality finger days a week, ≥ 48 h apart; hard board days count |
+ * | Finger | ≤ 12 off-wall | 2 | two quality finger days a week, ≥ 48 h apart (a seasoned climber: the next day counts); hard board days count |
  * | Pull | 6–12 | 1 | strength support for climbing; hard board days give some credit |
  * | Push | 4–8 | 1 | balance against all the pulling |
  * | Antagonist | 6–12 | 2 | shoulder and elbow health, best spread over two days |
@@ -309,10 +310,30 @@ object WeeklyVolume {
         ExerciseCategoryV2.WARMUP, ExerciseCategoryV2.TECHNIQUE -> null
     }
 
+    /** Days between two finger days that count as two sessions: 48 h apart, so two finger days in a row are one. */
+    const val FINGER_GAP_DAYS = 2
+
+    /**
+     * The same for an advanced or elite climber under 40 ([DayPlans.tier]): the next day counts. The coach itself
+     * suggests finger work there the day after a hard day ([ClimbingLoad.recoveryHours]), and a session it suggested
+     * is one of the week's sessions. Counted two days apart, a hard board day on Monday and the coach's finger
+     * training on Tuesday left the week at "1 of 2", and Thursday brought finger training again: four finger days in
+     * a week that asks for two (training simulation 2026-11-22).
+     */
+    const val SEASONED_FINGER_GAP_DAYS = 1
+
+    /** [FINGER_GAP_DAYS], or [SEASONED_FINGER_GAP_DAYS] for the athlete it applies to; [observedDays] as in [targets]. */
+    fun fingerGapDays(profile: AthleteProfile, observedDays: Int? = null): Int {
+        val age = profile.coach.ageBand
+        val seasoned = age != AgeBand.Y40_54 && age != AgeBand.Y55_PLUS && DayPlans.seasoned(profile.coach, observedDays, profile.sex)
+        return if (seasoned) SEASONED_FINGER_GAP_DAYS else FINGER_GAP_DAYS
+    }
+
     /**
      * Counts the ISO week starting [weekStart]: logged hard sets per area,
-     * days with them, and what climbing added. Finger days closer than 48 h
-     * count once, so two finger days in a row are one session.
+     * days with them, and what climbing added. Finger days closer than
+     * [fingerGapDays] count once: two finger days in a row are one session,
+     * except for a seasoned climber ([fingerGapDays]).
      */
     fun progress(
         weekSets: List<Pair<LocalDate, ExerciseSet>>,
@@ -321,6 +342,7 @@ object WeeklyVolume {
         weekStart: LocalDate,
         targets: List<AreaTarget>,
         today: LocalDate? = null,
+        fingerGapDays: Int = FINGER_GAP_DAYS,
     ): List<AreaProgress> {
         val weekEnd = weekStart.plus(DatePeriod(days = 6))
         val inWeek = weekSets.filter { (day, set) ->
@@ -340,7 +362,7 @@ object WeeklyVolume {
             var credit = 0.0
             when (target.area) {
                 VolumeArea.FINGER -> {
-                    // Greedy over the week: a day counts when it is ≥ 2 days after the last counted one.
+                    // Greedy over the week: a day counts when it is at least [fingerGapDays] after the last counted one.
                     val weights = mutableMapOf<LocalDate, Double>()
                     setDays.forEach { weights[it] = 1.0 }
                     climbingDays.forEach { (day, a) ->
@@ -351,7 +373,7 @@ object WeeklyVolume {
                     sessions = 0
                     weights.keys.sorted().forEach { day ->
                         val prev = last
-                        if (prev == null || day.toEpochDays() - prev.toEpochDays() >= 2) {
+                        if (prev == null || day.toEpochDays() - prev.toEpochDays() >= fingerGapDays) {
                             if (day in setDays) sessions++ else credit += weights.getValue(day)
                             last = day
                         }

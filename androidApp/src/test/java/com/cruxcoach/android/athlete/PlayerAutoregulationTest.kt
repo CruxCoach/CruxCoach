@@ -77,6 +77,32 @@ class PlayerAutoregulationTest {
     }
 
     @Test
+    fun `as planned gives back what the tired day took, and nothing where it took nothing`() {
+        // A tired day makes loads 5 % lighter. A lunge at body weight cannot get lighter, and 10 kg in 1 kg steps
+        // rounds back to 10 kg: scaled up by the day's factor, both came back heavier than planned (+4 kg, 11 kg).
+        repo.saveCheckin(Checkin(service.today().toString(), 0, sleep = 2))
+        val id = service.startWorkout(Routine("r", "R", items = listOf(
+            RoutineItem("pull.weighted_pull_up", sets = 4, repsMin = 5, repsMax = 5, loadKg = 20.0),
+            RoutineItem("legs.walking_lunge", sets = 4, repsMin = 12, repsMax = 12, loadKg = 0.0),
+            RoutineItem("legs.goblet_squat", sets = 4, repsMin = 8, repsMax = 8, loadKg = 10.0))), null)
+        fun openLoads(slug: String) = workSets(id, slug).filter { !it.isCompleted }.map { it.targetLoadKg }
+        val trimmed = openLoads("pull.weighted_pull_up").first()!!
+        assertTrue(trimmed < 20.0, "$trimmed")
+        assertTrue(openLoads("legs.walking_lunge").all { it == 0.0 }, "${openLoads("legs.walking_lunge")}")
+        // A set without reserve moves the sets after it: "as planned" gives back the trim on top of that.
+        val first = workSets(id, "pull.weighted_pull_up").first()
+        service.completeSetDetailed(first.copy(reps = first.targetReps ?: 5, rir = 0), startRest = false)
+        service.adjustUpcomingSets(id, repo.setsFor(id).first { it.id == first.id })
+        val moved = openLoads("pull.weighted_pull_up").first()!!
+        assertTrue(moved < trimmed, "$moved")
+        assertNotNull(runBlocking { service.asPlanned(id) })
+        val pullUps = openLoads("pull.weighted_pull_up")
+        assertTrue(pullUps.size >= 3 && pullUps.all { it == moved + (20.0 - trimmed) }, "$pullUps")
+        assertTrue(openLoads("legs.walking_lunge").all { it == 0.0 }, "${openLoads("legs.walking_lunge")}")
+        assertTrue(openLoads("legs.goblet_squat").all { it == 10.0 }, "${openLoads("legs.goblet_squat")}")
+    }
+
+    @Test
     fun `pain swap keeps done sets and puts a sparing exercise right after the block`() {
         val id = service.startWorkout(Routine("r", "R", items = listOf(
             RoutineItem("pull.pull_up", sets = 3, repsMin = 5, repsMax = 8),
