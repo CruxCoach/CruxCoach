@@ -379,6 +379,20 @@ fun TodayScreen(
             }
         }
     }
+    // The climbing day taken back (a second tap on its chip, or another kind of training chosen): one line with
+    // "Rückgängig" as well.
+    state.noClimbTodayUndo?.let { before ->
+        val text = stringResource(R.string.trt_no_climb_today_done)
+        LaunchedEffect(before) {
+            viewModel.consumeNoClimbTodayUndo()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoNoClimbToday(before)
+                }
+            }
+        }
+    }
     // "Heute klettere ich": one line with "Rückgängig".
     state.climbTodayUndo?.let { before ->
         val text = stringResource(R.string.trt_climb_today_done)

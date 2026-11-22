@@ -180,6 +180,7 @@
     <string name="trt_climbed_yesterday">Gestern geklettert? Eintragen</string>
     <string name="trt_climb_today">Heute klettere ich</string>
     <string name="trt_climb_today_done">Heute ist jetzt Klettertag.</string>
+    <string name="trt_no_climb_today_done">Heute ist kein Klettertag mehr.</string>
     <string name="trt_insist">Trotzdem: %1$s</string>
     <string name="trt_form_more">Genauer</string>
     <string name="trt_sugg_week_title">Deine Woche planen</string>

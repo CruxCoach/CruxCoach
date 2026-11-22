@@ -146,6 +146,8 @@ data class TodayState(
     val restTodayUndo: Map<String, String>? = null,
     /** "Heute klettere ich" just set: the date plan before it, for "Rückgängig". */
     val climbTodayUndo: Map<String, String>? = null,
+    /** The climbing day just taken back (second tap, another kind chosen): the date plan before it, for "Rückgängig". */
+    val noClimbTodayUndo: Map<String, String>? = null,
     /** "Leichte Woche starten" just tapped: the block start before it ("" = none), for "Rückgängig". */
     val lighterWeekUndo: String? = null,
     /** Per exercise of today's suggestion: last time and the plan, for "last time 3 × 5" and "+1 rep" on its row. */
@@ -601,15 +603,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         // [noClimbToday]; this is the tap of a sheet that did not show it (no suggestion on screen, or not yet).
         val already = if (kind == null) current == com.cruxcoach.athlete.model.PLAN_BOARD else DayPlans.climbOf(current)?.kind == kind
         synchronized(refreshLock) {
-            if (wish != null) {
-                // A kind chosen earlier today gives way to the climbing day. Cleared before the plan is written and
-                // recorded like "the coach decides", so it does not come back after a restart; "anyway" goes with it.
-                val s = _state.value.suggestion
-                service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), null)
-                service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_KIND, emptyList())
-                wish = null
-                ignoreUsualKind = true
-                insist = false
+            if (giveUpChosenKind()) {
                 // The plan stays as it is: only the kind chosen over it goes, and the card shows the day again.
                 if (already) lastInputs?.let { refreshUnlocked(it) }
             } else if (!already) takeBackInsist()
@@ -629,24 +623,60 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     fun consumeClimbTodayUndo() = _state.update { it.copy(climbTodayUndo = null) }
 
     /**
+     * A kind chosen earlier today gives way to the climbing day: cleared before the plan is written and recorded like
+     * "the coach decides", so it does not come back after a restart; "anyway" goes with it. Call with [refreshLock]
+     * held. True when there was one.
+     */
+    private fun giveUpChosenKind(): Boolean {
+        if (wish == null) return false
+        val s = _state.value.suggestion
+        service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), null)
+        service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_KIND, emptyList())
+        wish = null
+        ignoreUsualKind = true
+        insist = false
+        return true
+    }
+
+    /**
      * A second tap on the chosen kind under "Heute klettere ich", or another kind of training chosen for today: today
      * is no climbing day after all (Nokia walk 2026-11-22: the tap closed the sheet and nothing changed, and "Zug &
-     * Druck" kept the climbing day's title). The day goes back to "the coach decides".
+     * Druck" kept the climbing day's title). The day goes back to what it was before the climbing was planned on it:
+     * the standard week's entry, or "the coach decides" ([DayPlans.withoutClimbing]). Snackbar with "Rückgängig".
      */
     fun noClimbToday() = io {
         // "Anyway" for a board day the coach held back goes with the day, before the plan is written.
         synchronized(refreshLock) { takeBackInsist() }
-        clearClimbToday()
+        clearClimbToday()?.let { back -> _state.update { it.copy(noClimbTodayUndo = back.before) } }
     }
 
-    private fun clearClimbToday() {
+    /** What [clearClimbToday] changed: the date plans before it, for "Rückgängig", and the profile after it. */
+    private class ClimbingTakenBack(val before: Map<String, String>, val after: AthleteProfile)
+
+    /** Takes today's climbing or board day back; null where today is none by its plan. */
+    private fun clearClimbToday(): ClimbingTakenBack? {
         val today = service.today()
+        var before: Map<String, String>? = null
+        var after: AthleteProfile? = null
         service.repo.updateProfile { p ->
-            val entry = DayPlans.entry(p, today)
-            if (entry == com.cruxcoach.athlete.model.PLAN_BOARD || DayPlans.isClimb(entry)) {
-                DayPlans.withDay(p, today, com.cruxcoach.athlete.model.PLAN_FREE, today)
-            } else p
+            val back = DayPlans.withoutClimbing(p, today, today)
+            if (back.datePlan != p.datePlan) { before = p.datePlan; after = back } else { before = null; after = null }
+            back
         }
+        val plans = before
+        val profile = after
+        return if (plans != null && profile != null) ClimbingTakenBack(plans, profile) else null
+    }
+
+    fun consumeNoClimbTodayUndo() = _state.update { it.copy(noClimbTodayUndo = null) }
+
+    /**
+     * "Rückgängig" after the climbing day was taken back: the plan before is back, and with it the climbing day – a
+     * kind of training chosen over it gives way, as when the day is set ([climbToday]).
+     */
+    fun undoNoClimbToday(before: Map<String, String>) = io {
+        synchronized(refreshLock) { giveUpChosenKind() }
+        service.repo.updateProfile { it.copy(datePlan = before) }
     }
 
     /**
@@ -702,11 +732,14 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             ignoreUsualKind = focus == null
             if (focus == null) ignoreHabit = true
             // Another kind of training than the planned climbing: the athlete decides, today is no climbing day then.
-            if (focus != null && focus != com.cruxcoach.athlete.logic.SuggestionFocus.BOARD_DAY) clearClimbToday()
+            val back = if (focus != null && focus != com.cruxcoach.athlete.logic.SuggestionFocus.BOARD_DAY) clearClimbToday() else null
             wish = focus
             // "Anyway" was for the kind before: the coach's advice about the new one is said again.
             insist = false
-            lastInputs?.let { refreshUnlocked(it) }
+            // With the plan as it is now: the refresh the write starts comes later, and until then the card showed the
+            // new kind with the climbing day still behind it.
+            lastInputs?.let { refreshUnlocked(if (back != null) it.copy(profile = back.after) else it) }
+            if (back != null) _state.update { it.copy(noClimbTodayUndo = back.before) }
         }
     }
 

@@ -180,6 +180,7 @@
     <string name="trt_climbed_yesterday">Climbed yesterday? Log it</string>
     <string name="trt_climb_today">Climbing today</string>
     <string name="trt_climb_today_done">Today is a climbing day now.</string>
+    <string name="trt_no_climb_today_done">Today is no longer a climbing day.</string>
     <string name="trt_insist">%1$s anyway</string>
     <string name="trt_form_more">More detail</string>
     <string name="trt_sugg_week_title">Plan your week</string>
