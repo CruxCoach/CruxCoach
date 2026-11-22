@@ -84,6 +84,9 @@ fun FuelScreen(
     var scanMiss by remember { mutableStateOf<String?>(null) }
     var createBarcode by remember { mutableStateOf<String?>(null) }
     var copyConfirm by remember { mutableStateOf(false) }
+    // "Als Mahlzeit speichern": the meal whose foods become one dish, asked for its name.
+    var savingMeal by remember { mutableStateOf<Meal?>(null) }
+    val mealSavedText = stringResource(R.string.trf_meal_saved)
     /** The meal that "+" or the add button chose; every way of adding starts with it. */
     var addMeal by remember { mutableStateOf(FuelViewModel.mealForHour(java.time.LocalTime.now().hour)) }
     val units = state.profile.units
@@ -197,7 +200,7 @@ fun FuelScreen(
                 meals.forEach { meal ->
                     item(key = "meal_${meal.name}") {
                         MealCard(meal, byMeal[meal], state.entries.filter { it.meal == meal }, state.profile.showCalories, units, isDrink,
-                            onAdd = { openAdd(meal) }, onEdit = { editing = it }, onDelete = ::deleteEntry)
+                            onAdd = { openAdd(meal) }, onEdit = { editing = it }, onDelete = ::deleteEntry, onSaveMeal = { savingMeal = meal })
                     }
                 }
                 if (state.entries.isNotEmpty() && state.previousDayCount > 0) {
@@ -448,6 +451,14 @@ fun FuelScreen(
     }
     if (photoExplain) {
         FoodPhotoUnavailableDialog(photoState, onRemoveModel = photoViewModel::removeModel, onDismiss = { photoExplain = false })
+    }
+    savingMeal?.let { meal ->
+        val foods = state.entries.filter { it.meal == meal }
+        SaveMealDialog(foods, onDismiss = { savingMeal = null }, onSave = { name ->
+            viewModel.saveRecipe(null, com.cruxcoach.athlete.logic.Recipe.fromEntries(name, foods))
+            savingMeal = null
+            scope.launch { snackbar.showSnackbar(mealSavedText) }
+        })
     }
     if (copyConfirm) {
         AlertDialog(
@@ -999,7 +1010,7 @@ fun macrosText(protein: Double?, carbs: Double?, fat: Double?, energy: MacroTota
 private fun MealCard(
     meal: Meal, totals: MacroTotals?, entries: List<FoodLogEntry>, showCalories: Boolean,
     units: UnitSystem, isDrink: (FoodLogEntry) -> Boolean,
-    onAdd: () -> Unit, onEdit: (FoodLogEntry) -> Unit, onDelete: (FoodLogEntry) -> Unit,
+    onAdd: () -> Unit, onEdit: (FoodLogEntry) -> Unit, onDelete: (FoodLogEntry) -> Unit, onSaveMeal: () -> Unit = {},
 ) {
     Card(Modifier.fillMaxWidth().testTag("fuel_meal_${meal.name.lowercase()}")) {
         Column(Modifier.padding(vertical = 4.dp)) {
@@ -1022,8 +1033,39 @@ private fun MealCard(
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                 EntryRow(entry, showCalories, FuelUnits.unitFor(units, isDrink(entry)), onEdit = { onEdit(entry) }, onDelete = { onDelete(entry) })
             }
+            // Several foods eaten together: saved as one dish, they are one tap next time.
+            if (entries.size >= 2) {
+                TextButton(onClick = onSaveMeal, modifier = Modifier.padding(start = 4.dp).testTag("fuel_save_meal_${meal.name.lowercase()}")) {
+                    Icon(Icons.Default.BookmarkAdd, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.trf_meal_save))
+                }
+            }
         }
     }
+}
+
+/** The name of the dish a meal is saved as; the foods' names are the first guess. */
+@Composable
+private fun SaveMealDialog(entries: List<FoodLogEntry>, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    var name by rememberSaveable { mutableStateOf(entries.take(3).joinToString(" + ") { it.name }.take(60)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.trf_meal_save)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.trf_meal_save_text, entries.size), style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(value = name, onValueChange = { name = it.take(60) }, singleLine = true,
+                    label = { Text(stringResource(R.string.trf_recipe_name)) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("fuel_save_meal_name"))
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(name.trim()) }, enabled = name.isNotBlank(), modifier = Modifier.testTag("fuel_save_meal_confirm")) {
+                Text(stringResource(R.string.tr_action_save))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.tr_action_cancel)) } },
+    )
 }
 
 @Composable

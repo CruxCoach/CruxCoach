@@ -53,6 +53,21 @@ data class Recipe(
         const val SOURCE = "recipe"
         fun settingKey(foodItemId: String) = "recipe:$foodItemId"
 
+        /**
+         * A logged meal as one dish (owner 2026-11-22: four foods entered for dinner are one tap next time): every
+         * entry an ingredient with what was eaten of it, one portion in all. An entry without a weight counts as 100 g
+         * carrying its logged nutrients, so the totals stay what was logged.
+         */
+        fun fromEntries(name: String, entries: List<com.cruxcoach.athlete.model.FoodLogEntry>): Recipe = Recipe(
+            name = name, portions = 1,
+            ingredients = entries.map { e ->
+                val grams = e.amountG?.takeIf { it > 0 } ?: 100.0
+                fun per100(total: Double?) = total?.let { it * 100.0 / grams }
+                Ingredient(foodItemId = e.foodItemId ?: e.id, name = e.name, grams = grams, kcalPer100 = per100(e.kcal),
+                    proteinPer100 = per100(e.proteinG), carbsPer100 = per100(e.carbsG), fatPer100 = per100(e.fatG))
+            },
+        )
+
         fun ingredient(item: FoodItem, grams: Double) = Ingredient(
             foodItemId = item.id, name = item.name, grams = grams, kcalPer100 = item.kcalPer100,
             proteinPer100 = item.proteinPer100, carbsPer100 = item.carbsPer100, fatPer100 = item.fatPer100,

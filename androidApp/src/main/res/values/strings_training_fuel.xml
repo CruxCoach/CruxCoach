@@ -29,6 +29,9 @@
     <string name="trf_water">Water</string>
     <string name="trf_hc_switch">Send meals and water to Health Connect</string>
     <string name="trf_hc_hint">Each logged food and glass of water is written to Health Connect; changed or deleted entries are updated there when you open nutrition. Switching this off keeps what was already written in Health Connect; delete it there if you want.</string>
+    <string name="trf_meal_save">Save as a meal</string>
+    <string name="trf_meal_save_text">The %1$d foods become one dish. Next time you log it with one tap.</string>
+    <string name="trf_meal_saved">Saved. You find the meal among your foods when logging.</string>
     <string name="trf_recipe_new">Recipe</string>
     <string name="trf_recipe_title">Recipe</string>
     <string name="trf_recipe_edit">Edit recipe</string>
