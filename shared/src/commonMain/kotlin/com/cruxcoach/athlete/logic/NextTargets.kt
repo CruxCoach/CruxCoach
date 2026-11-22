@@ -113,8 +113,9 @@ object NextTargets {
     const val LONG_HOLD_S = 20
 
     /**
-     * Whether a hold of [def] planned for [plannedS] seconds is a long plain hold: logged from its timer, no reserve
-     * asked ("how many seconds more: 0, 1, 2, 3+" after a 30-second side plank says nothing – Nokia walk 2026-11-22).
+     * Whether a hold of [def] planned for [plannedS] seconds is a long plain hold: done counts as done with reserve
+     * when nothing is answered, and the player asks in coarser steps ("how many seconds more: 0, 1, 2, 3+" after a
+     * 30-second side plank says nothing – Nokia walk 2026-11-22).
      */
     fun longPlainHold(def: ExerciseDefinition, plannedS: Int?): Boolean =
         def.kind == ExerciseKind.TIME && LoadDomain.FINGER !in def.domains && (plannedS ?: def.defaults.durationS ?: 30) >= LONG_HOLD_S
