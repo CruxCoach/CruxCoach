@@ -202,7 +202,10 @@ fun FoodsSheet(
     var confirmDelete by remember { mutableStateOf<FoodItem?>(null) }
     val q = query.trim().lowercase()
     // The repository already orders favourites first, then by use count.
+    // Dishes first (Nokia walk 2026-11-22: a meal saved from four foods stood below the four foods): a dish is what
+    // saves the typing. The sort is stable, so favourites and use count keep their order within both groups.
     val visible = foods.filter { q.isEmpty() || it.name.lowercase().contains(q) || (it.brand?.lowercase()?.contains(q) == true) }
+        .sortedBy { if (it.source == Recipe.SOURCE) 0 else 1 }
     var blsResults by remember { mutableStateOf<List<BlsFood>>(emptyList()) }
     var productResults by remember { mutableStateOf<List<OffProduct>>(emptyList()) }
     var usdaResults by remember { mutableStateOf<List<BlsFood>>(emptyList()) }
@@ -316,7 +319,13 @@ fun FoodsSheet(
                                     item.proteinPer100?.let { formatNumber(it) } ?: "–",
                                     item.carbsPer100?.let { formatNumber(it) } ?: "–",
                                     item.fatPer100?.let { formatNumber(it) } ?: "–")
-                                Text(listOfNotNull(item.brand, "$macros ($basis)").joinToString(" · "))
+                                // A dish is eaten by the portion: its line says what one portion holds, not 100 g of it.
+                                val portion = item.servingG?.takeIf { item.source == Recipe.SOURCE && it > 0 }
+                                if (portion != null) {
+                                    fun per(v: Double?) = v?.let { formatNumber(it * portion / 100.0) } ?: "–"
+                                    val one = stringResource(R.string.trf_entry_macros, per(item.proteinPer100), per(item.carbsPer100), per(item.fatPer100))
+                                    Text(one + " (" + stringResource(R.string.trf_food_per_portion) + ")")
+                                } else Text(listOfNotNull(item.brand, "$macros ($basis)").joinToString(" · "))
                             },
                             trailingContent = {
                                 Row {

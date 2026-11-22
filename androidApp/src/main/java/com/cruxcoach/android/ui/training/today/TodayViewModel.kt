@@ -594,6 +594,23 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     fun consumeClimbTodayUndo() = _state.update { it.copy(climbTodayUndo = null) }
 
     /**
+     * A second tap on the chosen kind under "Heute klettere ich", or another kind of training chosen for today: today
+     * is no climbing day after all (Nokia walk 2026-11-22: the tap closed the sheet and nothing changed, and "Zug &
+     * Druck" kept the climbing day's title). The day goes back to "the coach decides".
+     */
+    fun noClimbToday() = io { clearClimbToday() }
+
+    private fun clearClimbToday() {
+        val today = service.today()
+        service.repo.updateProfile { p ->
+            val entry = DayPlans.entry(p, today)
+            if (entry == com.cruxcoach.athlete.model.PLAN_BOARD || DayPlans.isClimb(entry)) {
+                DayPlans.withDay(p, today, com.cruxcoach.athlete.model.PLAN_FREE, today)
+            } else p
+        }
+    }
+
+    /**
      * "Leichte Woche starten" on the load card: the training block jumps to its lighter week (as the summary's offer
      * does), and the card is read. The block start before it comes back with "Rückgängig".
      */
@@ -641,6 +658,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_KIND + (focus?.name ?: ""), emptyList())
             ignoreUsualKind = focus == null
             if (focus == null) ignoreHabit = true
+            // Another kind of training than the planned climbing: the athlete decides, today is no climbing day then.
+            if (focus != null && focus != com.cruxcoach.athlete.logic.SuggestionFocus.BOARD_DAY) clearClimbToday()
             wish = focus
             lastInputs?.let { refreshUnlocked(it) }
         }

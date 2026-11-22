@@ -22,6 +22,8 @@
     <string name="trp_correct_done">Letzten Satz korrigieren</string>
     <string name="trp_correct_title">%1$s korrigieren</string>
     <string name="trp_next_after">Danach: %1$s</string>
+    <string name="trp_climb_now">Aufgewärmt – jetzt klettern</string>
+    <string name="trp_after_climbing">Nach dem Klettern: %1$s</string>
     <plurals name="trp_reps_big">
         <item quantity="one">%d\u00A0Wdh.</item>
         <item quantity="other">%d\u00A0Wdh.</item>
