@@ -192,8 +192,16 @@ object DayPlans {
             }
         }
 
-    /** More than five years of climbing as an adult: the planner's warnings keep to limit days ([warnings]). */
+    /**
+     * A seasoned climber: more than five years of climbing, an adult, and at least [SEASONED_DAYS] training days a week
+     * (owner 2026-11-22: ten years of climbing once a week is not what the lighter rules are for). The planner's
+     * warnings keep to limit days ([warnings]), recovery after climbing is shorter ([ClimbingLoad.recoveryHours]) and
+     * the weekly targets have more room at the top ([WeeklyVolume.targets]).
+     */
+    const val SEASONED_DAYS = 4
+
     fun seasoned(coach: com.cruxcoach.athlete.model.CoachProfile): Boolean =
+        (coach.trainingDaysPerWeek ?: 0) >= SEASONED_DAYS &&
         coach.experience == com.cruxcoach.athlete.model.ExperienceBand.OVER_5 &&
             coach.ageBand != com.cruxcoach.athlete.model.AgeBand.UNDER_16 && coach.ageBand != com.cruxcoach.athlete.model.AgeBand.Y16_17
 
