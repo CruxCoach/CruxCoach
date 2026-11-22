@@ -566,6 +566,9 @@ private fun RowLabel(text: String, emphasis: Boolean = false) {
 @Composable
 private fun DoneRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPage, state: PlayerState, name: String?, actions: PageActions) {
     val units = state.profile.units
+    // An answered reserve is one quiet word on the row; a tap on it brings the choice back (device check 2026-11-22:
+    // the question stood under the set again although the tap that logged it had answered it).
+    var editReserve by androidx.compose.runtime.saveable.rememberSaveable(set.id) { androidx.compose.runtime.mutableStateOf(false) }
     val outcome = SetOutcomes.of(def, set)
     val label = rowLabel(page, set)
     val result = resultText(set, def)
@@ -602,18 +605,21 @@ private fun DoneRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPage,
             set.rir?.let {
                 Text(stringResource(if (reserveInSeconds(def)) R.string.trpg_rir_short_seconds else R.string.trw_rir_short, it),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = if (latest) Modifier.clip(MaterialTheme.shapes.small)
+                        .clickable(onClickLabel = stringResource(R.string.trt_checkin_change)) { editReserve = !editReserve }
+                        .padding(horizontal = 8.dp, vertical = 14.dp).testTag("player_rir_edit") else Modifier)
             }
         }
-        if (latest) LatestDoneExtras(set, def, state, actions)
+        if (latest) LatestDoneExtras(set, def, state, actions, askReserve = set.rir == null || editReserve)
     }
 }
 
 /** Under the set done last: the reserve question, a new best, and what autoregulation changed. */
 @Composable
-private fun LatestDoneExtras(set: ExerciseSet, def: ExerciseDefinition, state: PlayerState, actions: PageActions) {
+private fun LatestDoneExtras(set: ExerciseSet, def: ExerciseDefinition, state: PlayerState, actions: PageActions, askReserve: Boolean = true) {
     val units = state.profile.units
-    val asks = set.setType == SetType.WORK && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG, ExerciseKind.TIME)
+    val asks = askReserve && set.setType == SetType.WORK && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG, ExerciseKind.TIME)
     Column(Modifier.padding(start = 48.dp, bottom = 4.dp)) {
         if (asks) ReserveChoice(set, reserveInSeconds(def), actions, "player_rir_", Modifier.padding(bottom = 4.dp))
         state.feedback?.takeIf { it.def.slug == def.slug }?.let { fb ->

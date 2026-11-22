@@ -76,6 +76,9 @@ object StartEstimate {
      * planned at 0 kg. Deliberately on the light side –
      * the reserve answer after each set moves the next sets, and the first logged sets become the value.
      */
+    /** The body weight lift starts are worked out from while none is logged. */
+    const val ASSUMED_BODYWEIGHT_KG = 55.0
+
     private val LIFT_SHARE = mapOf(
         "antagonist.wrist_curl" to 0.06, "antagonist.reverse_wrist_curl" to 0.04,
         "antagonist.eccentric_wrist_extension" to 0.04, "antagonist.forearm_rotation" to 0.04,
@@ -102,10 +105,12 @@ object StartEstimate {
     fun liftCapacity(def: ExerciseDefinition, bodyweightKg: Double?): Capacity? {
         val share = LIFT_SHARE[def.slug] ?: return null
         if (def.load != LoadMode.EXTERNAL || def.kind != com.cruxcoach.athlete.catalog.ExerciseKind.LOAD_REPS) return null
-        val bw = bodyweightKg?.takeIf { it > 0 } ?: return null
+        // Without a body weight yet (the start page does not ask for it) a light athlete is assumed: a careful
+        // weight to begin with beats "0 kg" on the first set (device check 2026-11-22).
+        val bw = bodyweightKg?.takeIf { it > 0 } ?: ASSUMED_BODYWEIGHT_KG
         val reps = def.defaults.repsMax ?: def.defaults.repsMin ?: 10
         val lifted = LoadRules.lifted(def, bw * share)
-        return Capacity(CapacityKind.E1RM_TOTAL, lifted * (1.0 + (reps + BenchmarkMath.TARGET_RIR) / 30.0), bw, estimated = true)
+        return Capacity(CapacityKind.E1RM_TOTAL, lifted * (1.0 + (reps + BenchmarkMath.TARGET_RIR) / 30.0), bodyweightKg?.takeIf { it > 0 }, estimated = true)
     }
 
     /** Two-hand 10-second pick-up total from body weight and grade alone. */

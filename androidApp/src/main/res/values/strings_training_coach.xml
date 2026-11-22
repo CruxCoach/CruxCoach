@@ -184,12 +184,12 @@
     <string name="trc_next_experience">Next: experience and age group – for fitting finger loads.</string>
     <string name="trc_next_preferences">Next: what suits you – focus and style.</string>
     <string name="trc_next_grade">Next: your grade – to place your strength.</string>
-    <string name="trc_learning_none">First time: the coach starts careful. After the set, say how many more would have gone.</string>
+    <string name="trc_learning_none">First time: the coach starts careful. Your answer after each set tunes the next ones.</string>
     <string name="trc_learning_guess">Starting load estimated carefully from your body weight and level – change it if it does not fit. After each set, say how much more would have gone: today the next sets move in bigger steps until the load fits.</string>
     <string name="trc_learning_estimated">Strength value estimated – after the set, say how many more would have gone.</string>
     <string name="trc_learning_progress">Strength value is being learned (%1$d/%2$d) – after the set, say how many more would have gone.</string>
     <string name="trc_learning_guess_short">Start load estimated – say the reserve after each set</string>
-    <string name="trc_learning_none_short">First time – say the reserve after the set</string>
+    <string name="trc_learning_none_short">First time – the coach starts careful</string>
     <string name="trc_learning_estimated_short">Strength value estimated</string>
     <string name="trc_learning_progress_short">Strength value being learned (%1$d/%2$d)</string>
     <string name="trc_badge_estimated">estimated</string>

@@ -184,12 +184,12 @@
     <string name="trc_next_experience">Als Nächstes: Erfahrung und Altersgruppe – für passende Fingerlasten.</string>
     <string name="trc_next_preferences">Als Nächstes: was dir liegt – Fokus und Stil.</string>
     <string name="trc_next_grade">Als Nächstes: dein Grad – um deine Kraft einzuordnen.</string>
-    <string name="trc_learning_none">Erster Durchgang: Der Coach startet vorsichtig. Sag nach dem Satz, wie viele noch gegangen wären.</string>
+    <string name="trc_learning_none">Erster Durchgang: Der Coach startet vorsichtig. Deine Antwort nach jedem Satz stellt die nächsten ein.</string>
     <string name="trc_learning_guess">Startlast vorsichtig geschätzt aus Körpergewicht und Kletterniveau – ändere sie, wenn sie nicht passt. Sag nach jedem Satz, wie viel noch gegangen wäre: Heute passen sich die nächsten Sätze in größeren Schritten an, bis die Last stimmt.</string>
     <string name="trc_learning_estimated">Kraftwert geschätzt – sag nach dem Satz, wie viele noch gegangen wären.</string>
     <string name="trc_learning_progress">Kraftwert wird gelernt (%1$d/%2$d) – sag nach dem Satz, wie viele noch gegangen wären.</string>
     <string name="trc_learning_guess_short">Startlast geschätzt – nach jedem Satz Reserve angeben</string>
-    <string name="trc_learning_none_short">Erster Durchgang – nach dem Satz Reserve angeben</string>
+    <string name="trc_learning_none_short">Erster Durchgang – der Coach startet vorsichtig</string>
     <string name="trc_learning_estimated_short">Kraftwert geschätzt</string>
     <string name="trc_learning_progress_short">Kraftwert wird gelernt (%1$d/%2$d)</string>
     <string name="trc_badge_estimated">geschätzt</string>

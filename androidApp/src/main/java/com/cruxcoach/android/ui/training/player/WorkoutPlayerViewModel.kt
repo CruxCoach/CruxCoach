@@ -304,7 +304,8 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             val next = if (known != null) known.second else {
                 val read = if (service.catalog[key.first] == null) null
                     else service.nextTarget(service.itemAfter(workoutId, key.first, work.size), key.second, steps = steps)
-                        .takeIf { it.move != com.cruxcoach.athlete.logic.NextTargets.Move.NONE }
+                        // Also without a step: after a first training the value plans the next, and that is worth saying.
+                        .takeIf { it.reps != null || it.durationS != null }
                 nextTimeMemo[id] = signature to read
                 read
             }

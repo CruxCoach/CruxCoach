@@ -252,6 +252,8 @@ class OverridesTest : AthleteScreenTest() {
         until { work(id).drop(1).all { (it.loadKg ?: 20.0) < 20.0 } }
         val manual = work(id)[1].loadKg
         // "No reserve" would take a step off – the athlete already decided.
+        scrollTo("player_set_view", "player_rir_edit")
+        click("player_rir_edit")
         scrollTo("player_set_view", "player_rir_0")
         click("player_rir_0")
         until { work(id).first().rir == 0 }

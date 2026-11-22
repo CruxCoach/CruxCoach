@@ -115,6 +115,8 @@ class ExercisePageTest : AthleteScreenTest() {
         click("player_done_rir_3")
         until { vm.state.value.phase == PlayerPhase.REST && vm.state.value.restArmed }
         until { work(id).first().rir == 3 }
+        // The answer is one word on the row; a tap on it brings the choice back.
+        tap("player_rir_edit")
         tap("player_rir_1")
         until { work(id).first().rir == 1 }
     }
