@@ -69,6 +69,8 @@ data class FuelState(
     val lastByFood: Map<String, FoodLogEntry> = emptyMap(),
     /** When the last training or board session ended (epoch ms); "add" starts in "after training" shortly after it. */
     val lastTrainingEndedAt: Long? = null,
+    /** Saved dishes with their ingredients, by food id: a meal that already is one of them is not offered for saving again. */
+    val dishes: Map<String, Recipe> = emptyMap(),
 ) {
     val waterMl: Int get() = water.sumOf { it.ml }
     val isToday: Boolean get() = day != null && day == today
@@ -161,6 +163,8 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
                 recentByMeal = Meal.entries.associateWith { com.cruxcoach.athlete.logic.RecentFoods.forMeal(log, it, s.entries) },
                 lastByFood = com.cruxcoach.athlete.logic.RecentFoods.lastByFood(log),
                 lastTrainingEndedAt = runCatching { service.lastTrainingEndedAt() }.getOrNull(),
+                dishes = s.foods.filter { f -> f.source == Recipe.SOURCE }
+                    .mapNotNull { f -> runCatching { service.repo.recipe(f.id) }.getOrNull()?.let { f.id to it } }.toMap(),
             )
         }
     }
@@ -190,50 +194,66 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
      * A quick entry: every nutrient is optional. With [remember], the entry
      * also becomes a [FoodItem] of source [SOURCE_PORTION], whose nutrient
      * fields describe ONE portion (not 100 g), so it can be re-logged with a
-     * tap and scaled by portions later.
+     * tap and scaled by portions later. Returns the new entry, for the add
+     * sheet's confirmation and its "undo".
      */
-    fun quickAdd(name: String, meal: Meal, nutrients: Nutrients, remember: Boolean) = io {
-        val repo = service.repo
+    fun quickAdd(name: String, meal: Meal, nutrients: Nutrients, remember: Boolean): FoodLogEntry {
         val now = System.currentTimeMillis()
-        var itemId: String? = null
-        if (remember) {
-            itemId = repo.newId()
-            repo.saveFoodItem(
-                FoodItem(
-                    id = itemId, name = name, kcalPer100 = nutrients.kcal, proteinPer100 = nutrients.protein,
-                    carbsPer100 = nutrients.carbs, fatPer100 = nutrients.fat, servingLabel = null,
-                    source = SOURCE_PORTION, useCount = 1, lastUsedAt = now, updatedAt = now,
-                ),
-            )
-        }
-        repo.saveFoodLog(
-            FoodLogEntry(
-                id = repo.newId(), day = currentDay(), loggedAt = now, meal = meal, foodItemId = itemId, name = name,
-                portions = 1.0, kcal = nutrients.kcal, proteinG = nutrients.protein, carbsG = nutrients.carbs, fatG = nutrients.fat,
-            ),
+        val itemId = if (remember) java.util.UUID.randomUUID().toString() else null
+        val entry = FoodLogEntry(
+            id = java.util.UUID.randomUUID().toString(), day = currentDay(), loggedAt = now, meal = meal, foodItemId = itemId, name = name,
+            portions = 1.0, kcal = nutrients.kcal, proteinG = nutrients.protein, carbsG = nutrients.carbs, fatG = nutrients.fat,
         )
+        io {
+            val repo = service.repo
+            if (itemId != null) {
+                repo.saveFoodItem(
+                    FoodItem(
+                        id = itemId, name = name, kcalPer100 = nutrients.kcal, proteinPer100 = nutrients.protein,
+                        carbsPer100 = nutrients.carbs, fatPer100 = nutrients.fat, servingLabel = null,
+                        source = SOURCE_PORTION, useCount = 1, lastUsedAt = now, updatedAt = now,
+                    ),
+                )
+            }
+            repo.saveFoodLog(entry)
+        }
+        return entry
     }
 
-    /** Logs a saved food by [portions] or by [grams] (the latter only for per-100 g foods). */
-    fun addFood(item: FoodItem, meal: Meal, portions: Double?, grams: Double?) = io {
-        val repo = service.repo
-        val n = scale(item, portions, grams) ?: return@io
+    /**
+     * Logs a saved food by [portions] or by [grams] (the latter only for per-100 g foods). Returns the new entry – what
+     * the add sheet confirms and "undo" takes back – or null when neither amount applies.
+     */
+    fun addFood(item: FoodItem, meal: Meal, portions: Double?, grams: Double?): FoodLogEntry? {
+        val n = scale(item, portions, grams) ?: return null
         val now = System.currentTimeMillis()
-        // A food picked from the BLS or product search becomes one of "my foods" on first use.
-        val database = item.source in setOf(SOURCE_BLS, SOURCE_OFF, SOURCE_USDA)
-        val saved = if (database) repo.foodItem(item.id) else null
-        if (database && saved == null) repo.saveFoodItem(item.copy(updatedAt = now))
-        // A database food saved before it knew its piece weight learns it now (device test D43).
-        else if (saved != null && saved.servingG == null && item.servingG != null)
-            repo.saveFoodItem(saved.copy(servingG = item.servingG, servingLabel = item.servingLabel, updatedAt = now))
-        repo.saveFoodLog(
-            FoodLogEntry(
-                id = repo.newId(), day = currentDay(), loggedAt = now, meal = meal, foodItemId = item.id, name = item.name,
-                amountG = loggedGrams(item, portions, grams),
-                portions = portions, kcal = n.kcal, proteinG = n.protein, carbsG = n.carbs, fatG = n.fat,
-            ),
+        val entry = FoodLogEntry(
+            id = java.util.UUID.randomUUID().toString(), day = currentDay(), loggedAt = now, meal = meal, foodItemId = item.id, name = item.name,
+            amountG = loggedGrams(item, portions, grams),
+            portions = portions, kcal = n.kcal, proteinG = n.protein, carbsG = n.carbs, fatG = n.fat,
         )
-        repo.markFoodItemUsed(item.id)
+        io {
+            val repo = service.repo
+            // A food picked from the BLS or product search becomes one of "my foods" on first use.
+            val database = item.source in setOf(SOURCE_BLS, SOURCE_OFF, SOURCE_USDA)
+            val saved = if (database) repo.foodItem(item.id) else null
+            if (database && saved == null) repo.saveFoodItem(item.copy(updatedAt = now))
+            // A database food saved before it knew its piece weight learns it now (device test D43).
+            else if (saved != null && saved.servingG == null && item.servingG != null)
+                repo.saveFoodItem(saved.copy(servingG = item.servingG, servingLabel = item.servingLabel, updatedAt = now))
+            repo.saveFoodLog(entry)
+            repo.markFoodItemUsed(item.id)
+        }
+        return entry
+    }
+
+    /**
+     * One tap on a dish: its usual amount ([usualAmount]) goes to [meal]. Null when the dish has no portion to log
+     * (no weight) – then its amount is asked.
+     */
+    fun logUsual(item: FoodItem, meal: Meal, last: FoodLogEntry?): FoodLogEntry? {
+        val (portions, grams) = usualAmount(item, last)
+        return addFood(item, meal, portions, grams)
     }
 
     /** A logged food with a new amount or meal; its nutrients are scaled again from the food. */
@@ -311,16 +331,16 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
     fun toggleFavorite(item: FoodItem) = io { service.repo.setFoodItemFavorite(item.id, !item.favorite) }
     fun deleteFood(item: FoodItem) = io { service.repo.deleteFoodItem(item.id) }
 
-    fun createFood(name: String, brand: String?, per100: Nutrients, servingG: Double?, servingLabel: String?, barcode: String? = null) = io {
-        val repo = service.repo
-        repo.saveFoodItem(
-            FoodItem(
-                id = repo.newId(), name = name, brand = brand?.takeIf { it.isNotBlank() },
-                kcalPer100 = per100.kcal, proteinPer100 = per100.protein, carbsPer100 = per100.carbs, fatPer100 = per100.fat,
-                servingG = servingG, servingLabel = servingLabel?.takeIf { it.isNotBlank() },
-                barcode = barcode, source = SOURCE_USER, updatedAt = System.currentTimeMillis(),
-            ),
+    /** A new own food. Returns it, so its amount can be asked right away: it was created to be logged. */
+    fun createFood(name: String, brand: String?, per100: Nutrients, servingG: Double?, servingLabel: String?, barcode: String? = null): FoodItem {
+        val item = FoodItem(
+            id = java.util.UUID.randomUUID().toString(), name = name, brand = brand?.takeIf { it.isNotBlank() },
+            kcalPer100 = per100.kcal, proteinPer100 = per100.protein, carbsPer100 = per100.carbs, fatPer100 = per100.fat,
+            servingG = servingG, servingLabel = servingLabel?.takeIf { it.isNotBlank() },
+            barcode = barcode, source = SOURCE_USER, updatedAt = System.currentTimeMillis(),
         )
+        io { service.repo.saveFoodItem(item) }
+        return item
     }
 
     private fun io(block: suspend () -> Unit) {
@@ -359,6 +379,18 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
             fun Double?.scaled(f: Double) = this?.let { it * f }
             return Nutrients(item.kcalPer100.scaled(factor), item.proteinPer100.scaled(factor),
                 item.carbsPer100.scaled(factor), item.fatPer100.scaled(factor))
+        }
+
+        /**
+         * What one tap logs of a food, as (portions, grams): the amount of [last] time, else one portion. An amount
+         * typed in grams stays grams. An amount from before the food was last changed does not count: a dish saved
+         * anew (other ingredients, or replaced by a meal) is another dish than the one that was weighed.
+         */
+        fun usualAmount(item: FoodItem, last: FoodLogEntry?): Pair<Double?, Double?> {
+            val usual = if (last != null && last.loggedAt >= item.updatedAt) last else null
+            val lastGrams = if (usual != null && usual.portions == null && !isPerPortion(item)) usual.amountG?.takeIf { it > 0 } else null
+            if (lastGrams != null) return Pair(null, lastGrams)
+            return Pair(usual?.portions?.takeIf { it > 0 } ?: 1.0, null)
         }
 
         /** Adding food within this long after a finished training starts in "after training" (holistic audit P2-15). */

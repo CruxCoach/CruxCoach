@@ -437,6 +437,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Nutrition: "Log again" in the add sheet offers what the chosen meal usually
   holds, with its usual amount – also quick entries and described meals – in
   one tap, and a saved food's amount starts where it was last time.
+- Nutrition: the add sheet stays open while you log a meal – each food is
+  confirmed on top with what the meal holds now, "Undo" and "Done", and
+  "Cancel" at the amount comes back to your search. A meal of several foods is
+  saved as a dish once ("Saved as a dish: …" instead of a second dish of the
+  same name; a name another dish has replaces that dish), and dishes stand
+  first in the add sheet under "My dishes", logged with one tap. One word for
+  it: dish. Lines show energy, carbohydrates, protein and fat in the order of
+  the rings; a food's actions sit behind "⋮"; a new food asks for its amount
+  at once; an ingredient's amount is changed by a tap. The day's label names
+  the load, not the hardness: "Demanding day" in place of "Hard training day",
+  which also stood over a long volume day.
 - Back after a break (10+ days or illness): one or two shorter weeks without
   maximal finger load, automatically; after a finger injury you marked as
   over, the fingers stay below their limit for four weeks.
