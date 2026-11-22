@@ -467,11 +467,16 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                         val name = focus.removePrefix(PreferenceLearning.CHOSEN_KIND)
                         wish = name.takeIf { it.isNotEmpty() }?.let { runCatching { com.cruxcoach.athlete.logic.SuggestionFocus.valueOf(it) }.getOrNull() }
                         ignoreUsualKind = wish == null
+                        // "Anyway" was for the kind before: a later one sets it again.
+                        insist = false
                     }
                     focus.startsWith(PreferenceLearning.CHOSEN_FORMAT) ->
                         circuitToday = focus.removePrefix(PreferenceLearning.CHOSEN_FORMAT) == "circuit"
                     // Also written with a NEXT, which is no "another suggestion" either (phone check 2026-11-07).
                     focus == PreferenceLearning.TRAIN_ANYWAY -> { trainAnyway = true; chosenKinds++ }
+                    // "Anyway" for the kind the coach held back: decided for the day, a restart does not ask again –
+                    // until it is taken back with the day it was for (value 0).
+                    focus == PreferenceLearning.INSIST -> insist = e.value != 0.0
                     focus.startsWith(PreferenceLearning.CIRCUIT_SETUP) -> {
                         val f = focus.removePrefix(PreferenceLearning.CIRCUIT_SETUP).split(",")
                         circuitRounds = f.getOrNull(0)?.toIntOrNull()
@@ -563,18 +568,26 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     }
 
     /**
-     * "Train anyway" on the recovery card (owner 2026-11-06): once the week's training days are done, one tap
-     * gives the training Today would suggest without the day limit. Holds for the day, also after a restart.
-     */
-    /**
-     * "Anyway" on the card (owner 2026-11-22): the coach held the chosen kind back because of the fingers; the athlete
-     * read why and decides. Holds for today.
+     * "Anyway" on the card (owner 2026-11-22): the coach held the chosen or planned kind back because of the fingers;
+     * the athlete read why and decides. Holds for that kind for the day, also after a restart (recorded like "train
+     * anyway"); another kind chosen afterwards gets the coach's advice again.
      */
     fun insistToday() = io {
         synchronized(refreshLock) {
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.INSIST, emptyList())
             insist = true
             lastInputs?.let { refreshUnlocked(it) }
         }
+    }
+
+    /**
+     * "Anyway" goes with the day it was for: taken back in memory and in the ledger, so a restart does not bring it
+     * back. Call with [refreshLock] held.
+     */
+    private fun takeBackInsist() {
+        if (!insist) return
+        service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.INSIST, emptyList(), value = 0.0)
+        insist = false
     }
 
     /**
@@ -583,13 +596,33 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
      */
     fun climbToday(kind: com.cruxcoach.athlete.model.ClimbingDayKind?) = io {
         val today = service.today()
+        val current = DayPlans.entry(service.repo.profile(), today)
+        // Today already is that kind of day. The sheet shows its chip as selected and takes the day back with
+        // [noClimbToday]; this is the tap of a sheet that did not show it (no suggestion on screen, or not yet).
+        val already = if (kind == null) current == com.cruxcoach.athlete.model.PLAN_BOARD else DayPlans.climbOf(current)?.kind == kind
+        synchronized(refreshLock) {
+            if (wish != null) {
+                // A kind chosen earlier today gives way to the climbing day. Cleared before the plan is written and
+                // recorded like "the coach decides", so it does not come back after a restart; "anyway" goes with it.
+                val s = _state.value.suggestion
+                service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), null)
+                service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_KIND, emptyList())
+                wish = null
+                ignoreUsualKind = true
+                insist = false
+                // The plan stays as it is: only the kind chosen over it goes, and the card shows the day again.
+                if (already) lastInputs?.let { refreshUnlocked(it) }
+            } else if (!already) takeBackInsist()
+        }
+        // The plan itself is not written again: a planned hard or limit day must not turn into a volume day by a tap
+        // on its own kind, nor is there a change to undo.
+        if (already) return@io
         var before: Map<String, String>? = null
         val entry = kind?.let { DayPlans.Climb(it, com.cruxcoach.athlete.model.ClimbIntensity.VOLUME).entry } ?: com.cruxcoach.athlete.model.PLAN_BOARD
         service.repo.updateProfile { p ->
             before = p.datePlan
             DayPlans.withDay(p, today, entry, today)
         }
-        synchronized(refreshLock) { wish = null }
         _state.update { it.copy(climbTodayUndo = before) }
     }
 
@@ -600,7 +633,11 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
      * is no climbing day after all (Nokia walk 2026-11-22: the tap closed the sheet and nothing changed, and "Zug &
      * Druck" kept the climbing day's title). The day goes back to "the coach decides".
      */
-    fun noClimbToday() = io { clearClimbToday() }
+    fun noClimbToday() = io {
+        // "Anyway" for a board day the coach held back goes with the day, before the plan is written.
+        synchronized(refreshLock) { takeBackInsist() }
+        clearClimbToday()
+    }
 
     private fun clearClimbToday() {
         val today = service.today()
@@ -635,9 +672,13 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     /** "Verstanden" on the load card: quiet for the rest of this week; a new week tells again. */
     fun dismissLoadSpike() = io {
         service.repo.putSetting(LOAD_SPIKE_SEEN, WeeklyVolume.weekStartOf(service.today()).toString())
-        lastInputs?.let { synchronized(refreshLock) { refreshUnlocked(it) } }
+        synchronized(refreshLock) { lastInputs?.let { refreshUnlocked(it) } }
     }
 
+    /**
+     * "Train anyway" on the recovery card (owner 2026-11-06): once the week's training days are done, one tap
+     * gives the training Today would suggest without the day limit. Holds for the day, also after a restart.
+     */
     fun trainAnyway() = io {
         synchronized(refreshLock) {
             val s = _state.value.suggestion
@@ -663,6 +704,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             // Another kind of training than the planned climbing: the athlete decides, today is no climbing day then.
             if (focus != null && focus != com.cruxcoach.athlete.logic.SuggestionFocus.BOARD_DAY) clearClimbToday()
             wish = focus
+            // "Anyway" was for the kind before: the coach's advice about the new one is said again.
+            insist = false
             lastInputs?.let { refreshUnlocked(it) }
         }
     }

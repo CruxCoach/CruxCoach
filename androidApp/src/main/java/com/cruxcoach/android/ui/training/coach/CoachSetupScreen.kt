@@ -645,7 +645,16 @@ private fun WeekCard(state: CoachSetupState, update: ((CoachProfile) -> CoachPro
     // What the years, the grade and the days make of the coach: said once, here, where the days are set.
     val tier = com.cruxcoach.athlete.logic.DayPlans.tier(d.copy(trainingDaysPerWeek = d.trainingDaysPerWeek ?: state.profile.weeklyGoal), sex = state.profile.sex)
     if (tier != com.cruxcoach.athlete.logic.DayPlans.Tier.STANDARD) {
-        Text(stringResource(if (tier == com.cruxcoach.athlete.logic.DayPlans.Tier.ELITE) R.string.trc_tier_elite else R.string.trc_tier_advanced),
+        // From 40 on only the planner follows the level: recovery times, the room in the weekly targets and the finger
+        // sessions follow the age as before ([ClimbingLoad.recoveryHours], [WeeklyVolume.targets]) – the text says so.
+        val from40 = d.ageBand == AgeBand.Y40_54 || d.ageBand == AgeBand.Y55_PLUS
+        val elite = tier == com.cruxcoach.athlete.logic.DayPlans.Tier.ELITE
+        Text(stringResource(when {
+            elite && from40 -> R.string.trc_tier_elite_from_40
+            elite -> R.string.trc_tier_elite
+            from40 -> R.string.trc_tier_advanced_from_40
+            else -> R.string.trc_tier_advanced
+        }),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp).testTag("coach_tier"))
     }

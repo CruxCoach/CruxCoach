@@ -1519,13 +1519,6 @@ private fun DailySuggestionCard(
                     Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp))
                     Text(stringResource(if (climbDay) R.string.trt_warmup_start else R.string.trsg_start))
                 }
-                // The coach held the chosen kind back because of the fingers: advice, and one tap decides otherwise.
-                s.heldBack?.let { kind ->
-                    OutlinedButton(onClick = onInsist, colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_insist")) {
-                        Text(stringResource(R.string.trt_insist, kindLabel(kind)))
-                    }
-                }
                 // Only when the week's training days are done, not when an area's volume is: one tap trains anyway.
                 if (s.reasons.firstOrNull() == SuggestionReason.WEEK_DAYS_DONE) {
                     OutlinedButton(onClick = onTrainAnyway, colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
@@ -1533,6 +1526,14 @@ private fun DailySuggestionCard(
                         Icon(Icons.Default.FitnessCenter, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.trv_train_anyway))
                     }
+                }
+            }
+            // The coach held the chosen or planned kind back because of the fingers: advice, and one tap decides
+            // otherwise. Below both layouts: a board day held back to a light session is a board card too.
+            s.heldBack?.let { kind ->
+                OutlinedButton(onClick = onInsist, colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_insist")) {
+                    Text(stringResource(R.string.trt_insist, kindLabel(kind)))
                 }
             }
             // One quiet link: everything else about today's training lives in one sheet ("Training anpassen").
@@ -1668,9 +1669,15 @@ private fun LoadSpikeCard(state: TodayState, onSeen: () -> Unit = {}, onLighterW
             }
         }
         // Advice the athlete has read does not come back every day: quiet until next week. The lighter week is an
-        // offer here, never something the coach starts by itself.
+        // offer here, never something the coach starts by itself – and none while the week already is a lighter one
+        // (a second tap started its seven days again) or the days before a trip or competition.
+        val phase = state.block?.phase
+        val lighterAlready = phase == com.cruxcoach.athlete.logic.BlockPhase.DELOAD || phase == com.cruxcoach.athlete.logic.BlockPhase.TAPER ||
+            phase == com.cruxcoach.athlete.logic.BlockPhase.EVENT
         Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onLighterWeek, modifier = Modifier.testTag("today_load_spike_lighter")) { Text(stringResource(R.string.tre_deload_action)) }
+            if (!lighterAlready) {
+                TextButton(onClick = onLighterWeek, modifier = Modifier.testTag("today_load_spike_lighter")) { Text(stringResource(R.string.tre_deload_action)) }
+            }
             TextButton(onClick = onSeen, modifier = Modifier.testTag("today_load_spike_seen")) { Text(stringResource(R.string.action_understood)) }
         }
     }

@@ -352,7 +352,9 @@ class OverridesTest : AthleteScreenTest() {
         until { repo.checkin(day)?.sore == setOf(InjuryRegion.SHOULDER) }
         assertEquals(4, repo.checkin(day)?.energy)
         assertTrue(repo.activeInjuries().isEmpty())
-        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        // The card has taken the check-in in: a suggestion was there before it, and that one may load the shoulder
+        // (PR CI 2026-11-22 read it too early).
+        until { vm.state.value.checkin?.sore == setOf(InjuryRegion.SHOULDER) && vm.state.value.suggestion != null }
         scrollTo("today_list", hasTestTag("today_suggestion_start"))
         val slugs = vm.state.value.suggestion!!.routine.items.map { it.slug }
         assertTrue(slugs.none { service.catalog[it]?.domains?.contains(com.cruxcoach.athlete.catalog.LoadDomain.SHOULDER) == true }, "$slugs")

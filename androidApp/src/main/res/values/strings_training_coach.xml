@@ -46,6 +46,8 @@
     <string name="trc_days_per_week">%1$d\u00A0days</string>
     <string name="trc_tier_advanced">With your years, grade and training days the coach holds back less: hard days in a row are fine, and the weekly targets have more room.</string>
     <string name="trc_tier_elite">With your years, grade and training days the coach leaves the load to you: no warnings in the planner, three finger sessions a week, more room in the weekly targets.</string>
+    <string name="trc_tier_advanced_from_40">With your years, grade and training days the planner only warns about limit days. From 40 on, recovery times and weekly targets still follow your age.</string>
+    <string name="trc_tier_elite_from_40">With your years, grade and training days the planner no longer warns. From 40 on, recovery times and weekly targets still follow your age.</string>
     <string name="trc_climbing_days">Days you usually climb</string>
     <string name="trc_session_minutes">Length of a training without the wall</string>
     <string name="trc_minutes">%1$d\u00A0min</string>
