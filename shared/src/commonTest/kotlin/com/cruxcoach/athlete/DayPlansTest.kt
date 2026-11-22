@@ -139,6 +139,12 @@ class DayPlansTest {
         assertEquals(DayPlans.Tier.ELITE, DayPlans.tier(pro.copy(currentGrade = "8a", trainingDaysPerWeek = 5)))
         assertEquals(DayPlans.Tier.ELITE, DayPlans.tier(pro.copy(currentGrade = "7c", trainingDaysPerWeek = null), observedDays = 5))
         assertEquals(DayPlans.Tier.ADVANCED, DayPlans.tier(pro.copy(trainingDaysPerWeek = null), observedDays = 4))
+        // For women every band lies three grade steps lower: advanced from 6B+, elite from 7A+.
+        val f = com.cruxcoach.athlete.model.Sex.FEMALE
+        assertEquals(DayPlans.Tier.ADVANCED, DayPlans.tier(pro.copy(currentGrade = "6b+"), sex = f))
+        assertEquals(DayPlans.Tier.STANDARD, DayPlans.tier(pro.copy(currentGrade = "6b"), sex = f))
+        assertEquals(DayPlans.Tier.ELITE, DayPlans.tier(pro.copy(currentGrade = "7a+", trainingDaysPerWeek = 5), sex = f))
+        assertEquals(DayPlans.Tier.ADVANCED, DayPlans.tier(pro.copy(currentGrade = "7a+", trainingDaysPerWeek = 5)))
         // Twenty training days in the last four weeks are five a week; today itself does not count yet.
         assertEquals(5, DayPlans.observedDays((1..20).map { monday.plus(DatePeriod(days = it)) }, monday.plus(DatePeriod(days = 28))))
         assertEquals(0, DayPlans.observedDays(listOf(monday), monday))

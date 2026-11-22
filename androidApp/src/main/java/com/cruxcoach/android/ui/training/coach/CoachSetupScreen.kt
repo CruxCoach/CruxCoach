@@ -642,6 +642,13 @@ private fun WeekCard(state: CoachSetupState, update: ((CoachProfile) -> CoachPro
             modifier = Modifier.testTag("coach_training_days_plus")) { Text("+") }
     }
     PrefillHint(state.prefill[PrefillField.TRAINING_DAYS])
+    // What the years, the grade and the days make of the coach: said once, here, where the days are set.
+    val tier = com.cruxcoach.athlete.logic.DayPlans.tier(d.copy(trainingDaysPerWeek = d.trainingDaysPerWeek ?: state.profile.weeklyGoal), sex = state.profile.sex)
+    if (tier != com.cruxcoach.athlete.logic.DayPlans.Tier.STANDARD) {
+        Text(stringResource(if (tier == com.cruxcoach.athlete.logic.DayPlans.Tier.ELITE) R.string.trc_tier_elite else R.string.trc_tier_advanced),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp).testTag("coach_tier"))
+    }
     QuestionLabel(stringResource(R.string.trc_climbing_days))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         (1..7).forEach { day ->
