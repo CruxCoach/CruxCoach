@@ -29,6 +29,9 @@
     <string name="trf_water">Wasser</string>
     <string name="trf_hc_switch">Mahlzeiten und Wasser an Health Connect senden</string>
     <string name="trf_hc_hint">Jedes eingetragene Lebensmittel und jedes Glas Wasser wird in Health Connect geschrieben; geänderte oder gelöschte Einträge werden dort angepasst, sobald du Ernährung öffnest. Schaltest du das aus, bleibt schon Geschriebenes in Health Connect; lösch es dort, wenn du willst.</string>
+    <string name="trf_meal_save">Als Mahlzeit speichern</string>
+    <string name="trf_meal_save_text">Die %1$d Lebensmittel werden ein Gericht. Beim nächsten Mal trägst du es mit einem Tipp ein.</string>
+    <string name="trf_meal_saved">Gespeichert. Du findest die Mahlzeit beim Eintragen unter deinen Lebensmitteln.</string>
     <string name="trf_recipe_new">Rezept</string>
     <string name="trf_recipe_title">Rezept</string>
     <string name="trf_recipe_edit">Rezept bearbeiten</string>
