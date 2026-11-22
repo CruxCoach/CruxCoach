@@ -152,7 +152,7 @@ class MealLoggingFlowTest : AthleteScreenTest() {
         assertEquals(1, dishes().size)
     }
 
-    \u00A0Test
+    @Test
     fun `an amount reads the same in a dish's row, in the confirmation and in the day's list`() {
         val texts = mutableMapOf<String, String?>()
         render {
