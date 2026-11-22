@@ -32,7 +32,9 @@
     <string name="trt_day_climbed">geklettert</string>
     <string name="trt_day_trained">trainiert</string>
     <string name="trt_day_paused">Pause</string>
-    <string name="trt_day_rest">Ruhetag</string>
+    <string name="trt_day_nothing">nichts eingetragen</string>
+    <string name="trt_day_running">Training läuft</string>
+    <string name="trt_day_suggested">Vorschlag: %1$s</string>
     <string name="trt_continue_workout">Training läuft – weitermachen</string>
     <string name="trt_pause_end">Pause beenden</string>
     <string name="trt_checkin_title">Wie geht\'s dir heute?</string>
@@ -164,6 +166,7 @@
     <string name="trt_dont_know_undo">Heute „%1$s“ statt „%2$s“</string>
     <string name="trt_show_less">Weniger zeigen</string>
     <string name="trt_next_place">Wo trainierst du?</string>
+    <string name="trt_next_place_climb">Wo machst du die Übungen nach dem Klettern?</string>
     <string name="trt_next_level">Heute lieber</string>
     <string name="trt_level_easier">Leichter</string>
     <string name="trt_level_harder">Fordernder</string>

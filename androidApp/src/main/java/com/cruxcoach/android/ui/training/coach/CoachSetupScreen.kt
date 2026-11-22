@@ -105,6 +105,13 @@ class CoachSetupViewModel @Inject constructor(
     private var persisted = CoachProfile()
     private var persistedMinutes = 45
 
+    /**
+     * The draft as it was opened, stored or skipped, card by card: a card that differs from it was changed, and
+     * leaving the setup keeps it ([keepChanges]). Prefilled answers are part of it, so they alone change no card.
+     */
+    private var settled = CoachProfile()
+    private var settledMinutes = 45
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
@@ -156,6 +163,8 @@ class CoachSetupViewModel @Inject constructor(
                 d = d.copy(currentFlashGrade = logbook.flashGrade)
                 prefill[PrefillField.FLASH_GRADE] = PrefillSource.LOGBOOK
             }
+            settled = d
+            settledMinutes = profile.sessionMinutes
             _state.value = CoachSetupState(
                 loading = false,
                 draft = d,
@@ -204,17 +213,69 @@ class CoachSetupViewModel @Inject constructor(
         var s = _state.value
         // The week card shows the weekly goal when nothing was chosen; "Weiter" takes what it shows.
         if (s.step == 1 && s.draft.trainingDaysPerWeek == null) {
-            s = s.copy(draft = s.draft.copy(trainingDaysPerWeek = s.profile.weeklyGoal.coerceIn(1, 7)))
+            s = s.copy(draft = asShown(s))
             _state.value = s
         }
+        settle(s.step, s)
         save(s.step, s.draft, s.sessionMinutes, finish = false)
         _state.update { it.copy(step = (it.step + 1).coerceAtMost(COACH_STEPS - 1)) }
     }
 
+    /** The card [step] stands as [s] has it: stored, or skipped back to what is stored. */
+    private fun settle(step: Int, s: CoachSetupState) {
+        settled = mergeCard(step, settled, s.draft)
+        if (step == 1) settledMinutes = s.sessionMinutes
+    }
+
+    /** Compared as shown: "+" and "−" back to the weekly goal the week card started from is no change. */
+    private fun changed(step: Int, s: CoachSetupState): Boolean {
+        val was = asShown(settled, s)
+        return mergeCard(step, was, asShown(s)) != was || (step == 1 && s.sessionMinutes != settledMinutes)
+    }
+
+    /** The draft as the cards show it: the week card shows the weekly goal while no training days are chosen. */
+    private fun asShown(s: CoachSetupState): CoachProfile = asShown(s.draft, s)
+
+    private fun asShown(answers: CoachProfile, s: CoachSetupState): CoachProfile =
+        if (answers.trainingDaysPerWeek != null) answers else answers.copy(trainingDaysPerWeek = s.profile.weeklyGoal.coerceIn(1, 7))
+
     /** "Überspringen": this card's changes are dropped, the stored answers stay. */
-    fun skip() = _state.update { s ->
-        s.copy(draft = revertCard(s.step, s.draft, persisted), sessionMinutes = if (s.step == 1) persistedMinutes else s.sessionMinutes,
-            step = (s.step + 1).coerceAtMost(COACH_STEPS - 1))
+    fun skip() {
+        val step = _state.value.step
+        _state.update { s ->
+            s.copy(draft = revertCard(s.step, s.draft, persisted), sessionMinutes = if (s.step == 1) persistedMinutes else s.sessionMinutes,
+                step = (s.step + 1).coerceAtMost(COACH_STEPS - 1))
+        }
+        settle(step, _state.value)
+    }
+
+    /**
+     * The arrow in the app bar, and "back" on the first card: leaving keeps every card that was changed, as "Weiter"
+     * would (Nokia walk 2026-11-22: years and grade changed, the arrow tapped, both were gone). A card that was only
+     * looked at, or changed and put back, stores nothing, so opening the setup confirms no prefilled answer;
+     * "Überspringen" stays the way to drop a card's changes.
+     */
+    fun keepChanges() = leave(dismiss = false)
+
+    private fun leave(dismiss: Boolean) {
+        val s = _state.value
+        val steps = if (s.loading) emptyList() else (0 until COACH_STEPS - 1).filter { changed(it, s) }
+        steps.forEach { settle(it, s) }
+        if (steps.isEmpty() && !dismiss) return
+        val shown = asShown(s)
+        // The screen is on its way out: started right here and not cancellable, the write does not end with its view
+        // model. Unconfined, so it also ends on the IO thread and waits for nothing on the main thread.
+        viewModelScope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                service.ensureReady()
+                steps.forEach { step -> store(step, shown, s.sessionMinutes, finish = false) }
+                // A finished setup stays finished: the coach counts on it.
+                if (dismiss) service.repo.updateProfile { p ->
+                    if (p.coach.setupState == SetupState.DONE) p
+                    else p.copy(coach = p.coach.copy(setupState = SetupState.DISMISSED, setupUpdatedAt = System.currentTimeMillis()))
+                }
+            }
+        }
     }
 
     fun back() = _state.update { it.copy(step = (it.step - 1).coerceAtLeast(0)) }
@@ -258,14 +319,12 @@ class CoachSetupViewModel @Inject constructor(
 
     fun consumeTestStarted() = _state.update { it.copy(testStarted = false) }
 
-    /** "Nicht mehr fragen": keeps every answer, hides the setup prompts. */
-    fun dismiss() = io {
-        service.repo.updateProfile { p ->
-            p.copy(coach = p.coach.copy(setupState = SetupState.DISMISSED, setupUpdatedAt = System.currentTimeMillis()))
-        }
-    }
+    /** "Nicht mehr fragen": keeps every answer – also what was changed on the cards, as the arrow does – and hides the setup prompts. */
+    fun dismiss() = leave(dismiss = true)
 
-    private fun save(step: Int, draft: CoachProfile, minutes: Int, finish: Boolean) = io {
+    private fun save(step: Int, draft: CoachProfile, minutes: Int, finish: Boolean) = io { store(step, draft, minutes, finish) }
+
+    private fun store(step: Int, draft: CoachProfile, minutes: Int, finish: Boolean) {
         val today = service.today().toString()
         service.repo.updateProfile { p ->
             // Only this card's fields come from the draft; everything else stays as other screens left it.
@@ -383,11 +442,13 @@ fun CoachSetupScreen(
     LaunchedEffect(state.testStarted) { if (state.testStarted) { viewModel.consumeTestStarted(); onStartTest() } }
     val testTitle = BuiltinRoutines.byKey(BuiltinRoutines.BASELINE_TESTS)?.let { routineName(it) } ?: ""
 
-    BackHandler(enabled = state.step > 0) { viewModel.back() }
+    // Leaving keeps what was changed on the cards; "back" goes one card back and leaves from the first one.
+    val leave = { viewModel.keepChanges(); onBack() }
+    BackHandler { if (state.step > 0) viewModel.back() else leave() }
 
     TrainingScaffold(
         title = stringResource(R.string.trc_setup_title),
-        onBack = onBack,
+        onBack = leave,
         actions = {
             // A rare step in ⋮: as a text action it left the title one letter at the largest font.
             var menu by remember { mutableStateOf(false) }

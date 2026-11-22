@@ -383,7 +383,8 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         val loadedVm15 = loaded(com.cruxcoach.android.ui.training.workouts.WeekPlanViewModel(service))
         render { com.cruxcoach.android.ui.training.workouts.WeekPlanScreen({},
             viewModel = loadedVm15) }
-        waitForTag("week_plan_day_1")
+        // Below the proposal, which shows at once while there is no standard week: a lazy list composes only what is on screen.
+        scrollTo("week_plan_list", "week_plan_day_1")
     }
 
     @Test

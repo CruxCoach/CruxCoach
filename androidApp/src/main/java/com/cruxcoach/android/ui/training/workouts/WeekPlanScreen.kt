@@ -39,6 +39,10 @@ data class WeekPlanState(
     val routines: List<Routine> = emptyList(),
     /** Standard week proposed from the coach answers and the logbook's rhythm (FEAT-071). */
     val proposal: Map<Int, String> = emptyMap(),
+    /** The usual climbing days (ISO weekdays) the proposal is built around: the athlete's own, else the logbook's. */
+    val climbingDays: Set<Int> = emptySet(),
+    /** [climbingDays] are the logbook's: the athlete named none yet. */
+    val climbingDaysFromLogbook: Boolean = false,
 )
 
 @HiltViewModel
@@ -46,14 +50,35 @@ class WeekPlanViewModel @Inject constructor(private val service: AthleteService)
     private val _state = MutableStateFlow(WeekPlanState())
     val state: StateFlow<WeekPlanState> = _state.asStateFlow()
 
+    /** The weekdays the board logbook shows as usual climbing days; they stand in while the athlete named none. */
+    @Volatile private var logbookDays: Set<Int> = emptySet()
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val logbook = runCatching { service.logbookSummary() }.getOrDefault(com.cruxcoach.athlete.logic.LogbookSummary())
+            logbookDays = logbook.usualClimbingDays.filter { it in 1..7 }.toSet()
             combine(service.repo.observeProfile(), service.repo.observeRoutines(), service.repo.observeActiveInjuries()) { profile, routines, injuries ->
                 val proposal = com.cruxcoach.athlete.logic.WeekPlanSuggester.suggest(profile.coach, logbook, routines, profile.equipment, injuries)
                 WeekPlanState(false, profile, routines, proposal)
-            }.collect { _state.value = it }
+            }.collect {
+                _state.value = it.copy(climbingDays = usualDays(it.profile),
+                    climbingDaysFromLogbook = it.profile.coach.climbingDays.none { d -> d in 1..7 } && logbookDays.isNotEmpty())
+            }
+        }
+    }
+
+    private fun usualDays(profile: AthleteProfile): Set<Int> = profile.coach.climbingDays.filter { it in 1..7 }.toSet().ifEmpty { logbookDays }
+
+    /**
+     * A usual climbing day, from the chips above the proposal (Nokia walk 2026-11-22: a new athlete's proposed week
+     * had no climbing days, because only the coach setup asks for them). The same answer as on the setup's week card,
+     * kept at once like every choice on this page; the proposal follows.
+     */
+    fun setClimbingDay(day: Int, climbs: Boolean) = io {
+        service.repo.updateProfile { p ->
+            val days = usualDays(p)
+            p.copy(coach = p.coach.copy(climbingDays = if (climbs) days + day else days - day))
         }
     }
 
@@ -123,7 +148,7 @@ fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewMo
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (state.proposal.isNotEmpty()) {
-                item(key = "proposal") { ProposalCard(state, onApply = apply) }
+                item(key = "proposal") { ProposalCard(state, onApply = apply, onClimbingDay = viewModel::setClimbingDay) }
             }
             items((1..7).toList(), key = { it }) { day ->
                 val entry = state.profile.weekPlan[day]
@@ -176,15 +201,32 @@ fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewMo
 /** "Vorschlag aus deinem Rhythmus": the coach's standard week, previewed, applied only on a tap. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ProposalCard(state: WeekPlanState, onApply: () -> Unit) {
-    var open by rememberSaveable { mutableStateOf(false) }
+private fun ProposalCard(state: WeekPlanState, onApply: () -> Unit, onClimbingDay: (Int, Boolean) -> Unit = { _, _ -> }) {
+    // Without a standard week the proposal is what this page is opened for: it shows at once.
+    var open by rememberSaveable { mutableStateOf(state.profile.weekPlan.isEmpty()) }
     val same = state.proposal == state.profile.weekPlan
     OutlinedCard(Modifier.fillMaxWidth().testTag("week_plan_proposal")) {
         Column(Modifier.padding(16.dp)) {
             Text(stringResource(R.string.trc_week_proposal_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(stringResource(if (same) R.string.trc_week_proposal_same else R.string.trc_week_proposal_text),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (open) {
+            // The days the week is built around, right where it is proposed: one tap each, the proposal follows.
+            Text(stringResource(R.string.trc_climbing_days), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                (1..7).forEach { day ->
+                    val selected = day in state.climbingDays
+                    // A tap shows what it changes: the proposal opens.
+                    FilterChip(selected = selected, onClick = { open = true; onClimbingDay(day, !selected) },
+                        label = { Text(weekdayName(day, java.time.format.TextStyle.SHORT)) },
+                        modifier = Modifier.testTag("week_plan_climbing_day_$day"))
+                }
+            }
+            if (state.climbingDaysFromLogbook) {
+                Text(stringResource(R.string.trc_prefill_logbook), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("week_plan_climbing_days_logbook"))
+            }
+            // A proposal that is already the week needs no second list above the days.
+            if (open && !same) {
                 Column(Modifier.padding(top = 8.dp)) {
                     (1..7).forEach { day ->
                         DayAbovePlan(Modifier.padding(vertical = 2.dp), day = {
