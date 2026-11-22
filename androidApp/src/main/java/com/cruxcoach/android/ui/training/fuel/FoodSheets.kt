@@ -12,12 +12,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Scale
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -26,9 +28,15 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,6 +44,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.coroutineScope
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.EmptyHint
 import com.cruxcoach.android.ui.training.LabelBesideOrAbove
 import com.cruxcoach.android.ui.training.formatNumber
@@ -159,9 +168,142 @@ fun QuickAddSheet(
     }
 }
 
+/** Dishes shown on top before "show all": more would push "log again" off a small screen. */
+private const val DISH_PREVIEW = 4
+
+/** Taps on a one-tap row this soon after the last one are the same tap. */
+private const val ONE_TAP_GAP_MS = 400L
+
+/** The energy of scaled nutrients: as stated, else estimated from the macros; null without any value. */
+private fun energyOf(n: Nutrients): MacroTotals.Energy? =
+    n.kcal?.let { MacroTotals.Energy(it, estimated = false) }
+        ?: if (n.protein == null && n.carbs == null && n.fat == null) null
+        else MacroTotals.Energy(4 * (n.protein ?: 0.0) + 4 * (n.carbs ?: 0.0) + 9 * (n.fat ?: 0.0), estimated = true)
+
+/** "80 g", "2 × portion", or nothing for one portion of a food without a weight. */
+@Composable
+private fun entryAmount(entry: FoodLogEntry, units: UnitSystem): String? = when {
+    entry.amountG != null -> amountText(entry.amountG!!, FuelUnits.unitFor(units, FuelUnits.isDrink(entry.foodItemId, entry.name)))
+    entry.portions != null && entry.portions != 1.0 -> stringResource(R.string.trf_entry_portions, formatNumber(entry.portions!!))
+    else -> null
+}
+
+/** A saved food's name; a favourite carries its star, now that the star button sits in the row's menu. */
+@Composable
+private fun FoodName(item: FoodItem) {
+    if (!item.favorite) {
+        Text(item.name)
+        return
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(item.name, modifier = Modifier.weight(1f, fill = false))
+        Icon(Icons.Default.Star, contentDescription = stringResource(R.string.trf_food_is_favorite),
+            tint = CruxCoachDesign.colors.brandAccent, modifier = Modifier.padding(start = 6.dp).size(16.dp))
+    }
+}
+
+/**
+ * A saved food's actions behind one "⋮". Edit, star and delete as three icons left the name of a dish a third of a
+ * narrow phone's width (flow review 2026-11-22). [onAmount] is for rows that log at once: the way to another amount.
+ */
+@Composable
+private fun FoodMenu(
+    item: FoodItem,
+    onAmount: (() -> Unit)?,
+    onEditRecipe: (() -> Unit)?,
+    onToggleFavorite: () -> Unit,
+    onDelete: (() -> Unit)?,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }, modifier = Modifier.testTag("fuel_food_menu_${item.id}")) {
+            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.trf_entry_menu, item.name))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (onAmount != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.trf_food_choose_amount)) },
+                    leadingIcon = { Icon(Icons.Default.Scale, null) },
+                    onClick = { open = false; onAmount() },
+                    modifier = Modifier.testTag("fuel_food_amount_${item.id}"),
+                )
+            }
+            if (onEditRecipe != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.trf_recipe_edit)) },
+                    leadingIcon = { Icon(Icons.Default.Edit, null) },
+                    onClick = { open = false; onEditRecipe() },
+                    modifier = Modifier.testTag("fuel_recipe_edit_${item.id}"),
+                )
+            }
+            DropdownMenuItem(
+                text = { Text(stringResource(if (item.favorite) R.string.trf_food_unfavorite else R.string.trf_food_favorite)) },
+                leadingIcon = { Icon(if (item.favorite) Icons.Default.Star else Icons.Default.StarBorder, null) },
+                onClick = { open = false; onToggleFavorite() },
+                modifier = Modifier.testTag("fuel_food_star_${item.id}"),
+            )
+            if (onDelete != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.tr_action_delete)) },
+                    leadingIcon = { Icon(Icons.Default.Delete, null) },
+                    onClick = { open = false; onDelete() },
+                    modifier = Modifier.testTag("fuel_food_delete_${item.id}"),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * What was just logged, on top of the add sheet. The sheet stays open for the next food (Nokia walk 2026-11-22: four
+ * foods for one meal meant opening it four times), so this is where the athlete sees that the tap arrived: the food,
+ * what its meal holds now, "undo" and "done".
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LoggedStrip(
+    last: FoodLogEntry,
+    dayEntries: List<FoodLogEntry>,
+    showCalories: Boolean,
+    units: UnitSystem,
+    onUndo: () -> Unit,
+    onDone: () -> Unit,
+) {
+    // The day's list may still be on its way from the database: the new entry counts either way.
+    val meal = (dayEntries.filter { it.meal == last.meal && it.id != last.id } + last)
+    val totals = MacroTotals.of(meal)
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("fuel_logged")) {
+        Column(Modifier.padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 2.dp)) {
+            Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(end = 8.dp)) {
+                Icon(Icons.Default.CheckCircle, null, tint = CruxCoachDesign.colors.positive, modifier = Modifier.padding(top = 1.dp).size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                // TalkBack reads the confirmation when it appears or changes.
+                Column(Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }) {
+                    Text(listOfNotNull(stringResource(R.string.trf_recent_logged, last.name), entryAmount(last, units)).joinToString(" · "),
+                        style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag("fuel_logged_text"))
+                    Text(pluralStringResource(R.plurals.trf_logged_meal, meal.size, meal.size, mealLabel(last.meal)) + " · " +
+                        macrosText(totals.protein, totals.carbs, totals.fat, MacroTotals.Energy(totals.kcal, totals.kcalEstimated), showCalories),
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("fuel_logged_meal"))
+                }
+            }
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onUndo, modifier = Modifier.testTag("fuel_logged_undo")) { Text(stringResource(R.string.trf_undo)) }
+                TextButton(onClick = onDone, modifier = Modifier.testTag("fuel_logged_done")) {
+                    Text(stringResource(R.string.tr_action_done), fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
 /**
  * Saved foods (favourites first, then most used) plus, while searching, the
  * 7,140 foods of the bundled BLS 4.0 – offline on every phone (FEAT-069).
+ *
+ * When it logs food, the sheet stays open after each food: what was [logged] is confirmed on top with "undo", and
+ * "done" (or leaving the sheet) ends it. Dishes stand first and are logged with one tap.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -170,7 +312,7 @@ fun FoodsSheet(
     onDismiss: () -> Unit,
     onPick: (FoodItem) -> Unit,
     onToggleFavorite: (FoodItem) -> Unit,
-    /** Null hides the trash icon (picking a recipe ingredient). */
+    /** Null leaves "delete" out of a food's menu (picking a recipe ingredient). */
     onDelete: ((FoodItem) -> Unit)?,
     onCreate: (() -> Unit)?,
     searchBls: suspend (String) -> List<BlsFood> = { emptyList() },
@@ -196,16 +338,59 @@ fun FoodsSheet(
     onRelog: (FoodLogEntry) -> Unit = {},
     showCalories: Boolean = false,
     units: UnitSystem = UnitSystem.METRIC,
+    /**
+     * One tap on a dish logs its usual amount. Dishes then stand first, under "My dishes"; null lists them among the
+     * foods (picking a recipe ingredient).
+     */
+    onLogDish: ((FoodItem) -> Unit)? = null,
+    /** Newest entry per saved food: the amount one tap on a dish logs. */
+    lastByFood: Map<String, FoodLogEntry> = emptyMap(),
+    /** What was logged since the sheet opened, newest last: confirmed on top, with "undo" for the newest. */
+    logged: List<FoodLogEntry> = emptyList(),
+    /** The shown day's entries: the confirmation says what the meal holds now. */
+    dayEntries: List<FoodLogEntry> = emptyList(),
+    onUndoLogged: (FoodLogEntry) -> Unit = {},
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     /** A food about to be deleted: one tap on the trash icon used to delete it outright. */
     var confirmDelete by remember { mutableStateOf<FoodItem?>(null) }
+    var allDishes by rememberSaveable { mutableStateOf(false) }
     val q = query.trim().lowercase()
+    // After a food was logged the search starts over: the next food is another one.
+    LaunchedEffect(logged.size) { if (logged.isNotEmpty()) query = "" }
+    // A one-tap row stays under the finger now that the sheet stays open, and when a "log again" row leaves, the next
+    // one slides up into its place: a second tap within a moment is the same tap, not another food.
+    var oneTaps by remember { mutableStateOf(0) }
+    var oneTapReady by remember { mutableStateOf(true) }
+    LaunchedEffect(oneTaps) {
+        if (oneTaps > 0) {
+            delay(ONE_TAP_GAP_MS)
+            oneTapReady = true
+        }
+    }
+    fun oneTap(log: () -> Unit) {
+        if (!oneTapReady) return
+        oneTapReady = false
+        oneTaps++
+        log()
+    }
+    // Dishes have their own one-tap section while nothing is typed; a search lists them among the foods.
+    val dishSection = onLogDish != null && q.isEmpty()
+    // The dish saved or logged last comes first, so a meal saved a moment ago is one tap away; favourites before all.
+    val dishes = if (dishSection) foods.filter { it.source == Recipe.SOURCE }
+        .sortedWith(compareByDescending<FoodItem> { it.favorite }.thenByDescending { maxOf(it.lastUsedAt ?: 0L, it.updatedAt) })
+        else emptyList()
+    val shownDishes = if (allDishes) dishes else dishes.take(DISH_PREVIEW)
+    // A dish in the section above is not offered a second time under "log again".
+    val shownRecent = recent.filter { r -> shownDishes.none { it.id == r.foodItemId } }
     // The repository already orders favourites first, then by use count.
     // Dishes first (Nokia walk 2026-11-22: a meal saved from four foods stood below the four foods): a dish is what
     // saves the typing. The sort is stable, so favourites and use count keep their order within both groups.
     val visible = foods.filter { q.isEmpty() || it.name.lowercase().contains(q) || (it.brand?.lowercase()?.contains(q) == true) }
+        .filter { !dishSection || it.source != Recipe.SOURCE }
         .sortedBy { if (it.source == Recipe.SOURCE) 0 else 1 }
+    // A row's menu holds what can be done with a saved food; picking an ingredient needs none of it.
+    val menus = onDelete != null || onEditRecipe != null
     var blsResults by remember { mutableStateOf<List<BlsFood>>(emptyList()) }
     var productResults by remember { mutableStateOf<List<OffProduct>>(emptyList()) }
     var usdaResults by remember { mutableStateOf<List<BlsFood>>(emptyList()) }
@@ -230,6 +415,11 @@ fun FoodsSheet(
         }
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_foods_sheet")) {
+        // The sheet stays under the amount dialog, so "cancel" there comes back to the search and its results. The
+        // keyboard goes: it would cover the dialog's own field. The sheet is a window of its own, so its focus is asked
+        // for in here.
+        val focus = LocalFocusManager.current
+        fun picked(pick: () -> Unit) { focus.clearFocus(); pick() }
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
             // The meal as one small choice next to the title, not six chips above the search; below it when both do
             // not fit in a row ("Ess/en/eintr/age/n" at the largest font).
@@ -238,6 +428,9 @@ fun FoodsSheet(
                     modifier = Modifier.padding(end = 8.dp))
             }) {
                 if (meal != null) MealPicker(meal, onMealChange)
+            }
+            logged.lastOrNull()?.let { last ->
+                LoggedStrip(last, dayEntries, showCalories, units, onUndo = { onUndoLogged(last) }, onDone = onDismiss)
             }
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
@@ -257,19 +450,59 @@ fun FoodsSheet(
             // What this meal usually holds, the own foods and the databases scroll together: on a small phone
             // the "log again" rows above a fixed list squeezed "my foods" away (render review 2026-10-16).
             LazyColumn(Modifier.heightIn(max = 460.dp).testTag("fuel_foods_list")) {
-                    if (q.isEmpty() && recent.isNotEmpty()) {
+                    if (onLogDish != null && shownDishes.isNotEmpty()) {
+                        item(key = "dishes_title") {
+                            Text(stringResource(R.string.trf_dishes_title), style = MaterialTheme.typography.titleSmall, maxLines = 1,
+                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                        }
+                        // One tap each, like "log again" below: the usual amount, into the chosen meal.
+                        items(shownDishes, key = { "dish_${it.id}" }) { item ->
+                            val (portions, grams) = FuelViewModel.usualAmount(item, lastByFood[item.id])
+                            val count = portions ?: 1.0
+                            val amount = when {
+                                grams != null -> amountText(grams, FuelUnits.unitFor(units, FuelUnits.isDrink(item.id, item.name, item.servingLabel)))
+                                count == 1.0 -> stringResource(R.string.trf_one_portion)
+                                else -> stringResource(R.string.trf_entry_portions, formatNumber(count))
+                            }
+                            val values = FuelViewModel.scale(item, portions, grams)
+                                ?.let { macrosText(it.protein, it.carbs, it.fat, energyOf(it), showCalories) }
+                            ListItem(
+                                headlineContent = { FoodName(item) },
+                                supportingContent = {
+                                    Text(listOfNotNull(amount, values).joinToString(" · "), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                },
+                                trailingContent = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.AddCircle, contentDescription = stringResource(R.string.trf_dish_log, item.name))
+                                        FoodMenu(
+                                            item,
+                                            onAmount = { picked { onPick(item) } },
+                                            onEditRecipe = onEditRecipe?.let { edit -> { edit(item) } },
+                                            onToggleFavorite = { onToggleFavorite(item) },
+                                            onDelete = onDelete?.let { { confirmDelete = item } },
+                                        )
+                                    }
+                                },
+                                colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                                modifier = Modifier.clickable { oneTap { onLogDish(item) } }.testTag("fuel_dish_${item.id}"),
+                            )
+                        }
+                        if (dishes.size > shownDishes.size) {
+                            item(key = "dishes_all") {
+                                TextButton(onClick = { allDishes = true }, modifier = Modifier.testTag("fuel_dishes_all")) {
+                                    Text(stringResource(R.string.trf_dishes_all, dishes.size))
+                                }
+                            }
+                        }
+                    }
+                    if (q.isEmpty() && shownRecent.isNotEmpty()) {
                         item(key = "recent_title") {
                             Text(stringResource(R.string.trf_recent_title), style = MaterialTheme.typography.titleSmall, maxLines = 1,
                                 modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                         }
                         // One tap each: the same food with the same amount (UX review 2026-10-16).
-                        items(recent, key = { "recent_${it.id}" }) { entry ->
-                            val unit = FuelUnits.unitFor(units, FuelUnits.isDrink(entry.foodItemId, entry.name))
-                            val amount = when {
-                                entry.amountG != null -> amountText(entry.amountG!!, unit)
-                                entry.portions != null && entry.portions != 1.0 -> stringResource(R.string.trf_entry_portions, formatNumber(entry.portions!!))
-                                else -> null
-                            }
+                        items(shownRecent, key = { "recent_${it.id}" }) { entry ->
+                            val amount = entryAmount(entry, units)
                             ListItem(
                                 headlineContent = { Text(entry.name, maxLines = 1) },
                                 supportingContent = {
@@ -280,7 +513,7 @@ fun FoodsSheet(
                                 },
                                 trailingContent = { Icon(Icons.Default.AddCircle, contentDescription = stringResource(R.string.trf_recent_log, entry.name)) },
                                 colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
-                                modifier = Modifier.clickable { onRelog(entry) }.testTag("fuel_recent_${entry.id}"),
+                                modifier = Modifier.clickable { oneTap { onRelog(entry) } }.testTag("fuel_recent_${entry.id}"),
                             )
                         }
                     }
@@ -290,9 +523,10 @@ fun FoodsSheet(
                             LabelBesideOrAbove(modifier = Modifier.padding(top = 4.dp), label = {
                                 Text(stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(end = 8.dp))
                             }) {
+                                // "+ Dish" and "+ Food": each says what it makes ("Recipe" and "New" did not).
                                 onCreateRecipe?.let { create ->
                                     TextButton(onClick = create, modifier = Modifier.testTag("fuel_recipe_new")) {
-                                        Icon(Icons.Default.MenuBook, null, Modifier.size(18.dp))
+                                        Icon(Icons.Default.Add, null, Modifier.size(18.dp))
                                         Spacer(Modifier.width(4.dp))
                                         Text(stringResource(R.string.trf_recipe_new))
                                     }
@@ -301,53 +535,40 @@ fun FoodsSheet(
                                     TextButton(onClick = create, modifier = Modifier.testTag("fuel_food_new")) {
                                         Icon(Icons.Default.Add, null, Modifier.size(18.dp))
                                         Spacer(Modifier.width(4.dp))
-                                        Text(stringResource(R.string.tru_new_food))
+                                        Text(stringResource(R.string.trf_food_new))
                                     }
                                 }
                             }
                         }
                     }
-                    if (visible.isEmpty() && q.isEmpty()) {
+                    if (visible.isEmpty() && q.isEmpty() && dishes.isEmpty()) {
                         item(key = "own_empty") { EmptyHint(stringResource(R.string.trf_foods_empty)) }
                     }
                     items(visible, key = { it.id }) { item ->
                         ListItem(
-                            headlineContent = { Text(item.name) },
+                            headlineContent = { FoodName(item) },
                             supportingContent = {
-                                val basis = stringResource(if (FuelViewModel.isPerPortion(item)) R.string.trf_food_per_portion else R.string.trf_food_per_100)
-                                val macros = stringResource(R.string.trf_entry_macros,
-                                    item.proteinPer100?.let { formatNumber(it) } ?: "–",
-                                    item.carbsPer100?.let { formatNumber(it) } ?: "–",
-                                    item.fatPer100?.let { formatNumber(it) } ?: "–")
                                 // A dish is eaten by the portion: its line says what one portion holds, not 100 g of it.
                                 val portion = item.servingG?.takeIf { item.source == Recipe.SOURCE && it > 0 }
-                                if (portion != null) {
-                                    fun per(v: Double?) = v?.let { formatNumber(it * portion / 100.0) } ?: "–"
-                                    val one = stringResource(R.string.trf_entry_macros, per(item.proteinPer100), per(item.carbsPer100), per(item.fatPer100))
-                                    Text(one + " (" + stringResource(R.string.trf_food_per_portion) + ")")
-                                } else Text(listOfNotNull(item.brand, "$macros ($basis)").joinToString(" · "))
+                                val perPortion = portion != null || FuelViewModel.isPerPortion(item)
+                                val f = if (portion != null) portion / 100.0 else 1.0
+                                val n = Nutrients(item.kcalPer100?.let { it * f }, item.proteinPer100?.let { it * f },
+                                    item.carbsPer100?.let { it * f }, item.fatPer100?.let { it * f })
+                                val basis = stringResource(if (perPortion) R.string.trf_food_per_portion else R.string.trf_food_per_100)
+                                // Energy with the three macros, as everywhere (owner 2026-11-22: always all of them).
+                                val values = macrosText(n.protein, n.carbs, n.fat, energyOf(n), showCalories)
+                                Text(listOfNotNull(item.brand, "$values ($basis)").joinToString(" · "))
                             },
-                            trailingContent = {
-                                Row {
-                                    if (item.source == Recipe.SOURCE && onEditRecipe != null) {
-                                        IconButton(onClick = { onEditRecipe(item) }, modifier = Modifier.testTag("fuel_recipe_edit_${item.id}")) {
-                                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.trf_recipe_edit))
-                                        }
-                                    }
-                                    IconButton(onClick = { onToggleFavorite(item) }, modifier = Modifier.testTag("fuel_food_star_${item.id}")) {
-                                        Icon(
-                                            if (item.favorite) Icons.Default.Star else Icons.Default.StarBorder,
-                                            contentDescription = stringResource(if (item.favorite) R.string.trf_food_unfavorite else R.string.trf_food_favorite),
-                                        )
-                                    }
-                                    if (onDelete != null) {
-                                        IconButton(onClick = { confirmDelete = item }, modifier = Modifier.testTag("fuel_food_delete_${item.id}")) {
-                                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.trf_food_delete))
-                                        }
-                                    }
-                                }
-                            },
-                            modifier = Modifier.clickable { onPick(item) }.testTag("fuel_food_${item.id}"),
+                            trailingContent = if (menus) ({
+                                FoodMenu(
+                                    item,
+                                    onAmount = null,
+                                    onEditRecipe = onEditRecipe?.takeIf { item.source == Recipe.SOURCE }?.let { edit -> { edit(item) } },
+                                    onToggleFavorite = { onToggleFavorite(item) },
+                                    onDelete = onDelete?.let { { confirmDelete = item } },
+                                )
+                            }) else null,
+                            modifier = Modifier.clickable { picked { onPick(item) } }.testTag("fuel_food_${item.id}"),
                         )
                     }
                     item(key = "bls_header") {
@@ -372,7 +593,7 @@ fun FoodsSheet(
                                 Text(stringResource(R.string.fvp_per_100, formatNumber(food.kcal), formatNumber(food.protein),
                                     formatNumber(food.carbs), formatNumber(food.fat)))
                             },
-                            modifier = Modifier.clickable { onPickBls(food) }.testTag("fuel_bls_${food.code}"),
+                            modifier = Modifier.clickable { picked { onPickBls(food) } }.testTag("fuel_bls_${food.code}"),
                         )
                     }
                     // US generic foods with household measures (cups, slices); English names only.
@@ -391,7 +612,7 @@ fun FoodsSheet(
                                     Text(stringResource(R.string.fvp_per_100, formatNumber(food.kcal), formatNumber(food.protein),
                                         formatNumber(food.carbs), formatNumber(food.fat)))
                                 },
-                                modifier = Modifier.clickable { onPickUsda(food) }.testTag("fuel_usda_${food.code}"),
+                                modifier = Modifier.clickable { picked { onPickUsda(food) } }.testTag("fuel_usda_${food.code}"),
                             )
                         }
                     }
@@ -419,7 +640,7 @@ fun FoodsSheet(
                                         stringResource(R.string.fvp_per_100, formatNumber(product.kcal), formatNumber(product.protein),
                                             formatNumber(product.carbs), formatNumber(product.fat))).joinToString(" · "))
                                 },
-                                modifier = Modifier.clickable { onPickProduct(product) }.testTag("fuel_off_${product.code}"),
+                                modifier = Modifier.clickable { picked { onPickProduct(product) } }.testTag("fuel_off_${product.code}"),
                             )
                         }
                     }
@@ -450,7 +671,7 @@ fun AmountDialog(
     onDismiss: () -> Unit,
     onConfirm: (meal: Meal, portions: Double?, grams: Double?) -> Unit,
     units: UnitSystem = UnitSystem.METRIC,
-    /** A logged entry to change: its amount and meal are the starting values. */
+    /** A logged entry (or a dish's ingredient) to change: its amount and meal are the starting values. */
     editing: FoodLogEntry? = null,
     /** Picking a recipe ingredient: no meal, "Add" instead of "Log". */
     forRecipe: Boolean = false,
@@ -533,10 +754,7 @@ fun AmountDialog(
                 }
                 // What this amount brings, while typing (device test 2026-10-10: the dialog showed only the number).
                 FuelViewModel.scale(item, p.takeUnless { useGrams }, g.takeIf { useGrams })?.let { n ->
-                    val energy = n.kcal?.let { MacroTotals.Energy(it, estimated = false) }
-                        ?: if (n.protein == null && n.carbs == null && n.fat == null) null
-                        else MacroTotals.Energy(4 * (n.protein ?: 0.0) + 4 * (n.carbs ?: 0.0) + 9 * (n.fat ?: 0.0), estimated = true)
-                    Text(macrosText(n.protein, n.carbs, n.fat, energy, showCalories),
+                    Text(macrosText(n.protein, n.carbs, n.fat, energyOf(n), showCalories),
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.testTag("fuel_amount_preview"))
                 }
@@ -553,8 +771,9 @@ fun AmountDialog(
                 modifier = Modifier.testTag("fuel_amount_confirm"),
             ) {
                 Text(stringResource(when {
-                    forRecipe -> R.string.trf_recipe_add_confirm
+                    // A logged entry or a dish's ingredient with a new amount is saved, a new one added or logged.
                     editing != null -> R.string.tr_action_save
+                    forRecipe -> R.string.trf_recipe_add_confirm
                     else -> R.string.trf_amount_add
                 }))
             }

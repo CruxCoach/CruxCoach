@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.training.fuel
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -80,6 +81,10 @@ fun RecipeSheet(
     onAddIngredient: () -> Unit,
     onSave: (Recipe) -> Unit,
     onDismiss: () -> Unit,
+    /** Another dish already has this name: two dishes of one name cannot be told apart when logging. */
+    nameTaken: Boolean = false,
+    /** A tap on an ingredient changes its amount (removing it and searching it again was the only way). */
+    onEditIngredient: (Int) -> Unit = {},
 ) {
     val weightUnit = FuelUnits.unitFor(units, drink = false)
     val recipe = draft.recipe(units)
@@ -92,6 +97,10 @@ fun RecipeSheet(
             OutlinedTextField(
                 value = draft.name, onValueChange = { onChange(draft.copy(name = it.take(120))) }, singleLine = true,
                 label = { Text(stringResource(R.string.trf_recipe_name)) },
+                isError = nameTaken,
+                supportingText = if (nameTaken) ({
+                    Text(stringResource(R.string.trf_recipe_name_taken), modifier = Modifier.testTag("fuel_recipe_name_taken"))
+                }) else null,
                 modifier = Modifier.fillMaxWidth().testTag("fuel_recipe_name"),
             )
             Text(stringResource(R.string.trf_recipe_ingredients), style = MaterialTheme.typography.labelLarge)
@@ -108,7 +117,8 @@ fun RecipeSheet(
                             modifier = Modifier.testTag("fuel_recipe_remove_$i"),
                         ) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.tr_action_delete)) }
                     },
-                    modifier = Modifier.testTag("fuel_recipe_ingredient_$i"),
+                    modifier = Modifier.clickable(onClickLabel = stringResource(R.string.trf_recipe_amount_change)) { onEditIngredient(i) }
+                        .testTag("fuel_recipe_ingredient_$i"),
                 )
             }
             OutlinedButton(onClick = onAddIngredient, modifier = Modifier.testTag("fuel_recipe_add")) {
@@ -150,7 +160,7 @@ fun RecipeSheet(
             }
             Button(
                 onClick = { recipe?.let(onSave) },
-                enabled = recipe != null,
+                enabled = recipe != null && !nameTaken,
                 modifier = Modifier.fillMaxWidth().testTag("fuel_recipe_save"),
             ) { Text(stringResource(R.string.tr_action_save)) }
         }

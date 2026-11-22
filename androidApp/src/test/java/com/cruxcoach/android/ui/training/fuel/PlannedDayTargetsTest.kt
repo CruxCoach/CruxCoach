@@ -70,7 +70,7 @@ class PlannedDayTargetsTest : AthleteScreenTest() {
         val real = service.activities(days = 1)[today.toString()]
         assertNull(real)
         fuelScreen(vm)
-        waitForText("Hard training day (planned: board 60\u00A0min)")
+        waitForText("Demanding day (planned: board 60\u00A0min)")
         click("fuel_carbs")
         waitForTag("fuel_explain_carbs")
         waitForText("Planned today: board 60\u00A0min.")
@@ -124,7 +124,7 @@ class PlannedDayTargetsTest : AthleteScreenTest() {
         fuelScreen(vm)
         click("fuel_carbs")
         waitForTag("fuel_explain_carbs")
-        waitForText("Hard day tomorrow: a carb-rich dinner tonight helps.")
+        waitForText("Demanding day tomorrow: a carb-rich dinner tonight helps.")
         // Only today looks at tomorrow.
         vm.previousDay()
         compose.waitUntil(WAIT_MS) { vm.state.value.day == today.minus(DatePeriod(days = 1)) }
