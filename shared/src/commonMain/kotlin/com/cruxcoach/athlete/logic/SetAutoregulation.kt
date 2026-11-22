@@ -50,7 +50,9 @@ data class SetAdjustment(
  * - Body-weight holds: the time moves instead of the load.
  *
  * Increases never go beyond the performance-value prescription plus one step
- * ([ceilingKg]); warm-ups, tests, intervals and climbing never change.
+ * ([ceilingKg]); warm-ups, tests, intervals and climbing never change. Lunges,
+ * sit-ups and other body-weight work that cannot be assisted never go below
+ * body weight: from there a repetition comes off instead.
  *
  * Feeling out ([feelOut], the first session with an exercise whose start load
  * is only a guess): loads move by about 10 % instead of one step, both ways,
@@ -84,13 +86,20 @@ object SetAutoregulation {
         val step = if (feel) max(increment, StrengthMath.roundTo(abs(done.loadKg!!) * FEEL_OUT_SHARE, increment)) else increment
         val ceiling = if (feel) null else ceilingKg
         return when (def.kind) {
-            ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> reps(done, nextPlanned, loaded, step, ceiling)
+            ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> reps(def, done, nextPlanned, loaded, step, ceiling)
             ExerciseKind.HANG -> hold(def, done, nextPlanned, loaded, step, ceiling, feel)
             ExerciseKind.TIME, ExerciseKind.INTERVAL, ExerciseKind.CLIMB -> null
         }
     }
 
-    private fun reps(done: ExerciseSet, next: ExerciseSet?, loaded: Boolean, step: Double, ceilingKg: Double?): SetAdjustment? {
+    /**
+     * Body-weight work that no band or pulley makes lighter (lunges, sit-ups): its added load ends at zero, here as in
+     * the plan ([LoadPrescriber.assistable]). The training simulation found walking lunges going to "−1 kg", "−2 kg",
+     * "−3 kg" set by set (2026-11-22).
+     */
+    private fun unassisted(def: ExerciseDefinition): Boolean = def.load == LoadMode.BODYWEIGHT_PLUS && !LoadPrescriber.assistable(def)
+
+    private fun reps(def: ExerciseDefinition, done: ExerciseSet, next: ExerciseSet?, loaded: Boolean, step: Double, ceilingKg: Double?): SetAdjustment? {
         val target = done.targetReps
         val achieved = done.reps
         val missed = target != null && achieved != null && achieved < target
@@ -98,7 +107,9 @@ object SetAutoregulation {
         return when {
             missed || rir == 0 -> {
                 val reason = if (missed) AdjustReason.MISSED_REPS else AdjustReason.NO_RESERVE
-                if (loaded && done.loadKg != null) SetAdjustment(loadDeltaKg = -step, reason = reason)
+                // What can come off: a step, or what is left above body weight where nothing can assist.
+                val drop = if (unassisted(def)) minOf(step, max(0.0, next?.targetLoadKg ?: next?.loadKg ?: done.loadKg ?: 0.0)) else step
+                if (loaded && done.loadKg != null && drop > 1e-9) SetAdjustment(loadDeltaKg = -drop, reason = reason)
                 else {
                     val plannedReps = next?.targetReps ?: target ?: return null
                     if (plannedReps <= 1) null else SetAdjustment(repsDelta = -1, reason = reason)
@@ -124,8 +135,8 @@ object SetAutoregulation {
                     ?.let { if (def.load == LoadMode.EXTERNAL) LoadRules.logged(def, it) else it } ?: done.loadKg
                 // Feeling out drops the full step (about 10 %); otherwise about 5 % of the total load.
                 val drop = if (feel) step else max(step, StrengthMath.roundTo(total * HOLD_LOAD_SHARE, step))
-                // Lifted weight cannot go below zero; added weight may turn into assistance.
-                val limited = if (def.load == LoadMode.EXTERNAL) minOf(drop, max(0.0, (next?.targetLoadKg ?: done.loadKg))) else drop
+                // Lifted weight cannot go below zero; added weight may turn into assistance, where there is such a thing.
+                val limited = if (def.load == LoadMode.EXTERNAL || unassisted(def)) minOf(drop, max(0.0, (next?.targetLoadKg ?: done.loadKg))) else drop
                 if (limited <= 0.0) null else SetAdjustment(loadDeltaKg = -limited, reason = AdjustReason.HOLD_FAILED)
             }
             failed -> {
@@ -164,7 +175,7 @@ object SetAutoregulation {
      * together, so the set still counts as untouched by the athlete.
      */
     fun apply(def: ExerciseDefinition, set: ExerciseSet, delta: SetAdjustment): ExerciseSet {
-        val minLoad = if (def.load == LoadMode.EXTERNAL) 0.0 else Double.NEGATIVE_INFINITY
+        val minLoad = if (def.load == LoadMode.EXTERNAL || unassisted(def)) 0.0 else Double.NEGATIVE_INFINITY
         fun load(v: Double?) = v?.let { (it + delta.loadDeltaKg).coerceAtLeast(minLoad) }
         fun reps(v: Int?) = v?.let { (it + delta.repsDelta).coerceAtLeast(1) }
         fun secs(v: Double?) = v?.let { (it + delta.durationDeltaS).coerceAtLeast(MIN_HOLD_S) }

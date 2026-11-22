@@ -98,6 +98,27 @@ class SetAutoregulationTest {
     }
 
     @Test
+    fun workThatCannotBeAssistedNeverGoesBelowBodyWeight() {
+        // Simulation 2026-11-22: walking lunges went to −1, −2 and −3 kg set by set. A band helps a pull-up, not a lunge.
+        val lunge = weightedPull.copy(slug = "legs.walking_lunge", category = ExerciseCategoryV2.LEGS)
+        val next = set(targetReps = 12, load = 0.0, done = false)
+        val atBodyWeight = SetAutoregulation.adjust(lunge, set(reps = 12, targetReps = 12, load = 0.0, rir = 0), next, 1.0)
+        assertEquals(0.0, atBodyWeight?.loadDeltaKg)
+        assertEquals(-1, atBodyWeight?.repsDelta)
+        // What is left above body weight comes off first.
+        val light = SetAutoregulation.adjust(lunge, set(reps = 10, targetReps = 12, load = 2.0), set(targetReps = 12, load = 2.0, done = false), 2.5)
+        assertEquals(-2.0, light?.loadDeltaKg)
+        assertEquals(0, light?.repsDelta)
+        // A step that is still there is applied down to body weight, never below.
+        val applied = SetAutoregulation.apply(lunge, set(reps = 12, targetReps = 12, load = 1.0, done = false),
+            SetAdjustment(loadDeltaKg = -2.5, reason = AdjustReason.MISSED_REPS))
+        assertEquals(0.0, applied.loadKg)
+        assertEquals(0.0, applied.targetLoadKg)
+        // A pull-up at body weight still turns into an assisted one.
+        assertEquals(-2.5, SetAutoregulation.adjust(weightedPull, set(reps = 4, targetReps = 5, load = 0.0), set(targetReps = 5, load = 0.0, done = false), 2.5)?.loadDeltaKg)
+    }
+
+    @Test
     fun feelingOutAGuessMovesTenPercentBothWaysAndPastTheGuess() {
         // Owner 2026-10-10: a guessed start load is felt out – 32 kg held easily goes to 35, a hold that ends early to 29.
         val next = set(load = 32.0, target = 10.0, done = false)
