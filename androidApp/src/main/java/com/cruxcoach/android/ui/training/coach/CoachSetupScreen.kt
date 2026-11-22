@@ -227,12 +227,17 @@ class CoachSetupViewModel @Inject constructor(
         if (step == 1) settledMinutes = s.sessionMinutes
     }
 
-    private fun changed(step: Int, s: CoachSetupState): Boolean =
-        mergeCard(step, settled, s.draft) != settled || (step == 1 && s.sessionMinutes != settledMinutes)
+    /** Compared as shown: "+" and "−" back to the weekly goal the week card started from is no change. */
+    private fun changed(step: Int, s: CoachSetupState): Boolean {
+        val was = asShown(settled, s)
+        return mergeCard(step, was, asShown(s)) != was || (step == 1 && s.sessionMinutes != settledMinutes)
+    }
 
     /** The draft as the cards show it: the week card shows the weekly goal while no training days are chosen. */
-    private fun asShown(s: CoachSetupState): CoachProfile =
-        if (s.draft.trainingDaysPerWeek != null) s.draft else s.draft.copy(trainingDaysPerWeek = s.profile.weeklyGoal.coerceIn(1, 7))
+    private fun asShown(s: CoachSetupState): CoachProfile = asShown(s.draft, s)
+
+    private fun asShown(answers: CoachProfile, s: CoachSetupState): CoachProfile =
+        if (answers.trainingDaysPerWeek != null) answers else answers.copy(trainingDaysPerWeek = s.profile.weeklyGoal.coerceIn(1, 7))
 
     /** "Überspringen": this card's changes are dropped, the stored answers stay. */
     fun skip() {
@@ -258,13 +263,16 @@ class CoachSetupViewModel @Inject constructor(
         steps.forEach { settle(it, s) }
         if (steps.isEmpty() && !dismiss) return
         val shown = asShown(s)
-        // The screen is on its way out: started right here and not cancellable, the write does not end with its view model.
-        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+        // The screen is on its way out: started right here and not cancellable, the write does not end with its view
+        // model. Unconfined, so it also ends on the IO thread and waits for nothing on the main thread.
+        viewModelScope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
             kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
                 service.ensureReady()
                 steps.forEach { step -> store(step, shown, s.sessionMinutes, finish = false) }
+                // A finished setup stays finished: the coach counts on it.
                 if (dismiss) service.repo.updateProfile { p ->
-                    p.copy(coach = p.coach.copy(setupState = SetupState.DISMISSED, setupUpdatedAt = System.currentTimeMillis()))
+                    if (p.coach.setupState == SetupState.DONE) p
+                    else p.copy(coach = p.coach.copy(setupState = SetupState.DISMISSED, setupUpdatedAt = System.currentTimeMillis()))
                 }
             }
         }

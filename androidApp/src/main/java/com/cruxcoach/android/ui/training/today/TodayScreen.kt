@@ -1122,8 +1122,12 @@ private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit, onSecondary
 private fun suggestionTitle(state: TodayState): String {
     val s = state.suggestion ?: return ""
     if (s.addOn) return stringResource(R.string.tre_focus_addon)
-    // A planned climbing day is called what it is: "Halle Bouldern · Limit".
-    com.cruxcoach.athlete.logic.DayPlans.climbOf(s.plannedEntry)?.let { return com.cruxcoach.android.ui.training.workouts.climbPlanLabel(it) }
+    // A planned climbing day is called what it is: "Halle Bouldern · Limit" – while the card is that day's card. With
+    // another kind in its place (chosen for today, ill, climbing paused) the card carries that kind's name, and so does
+    // the training started from it (Nokia walk 2026-11-22: a pull training was "Gym bouldering · Volume" on the done card).
+    if (s.focus == SuggestionFocus.BOARD_DAY && s.boardPlan == null) {
+        com.cruxcoach.athlete.logic.DayPlans.climbOf(s.plannedEntry)?.let { return com.cruxcoach.android.ui.training.workouts.climbPlanLabel(it) }
+    }
     if (s.focus == SuggestionFocus.PLANNED) {
         state.plannedName?.let { return it }
         s.plannedEntry?.takeIf { it.startsWith("builtin:") }
@@ -1331,9 +1335,11 @@ private fun DailySuggestionCard(
     val language = catalogLanguage()
     val title = suggestionTitle(state)
     val main = s.routine.items.filter { !it.warmup }
-    // A planned gym, rope or rock day: the card holds the warm-up for it and a short block for afterwards.
-    val climbDay = !s.addOn && com.cruxcoach.athlete.logic.DayPlans.isClimb(s.plannedEntry)
-    // … and the coach really builds the day around the climbing: not when the athlete is ill or climbing is paused.
+    // A planned gym, rope or rock day: the card holds the warm-up for it and a short block for afterwards. Only while
+    // the card is a climbing card: with another kind chosen over the plan it is a training like any other (Nokia walk
+    // 2026-11-22: "After climbing" and "Start the warm-up" on a pull session).
+    val climbDay = !s.addOn && s.focus == SuggestionFocus.BOARD_DAY && com.cruxcoach.athlete.logic.DayPlans.isClimb(s.plannedEntry)
+    // … and the coach really builds the day around the climbing, not a board session in its place.
     val aroundClimbing = climbDay && SuggestionReason.PLANNED_CLIMB in s.reasons
     var menu by remember { mutableStateOf(false) }
     Card(
@@ -1377,7 +1383,7 @@ private fun DailySuggestionCard(
                 // A climbing day: the list is the block for afterwards – say so, and that the warm-up comes first (Nokia
                 // walk 2026-11-22: two exercises, 36 minutes and "start warm-up" did not add up).
                 val warmups = s.routine.items.count { it.warmup }
-                val beforeClimbing = warmups > 0 && !s.addOn && (s.boardPlan != null || climbDay)
+                val beforeClimbing = warmups > 0 && !s.addOn && s.focus == SuggestionFocus.BOARD_DAY && (s.boardPlan != null || climbDay)
                 Column(Modifier.padding(top = 4.dp).testTag("today_suggestion_items")) {
                     if (beforeClimbing) {
                         Text(stringResource(R.string.trt_before_climbing, pluralStringResource(R.plurals.trsg_meta_count, warmups, warmups)),

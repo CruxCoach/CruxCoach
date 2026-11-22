@@ -17,14 +17,19 @@ import com.cruxcoach.android.ui.training.workouts.WeekPlanScreen
 import com.cruxcoach.android.ui.training.workouts.WeekPlanViewModel
 import com.cruxcoach.athlete.catalog.EquipmentV2
 import com.cruxcoach.athlete.logic.DayPlans
+import com.cruxcoach.athlete.logic.PreferenceLearning
+import com.cruxcoach.athlete.logic.SuggestionFocus
 import com.cruxcoach.athlete.logic.SuggestionReason
 import com.cruxcoach.athlete.logic.TrainingPlaces
+import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.ClimbingDayKind
 import com.cruxcoach.athlete.model.CoachGoal
 import com.cruxcoach.athlete.model.ExperienceBand
 import com.cruxcoach.athlete.model.PLAN_BOARD
 import com.cruxcoach.athlete.model.PLAN_REST
 import com.cruxcoach.athlete.model.SetupState
+import com.cruxcoach.athlete.model.SuggestionEvent
+import com.cruxcoach.athlete.model.SuggestionEventKind
 import io.mockk.mockk
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.atStartOfDayIn
@@ -103,6 +108,10 @@ class DeviceWalkTwoTest : AthleteScreenTest() {
         until { vm.state.value.step == 1 }
         assertNull(vm.state.value.draft.goal)
         vm.keepChanges()
+        // "+" and "−" on the training days, back to the number the week card showed from the start: no change either.
+        vm.update { it.copy(trainingDaysPerWeek = before.weeklyGoal + 1) }
+        vm.update { it.copy(trainingDaysPerWeek = before.weeklyGoal) }
+        vm.keepChanges()
         assertEquals(before, repo.profile())
         // The week card changed, one card back, then the arrow: the week card is kept although it is not the card shown.
         vm.update { it.copy(climbingDays = setOf(2, 4)) }
@@ -178,6 +187,29 @@ class DeviceWalkTwoTest : AthleteScreenTest() {
         repo.updateProfile { it.copy(coach = it.coach.copy(addOnAfterClimbing = true)) }
         until { climbingDay(block = true) }
         until { runCatching { compose.onNodeWithTag("today_next_place_title").assertTextEquals(text(R.string.trt_next_place_climb)) }.isSuccess }
+    }
+
+    @Test
+    fun `another kind chosen over a planned climbing day is that kind's card and that kind's training`() {
+        // As after a restart: the ledger holds "pull and push" chosen today, the plan still says gym bouldering.
+        val today = service.today()
+        repo.updateProfile { DayPlans.withDay(it, today, DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.VOLUME).entry, today) }
+        repo.logSuggestionEvent(SuggestionEvent("chosen", today.toString(), System.currentTimeMillis(), SuggestionEventKind.FEEDBACK,
+            focus = PreferenceLearning.CHOSEN_KIND + SuggestionFocus.PULL_PUSH.name))
+        val vm = loaded(TodayViewModel(service))
+        until { vm.state.value.suggestion?.focus == SuggestionFocus.PULL_PUSH }
+        assertTrue(DayPlans.isClimb(vm.state.value.suggestion!!.plannedEntry))
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_suggestion_start"))
+        // The card is a pull session by name, without the lines and the button of a climbing day.
+        val pull = text(R.string.trsg_focus_pull_push)
+        compose.onNodeWithTag("today_suggestion_title").assertTextEquals(pull)
+        assertEquals(0, count(hasTestTag("today_before_climbing")))
+        assertEquals(0, count(hasTestTag("today_after_climbing")))
+        compose.onNodeWithTag("today_suggestion_start").assertTextEquals(text(R.string.trsg_start))
+        // The training started from it carries that name: it is what the done card and the history show.
+        click("today_suggestion_start")
+        until { repo.openWorkout()?.title == pull }
     }
 
     @Test
