@@ -530,25 +530,33 @@ private fun WeekHeader(state: TodayState, onPlanDays: () -> Unit = {}) {
         Row(Modifier.fillMaxWidth().clip(CruxCoachDesign.shapes.small).clickable(onClickLabel = planLabel, onClick = onPlanDays)
             .testTag("today_week_strip"), horizontalArrangement = Arrangement.SpaceBetween) {
             val locale = Locale.getDefault()
+            // What the card suggests today, for today's circle.
+            val suggested = if (state.suggestion != null) suggestionTitle(state) else null
             state.week.forEach { day ->
-                val label = java.time.DayOfWeek.of(day.date.dayOfWeek.ordinal + 1).getDisplayName(TextStyle.NARROW, locale)
+                val weekday = java.time.DayOfWeek.of(day.date.dayOfWeek.ordinal + 1)
+                val label = weekday.getDisplayName(TextStyle.NARROW, locale)
                 val filled = day.climbed || day.trained
                 val ahead = state.today?.let { day.date >= it } == true
+                // Read out with the whole weekday ("T" is Tuesday and Thursday), and saying what the circle shows. A day
+                // is a rest day only when it is planned as one: a day ahead with nothing planned is free, today is
+                // what the card suggests, and a day gone by without an entry is just that (Nokia walk 2026-11-22: a new
+                // athlete heard "rest" seven times, the coach's training days included).
                 val desc = when {
-                    day.climbed || day.trained || day.paused || !ahead -> null
+                    day.climbed && day.trained -> stringResource(R.string.trt_day_both)
+                    day.climbed -> stringResource(R.string.trt_day_climbed)
+                    day.trained -> stringResource(R.string.trt_day_trained)
+                    day.paused -> stringResource(R.string.trt_day_paused)
+                    !ahead -> stringResource(R.string.trt_day_nothing)
+                    day.isToday && state.openWorkout != null -> stringResource(R.string.trt_day_running)
                     day.climbPlanned -> stringResource(R.string.trw_day_planned, stringResource(R.string.trdp_climb))
                     day.planned == com.cruxcoach.athlete.model.PLAN_REST -> stringResource(R.string.trw_day_planned, stringResource(R.string.trwo_plan_rest))
                     day.planned != null -> stringResource(R.string.trw_day_planned, stringResource(R.string.trdp_training))
-                    else -> null
-                } ?: stringResource(when {
-                    day.climbed && day.trained -> R.string.trt_day_both
-                    day.climbed -> R.string.trt_day_climbed
-                    day.trained -> R.string.trt_day_trained
-                    day.paused -> R.string.trt_day_paused
-                    else -> R.string.trt_day_rest
-                })
+                    day.isToday && suggested != null -> stringResource(R.string.trt_day_suggested, suggested)
+                    else -> stringResource(R.string.trw_status_free)
+                }
+                val name = weekday.getDisplayName(TextStyle.FULL, locale)
                 Column(horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.semantics { contentDescription = "$label: $desc" }) {
+                    modifier = Modifier.semantics { contentDescription = "$name: $desc" }) {
                     Text(label, style = MaterialTheme.typography.labelSmall,
                         fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Normal)
                     Box(
@@ -1114,8 +1122,12 @@ private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit, onSecondary
 private fun suggestionTitle(state: TodayState): String {
     val s = state.suggestion ?: return ""
     if (s.addOn) return stringResource(R.string.tre_focus_addon)
-    // A planned climbing day is called what it is: "Halle Bouldern · Limit".
-    com.cruxcoach.athlete.logic.DayPlans.climbOf(s.plannedEntry)?.let { return com.cruxcoach.android.ui.training.workouts.climbPlanLabel(it) }
+    // A planned climbing day is called what it is: "Halle Bouldern · Limit" – while the card is that day's card. With
+    // another kind in its place (chosen for today, ill, climbing paused) the card carries that kind's name, and so does
+    // the training started from it (Nokia walk 2026-11-22: a pull training was "Gym bouldering · Volume" on the done card).
+    if (s.focus == SuggestionFocus.BOARD_DAY && s.boardPlan == null) {
+        com.cruxcoach.athlete.logic.DayPlans.climbOf(s.plannedEntry)?.let { return com.cruxcoach.android.ui.training.workouts.climbPlanLabel(it) }
+    }
     if (s.focus == SuggestionFocus.PLANNED) {
         state.plannedName?.let { return it }
         s.plannedEntry?.takeIf { it.startsWith("builtin:") }
@@ -1323,6 +1335,12 @@ private fun DailySuggestionCard(
     val language = catalogLanguage()
     val title = suggestionTitle(state)
     val main = s.routine.items.filter { !it.warmup }
+    // A planned gym, rope or rock day: the card holds the warm-up for it and a short block for afterwards. Only while
+    // the card is a climbing card: with another kind chosen over the plan it is a training like any other (Nokia walk
+    // 2026-11-22: "After climbing" and "Start the warm-up" on a pull session).
+    val climbDay = !s.addOn && s.focus == SuggestionFocus.BOARD_DAY && com.cruxcoach.athlete.logic.DayPlans.isClimb(s.plannedEntry)
+    // … and the coach really builds the day around the climbing, not a board session in its place.
+    val aroundClimbing = climbDay && SuggestionReason.PLANNED_CLIMB in s.reasons
     var menu by remember { mutableStateOf(false) }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -1349,12 +1367,10 @@ private fun DailySuggestionCard(
                 Text(pluralStringResource(R.plurals.trsg_meta_count, main.size, main.size), style = MaterialTheme.typography.bodyMedium)
                 if (s.timeAdjustable) DurationChip(s.totalMinutes, state.minutesToday, state.profile.sessionMinutes, onChooseMinutes)
                 else Text(stringResource(R.string.trt_duration_value, s.totalMinutes), style = MaterialTheme.typography.bodyMedium)
-                com.cruxcoach.android.ui.training.common.PlacePicker(
-                    places = TrainingPlaces.of(state.profile),
-                    currentId = TrainingPlaces.current(state.profile, day)?.id,
-                    defaultId = TrainingPlaces.default(state.profile)?.id,
-                    onPick = onPickPlace,
-                )
+                // On a planned climbing day the title says where the day happens ("Gym bouldering"). The place – it
+                // decides the equipment of the exercises – stands with the block for afterwards instead (Nokia walk
+                // 2026-11-22: "Home" right under a gym day); without such a block it is in the adjust sheet only.
+                if (!aroundClimbing) TodayPlacePicker(state, day, onPickPlace)
             }
             // How the athlete feels today: one optional tap, never a gate.
             if (state.profile.checkinEnabled) DayFormRow(state, onForm = { energy -> onQuickCheckin(energy, state.checkin?.sore.orEmpty()) }, onMore = onMoreCheckin)
@@ -1367,13 +1383,24 @@ private fun DailySuggestionCard(
                 // A climbing day: the list is the block for afterwards – say so, and that the warm-up comes first (Nokia
                 // walk 2026-11-22: two exercises, 36 minutes and "start warm-up" did not add up).
                 val warmups = s.routine.items.count { it.warmup }
-                val beforeClimbing = warmups > 0 && !s.addOn && (s.boardPlan != null || com.cruxcoach.athlete.logic.DayPlans.isClimb(s.plannedEntry))
+                val beforeClimbing = warmups > 0 && !s.addOn && s.focus == SuggestionFocus.BOARD_DAY && (s.boardPlan != null || climbDay)
                 Column(Modifier.padding(top = 4.dp).testTag("today_suggestion_items")) {
                     if (beforeClimbing) {
                         Text(stringResource(R.string.trt_before_climbing, pluralStringResource(R.plurals.trsg_meta_count, warmups, warmups)),
                             style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp).testTag("today_before_climbing"))
+                    }
+                    if (aroundClimbing) {
+                        // "After climbing" with where: at home, at another place or without equipment. The picker is 48 dp
+                        // high and brings its own room above the line; without a place yet there is no picker.
+                        val picker = TrainingPlaces.of(state.profile).isNotEmpty()
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = if (picker) 0.dp else 8.dp).testTag("today_after_climbing")) {
+                            Text(stringResource(R.string.trt_after_climbing), style = MaterialTheme.typography.labelLarge)
+                            TodayPlacePicker(state, day, onPickPlace)
+                        }
+                    } else if (beforeClimbing) {
                         Text(stringResource(R.string.trt_after_climbing), style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.padding(top = 8.dp))
+                            modifier = Modifier.padding(top = 8.dp).testTag("today_after_climbing"))
                     }
                     shown.forEachIndexed { index, item ->
                         // A circuit's members under one header: rounds and rests, a tap changes them.
@@ -1512,8 +1539,6 @@ private fun DailySuggestionCard(
                     Text(stringResource(R.string.trt_warmup_start))
                 }
             } else {
-                // A planned climbing day: the card holds the warm-up for it (and a short block for afterwards).
-                val climbDay = !s.addOn && com.cruxcoach.athlete.logic.DayPlans.isClimb(s.plannedEntry)
                 Button(onClick = { onStart(title) }, enabled = s.routine.items.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp).testTag("today_suggestion_start")) {
                     Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp))
@@ -1543,6 +1568,17 @@ private fun DailySuggestionCard(
             }
         }
     }
+}
+
+/** "Home ▾" on today's card: the place in use today and the menu to pick another one for today. */
+@Composable
+private fun TodayPlacePicker(state: TodayState, day: String, onPick: (String) -> Unit) {
+    com.cruxcoach.android.ui.training.common.PlacePicker(
+        places = TrainingPlaces.of(state.profile),
+        currentId = TrainingPlaces.current(state.profile, day)?.id,
+        defaultId = TrainingPlaces.default(state.profile)?.id,
+        onPick = onPick,
+    )
 }
 
 /**
@@ -1951,7 +1987,13 @@ private fun NextSuggestionSheet(
             // Where, right with the kind (owner 2026-10-15: no hangboard there, no finger day); also on the card.
             val day = state.today?.toString() ?: java.time.LocalDate.now().toString()
             val currentPlace = TrainingPlaces.current(state.profile, day)?.id
-            Text(stringResource(R.string.trt_next_place), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+            // On a planned gym or rock day the question is about the exercises after it, not about the climbing.
+            val afterClimbing = state.suggestion?.let { s ->
+                !s.addOn && com.cruxcoach.athlete.logic.DayPlans.isClimb(s.plannedEntry) && SuggestionReason.PLANNED_CLIMB in s.reasons &&
+                    s.routine.items.any { !it.warmup }
+            } == true
+            Text(stringResource(if (afterClimbing) R.string.trt_next_place_climb else R.string.trt_next_place), style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 16.dp).testTag("today_next_place_title"))
             Spacer(Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 (TrainingPlaces.of(state.profile) + TrainingPlaces.NO_GEAR).forEach { place ->

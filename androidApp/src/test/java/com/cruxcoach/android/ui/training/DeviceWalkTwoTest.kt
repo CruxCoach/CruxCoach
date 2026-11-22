@@ -1,0 +1,270 @@
+package com.cruxcoach.android.ui.training
+
+import android.app.Application
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onNodeWithTag
+import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.training.coach.CoachSetupScreen
+import com.cruxcoach.android.ui.training.coach.CoachSetupViewModel
+import com.cruxcoach.android.ui.training.today.TodayScreen
+import com.cruxcoach.android.ui.training.today.TodayViewModel
+import com.cruxcoach.android.ui.training.workouts.WeekPlanScreen
+import com.cruxcoach.android.ui.training.workouts.WeekPlanViewModel
+import com.cruxcoach.athlete.catalog.EquipmentV2
+import com.cruxcoach.athlete.logic.DayPlans
+import com.cruxcoach.athlete.logic.PreferenceLearning
+import com.cruxcoach.athlete.logic.SuggestionFocus
+import com.cruxcoach.athlete.logic.SuggestionReason
+import com.cruxcoach.athlete.logic.TrainingPlaces
+import com.cruxcoach.athlete.model.ClimbIntensity
+import com.cruxcoach.athlete.model.ClimbingDayKind
+import com.cruxcoach.athlete.model.CoachGoal
+import com.cruxcoach.athlete.model.ExperienceBand
+import com.cruxcoach.athlete.model.PLAN_BOARD
+import com.cruxcoach.athlete.model.PLAN_REST
+import com.cruxcoach.athlete.model.SetupState
+import com.cruxcoach.athlete.model.SuggestionEvent
+import com.cruxcoach.athlete.model.SuggestionEventKind
+import io.mockk.mockk
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.atStartOfDayIn
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.time.DayOfWeek
+import java.time.format.TextStyle
+import java.util.Locale
+
+/**
+ * What the second walk through the release app on the phone showed (2026-11-22): the arrow in the coach setup
+ * dropped the card silently, a gym day said "Home" under its title, a new athlete's proposed week had no climbing
+ * days and nowhere to name them, and the week strip read every free day out as a rest day.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class DeviceWalkTwoTest : AthleteScreenTest() {
+
+    private fun until(condition: () -> Boolean) = compose.waitUntil(WAIT_MS) {
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        condition()
+    }
+
+    private fun text(id: Int, vararg args: Any) = context.getString(id, *args)
+
+    private fun count(matcher: SemanticsMatcher) = compose.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().size
+
+    private fun coachSetup() = loaded(CoachSetupViewModel(service, mockk(relaxed = true), mockk(relaxed = true)))
+
+    /** A place of their own, so today's card has a place to show. */
+    private fun ownPlace() = repo.updateProfile {
+        it.copy(equipmentConfigured = true, equipment = setOf(EquipmentV2.NONE, EquipmentV2.MAT, EquipmentV2.PULL_UP_BAR,
+            EquipmentV2.DUMBBELL, EquipmentV2.BANDS))
+    }
+
+    @Test
+    fun `the arrow in the coach setup keeps the card that was changed`() {
+        val vm = coachSetup()
+        // To the card "climbing and experience" without storing anything on the way.
+        repeat(2) { vm.skip() }
+        until { vm.state.value.step == 2 }
+        var left = 0
+        render { CoachSetupScreen({ left++ }, {}, {}, {}, viewModel = vm) }
+        click("coach_experience_over_5")
+        until { vm.state.value.draft.experience == ExperienceBand.OVER_5 }
+        vm.update { it.copy(currentGrade = "7a") }
+        click("training_back")
+        until { left == 1 }
+        // Years and grade are kept as "Next" would keep them; the cards that were skipped stay as they were.
+        until { repo.profile().coach.let { it.experience == ExperienceBand.OVER_5 && it.currentGrade == "7a" } }
+        val coach = repo.profile().coach
+        assertEquals(SetupState.IN_PROGRESS, coach.setupState)
+        assertNull(coach.goal)
+        assertNull(coach.trainingDaysPerWeek)
+        assertTrue(coach.climbingDays.isEmpty())
+    }
+
+    @Test
+    fun `leaving the coach setup stores every card that was changed and no other`() {
+        val before = repo.profile()
+        val vm = coachSetup()
+        // Opened and left: nothing is confirmed, nothing is written.
+        vm.keepChanges()
+        // Changed and put back: the card is as it was.
+        vm.update { it.copy(goal = CoachGoal.BUILD_STRENGTH) }
+        vm.update { it.copy(goal = null) }
+        vm.keepChanges()
+        // Changed and skipped: "Skip" drops the card's changes, leaving does not bring them back.
+        vm.update { it.copy(goal = CoachGoal.BUILD_STRENGTH) }
+        vm.skip()
+        until { vm.state.value.step == 1 }
+        assertNull(vm.state.value.draft.goal)
+        vm.keepChanges()
+        // "+" and "−" on the training days, back to the number the week card showed from the start: no change either.
+        vm.update { it.copy(trainingDaysPerWeek = before.weeklyGoal + 1) }
+        vm.update { it.copy(trainingDaysPerWeek = before.weeklyGoal) }
+        vm.keepChanges()
+        assertEquals(before, repo.profile())
+        // The week card changed, one card back, then the arrow: the week card is kept although it is not the card shown.
+        vm.update { it.copy(climbingDays = setOf(2, 4)) }
+        vm.back()
+        until { vm.state.value.step == 0 }
+        vm.keepChanges()
+        until { repo.profile().coach.climbingDays == setOf(2, 4) }
+        // The week card and nothing else – and, as "Next" does, with the training days it shows. Any write of the
+        // steps above would have landed by now and show here.
+        val kept = repo.profile()
+        assertEquals(before.coach.copy(climbingDays = setOf(2, 4), trainingDaysPerWeek = before.weeklyGoal,
+            setupState = SetupState.IN_PROGRESS, setupUpdatedAt = kept.coach.setupUpdatedAt), kept.coach)
+        assertEquals(before.copy(coach = kept.coach), kept)
+        // Left once more: the card is stored, nothing is written again.
+        vm.keepChanges()
+        assertEquals(kept, repo.profile())
+        // "Don't ask again" keeps a changed card too.
+        vm.update { it.copy(goal = CoachGoal.STAY_HEALTHY) }
+        vm.dismiss()
+        until { repo.profile().coach.let { it.goal == CoachGoal.STAY_HEALTHY && it.setupState == SetupState.DISMISSED } }
+        assertEquals(setOf(2, 4), repo.profile().coach.climbingDays)
+    }
+
+    @Test
+    fun `on a planned gym day the place stands with the block for afterwards, not under the day's title`() {
+        ownPlace()
+        val vm = loaded(TodayViewModel(service))
+        until { vm.state.value.suggestion != null }
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        val place = hasTestTag("today_place")
+        val withAfterBlock = place and hasAnyAncestor(hasTestTag("today_after_climbing"))
+        // A day of training: the place is in the row under the title.
+        scrollTo("today_list", place)
+        assertEquals(1, count(place))
+        assertEquals(0, count(withAfterBlock))
+        // "Today I climb" in the gym: the block for afterwards says where, the row under "Gym bouldering" does not.
+        vm.climbToday(ClimbingDayKind.GYM_BOULDER)
+        until {
+            vm.state.value.suggestion?.let { s ->
+                DayPlans.isClimb(s.plannedEntry) && SuggestionReason.PLANNED_CLIMB in s.reasons && s.routine.items.any { !it.warmup }
+            } == true
+        }
+        scrollTo("today_list", hasTestTag("today_after_climbing"))
+        until { count(withAfterBlock) == 1 }
+        assertEquals(1, count(place))
+        // It still decides the equipment: "no equipment" picked there takes the dumbbells away for today.
+        click("today_place")
+        click("today_place_${TrainingPlaces.NO_GEAR_ID}")
+        until { EquipmentV2.DUMBBELL !in repo.profile().equipment }
+    }
+
+    @Test
+    fun `a gym day without a block for afterwards shows no place on the card, and the sheet asks about the block only when there is one`() {
+        ownPlace()
+        repo.updateProfile { it.copy(coach = it.coach.copy(addOnAfterClimbing = false)) }
+        val vm = loaded(TodayViewModel(service))
+        vm.climbToday(ClimbingDayKind.GYM_BOULDER)
+        fun climbingDay(block: Boolean) = vm.state.value.suggestion?.let { s ->
+            SuggestionReason.PLANNED_CLIMB in s.reasons && s.routine.items.isNotEmpty() && s.routine.items.any { !it.warmup } == block
+        } == true
+        // "No" to exercises after climbing: the card holds the warm-up only.
+        until { climbingDay(block = false) }
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_suggestion_next"))
+        assertEquals(0, count(hasTestTag("today_place")))
+        assertEquals(0, count(hasTestTag("today_after_climbing")))
+        // The place stays one tap away in the sheet, under the usual question.
+        click("today_suggestion_next")
+        waitForTag("today_next_place_title")
+        compose.onNodeWithTag("today_next_place_title").assertTextEquals(text(R.string.trt_next_place))
+        waitForTag("today_next_place_${TrainingPlaces.FIRST_ID}")
+        // With a block for afterwards the question is about that block.
+        repo.updateProfile { it.copy(coach = it.coach.copy(addOnAfterClimbing = true)) }
+        until { climbingDay(block = true) }
+        until { runCatching { compose.onNodeWithTag("today_next_place_title").assertTextEquals(text(R.string.trt_next_place_climb)) }.isSuccess }
+    }
+
+    @Test
+    fun `another kind chosen over a planned climbing day is that kind's card and that kind's training`() {
+        // As after a restart: the ledger holds "pull and push" chosen today, the plan still says gym bouldering.
+        val today = service.today()
+        repo.updateProfile { DayPlans.withDay(it, today, DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.VOLUME).entry, today) }
+        repo.logSuggestionEvent(SuggestionEvent("chosen", today.toString(), System.currentTimeMillis(), SuggestionEventKind.FEEDBACK,
+            focus = PreferenceLearning.CHOSEN_KIND + SuggestionFocus.PULL_PUSH.name))
+        val vm = loaded(TodayViewModel(service))
+        until { vm.state.value.suggestion?.focus == SuggestionFocus.PULL_PUSH }
+        assertTrue(DayPlans.isClimb(vm.state.value.suggestion!!.plannedEntry))
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_suggestion_start"))
+        // The card is a pull session by name, without the lines and the button of a climbing day.
+        val pull = text(R.string.trsg_focus_pull_push)
+        compose.onNodeWithTag("today_suggestion_title").assertTextEquals(pull)
+        assertEquals(0, count(hasTestTag("today_before_climbing")))
+        assertEquals(0, count(hasTestTag("today_after_climbing")))
+        compose.onNodeWithTag("today_suggestion_start").assertTextEquals(text(R.string.trsg_start))
+        // The training started from it carries that name: it is what the done card and the history show.
+        click("today_suggestion_start")
+        until { repo.openWorkout()?.title == pull }
+    }
+
+    @Test
+    fun `the usual climbing days are named right above the week proposal and the proposal follows`() {
+        val vm = loaded(WeekPlanViewModel(service))
+        fun climbs(entry: String?) = entry == PLAN_BOARD || DayPlans.isClimb(entry)
+        // A new athlete: nobody asked for the climbing days, so the proposed week has none.
+        until { vm.state.value.proposal.isNotEmpty() }
+        assertTrue(vm.state.value.proposal.values.none { climbs(it) })
+        assertTrue(vm.state.value.climbingDays.isEmpty())
+        render { WeekPlanScreen({}, viewModel = vm) }
+        click("week_plan_climbing_day_2")
+        until { repo.profile().coach.climbingDays == setOf(2) && vm.state.value.climbingDays == setOf(2) }
+        click("week_plan_climbing_day_4")
+        until { repo.profile().coach.climbingDays == setOf(2, 4) && vm.state.value.climbingDays == setOf(2, 4) }
+        until { vm.state.value.proposal.let { p -> climbs(p[2]) && climbs(p[4]) } }
+        assertEquals(2, vm.state.value.proposal.values.count { climbs(it) })
+        // The days are the athlete's answer and kept at once; the standard week stays empty until the proposal is taken.
+        assertTrue(repo.profile().weekPlan.isEmpty())
+        click("week_plan_proposal_apply")
+        until { repo.profile().weekPlan.let { w -> w.isNotEmpty() && w == vm.state.value.proposal } }
+        // A second tap takes a day back.
+        click("week_plan_climbing_day_4")
+        until { repo.profile().coach.climbingDays == setOf(2) && vm.state.value.climbingDays == setOf(2) }
+    }
+
+    @Test
+    fun `the week strip calls a day a rest day only when it is planned as one`() {
+        // A Wednesday; Friday is planned as a rest day, Saturday as a climbing day.
+        val wednesday = LocalDate.parse("2026-03-04")
+        val ms = wednesday.atStartOfDayIn(service.zone).toEpochMilliseconds() + 18 * 3_600_000L
+        service.clock = { ms }
+        repo.updateProfile { it.copy(datePlan = mapOf("2026-03-06" to PLAN_REST, "2026-03-07" to "climb:gym_boulder:volume")) }
+        val vm = loaded(TodayViewModel(service))
+        until { vm.state.value.suggestion != null && vm.state.value.week.size == 7 && vm.state.value.today == wednesday }
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        waitForTag("today_week_strip")
+        fun weekday(iso: Int) = DayOfWeek.of(iso).getDisplayName(TextStyle.FULL, Locale.getDefault())
+        var days = emptyList<String>()
+        until {
+            days = compose.onAllNodes(hasAnyAncestor(hasTestTag("today_week_strip")), useUnmergedTree = true).fetchSemanticsNodes()
+                .flatMap { it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() }
+            days.size == 7
+        }
+        fun read(iso: Int) = days.single { it.startsWith(weekday(iso) + ": ") }.removePrefix(weekday(iso) + ": ")
+        // Days gone by without an entry are just that.
+        assertEquals(text(R.string.trt_day_nothing), read(1))
+        assertEquals(text(R.string.trt_day_nothing), read(2))
+        // Today is what the card suggests.
+        val suggested = text(R.string.trt_day_suggested, "")
+        assertTrue(read(3), read(3).startsWith(suggested) && read(3).length > suggested.length)
+        // A day ahead with nothing planned is free, not a rest day.
+        assertEquals(text(R.string.trw_status_free), read(4))
+        assertEquals(text(R.string.trw_day_planned, text(R.string.trwo_plan_rest)), read(5))
+        assertEquals(text(R.string.trw_day_planned, text(R.string.trdp_climb)), read(6))
+        assertEquals(text(R.string.trw_status_free), read(7))
+    }
+}
