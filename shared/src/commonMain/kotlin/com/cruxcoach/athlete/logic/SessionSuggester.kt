@@ -273,7 +273,7 @@ data class SuggestionInput(
      * other rule applies; the suggestion is the one Today would make without the day limit.
      */
     val beyondWeekDays: Boolean = false,
-    /** "Anyway" on today's card: the athlete heard the coach's advice about the fingers and decides to train as chosen. */
+    /** "Anyway" on today's card: the athlete heard the coach's advice about the fingers and decides to train as chosen or planned. */
     val insist: Boolean = false,
     /**
      * Exercises the athlete logged in at least [ExerciseFamiliarity.KNOWN_AFTER_TRAININGS] trainings or has an own performance
@@ -317,9 +317,10 @@ data class SessionSuggestion(
     /** Already shorter because of little sleep or energy: starting it takes no extra set off (audit W7). */
     val shortenedForFatigue: Boolean = false,
     /**
-     * The kind the athlete chose today and the coach held back (tired fingers, recovery after climbing, a rising
-     * load): the card offers it "anyway" – the coach advises, the athlete decides (owner 2026-11-22). Null where
-     * nothing was held back or the reason is a hard one (ill, an injury, the youth rules, a comeback).
+     * The kind the athlete chose today – or the board day planned for today – that the coach held back (tired
+     * fingers, recovery after climbing, a rising load): the card offers it "anyway" – the coach advises, the athlete
+     * decides (owner 2026-11-22). Null where nothing was held back or the reason is a hard one (ill, an injury, the
+     * youth rules, a comeback).
      */
     val heldBack: SuggestionFocus? = null,
 ) {
@@ -368,6 +369,8 @@ object SessionSuggester {
         /** Hints that never decide: they go after every other reason. */
         val notes = mutableListOf<SuggestionReason>()
         val evidence = mutableListOf<Evidence>()
+        /** A planned board day the coach held back for tired fingers or skin ([SessionSuggestion.heldBack]). */
+        var heldBack: SuggestionFocus? = null
         val coach get() = input.coach
     }
 
@@ -514,28 +517,35 @@ object SessionSuggester {
                 return build(ctx, SuggestionFocus.REST, listOf(Slot.MOBILITY, Slot.MOBILITY, Slot.MOBILITY), REST_MINUTES, planned, grow = false)
             }
             planned == PLAN_BOARD || usualClimbingDay -> {
-                if (climbingPaused || readiness.avoidClimbing || fingersTired || trend.skinSpike || comebackNoBoard) {
+                val ruledOut = climbingPaused || readiness.avoidClimbing || comebackNoBoard
+                // Tired fingers or a skin load spike are advice, as for a chosen board day ([chosen]): the planned one –
+                // also "Heute klettere ich" – is held back with the reason, and "anyway" on the card gives it back.
+                val advised = !ruledOut && (fingersTired || trend.skinSpike)
+                if (ruledOut || (advised && !input.insist)) {
                     reasons += when {
                         climbingPaused -> SuggestionReason.PLAN_REPLACED_FOR_INJURY
                         comebackNoBoard -> SuggestionReason.COMEBACK_NO_BOARD
                         else -> SuggestionReason.BOARD_SKIPPED_TODAY
                     }
                     if (trend.skinSpike && !climbingPaused) reasons += SuggestionReason.SKIN_LOAD_RISING
+                    if (advised) ctx.heldBack = SuggestionFocus.BOARD_DAY
                 } else if (comebackLightBoard) {
                     reasons.add(0, if (planned == PLAN_BOARD) SuggestionReason.WEEK_PLAN_BOARD else SuggestionReason.CLIMBING_DAY)
                     reasons += SuggestionReason.BOARD_LIGHT
                     reasons += SuggestionReason.COMEBACK_CLIMBING
                     return boardDay(ctx, planned, fresh = false, light = true)
-                } else if (fingerBlock != null) {
+                } else if (fingerBlock != null && !input.insist) {
                     // Audit W6: still recovering – the board day runs as a light session and says why (it ran
                     // silently as a pyramid before, while a chosen board day was refused).
                     reasons.add(0, if (planned == PLAN_BOARD) SuggestionReason.WEEK_PLAN_BOARD else SuggestionReason.CLIMBING_DAY)
                     reasons += SuggestionReason.BOARD_LIGHT
                     reasons += fingerBlock
-                    return boardDay(ctx, planned, fresh = false, light = true)
+                    return boardDay(ctx, planned, fresh = false, light = true).copy(heldBack = SuggestionFocus.BOARD_DAY)
                 } else {
                     reasons.add(0, if (planned == PLAN_BOARD) SuggestionReason.WEEK_PLAN_BOARD else SuggestionReason.CLIMBING_DAY)
-                    return boardDay(ctx, planned, fresh = readiness.level == ReadinessLevel.GO)
+                    // "Anyway": the board day as planned, and the card still says what the coach sees.
+                    if (fingerBlock != null) reasons += fingerBlock
+                    return boardDay(ctx, planned, fresh = readiness.level == ReadinessLevel.GO && fingerBlock == null)
                 }
             }
             planned != null -> plannedRoutine(ctx, planned, climbingPaused, fingerBlock, guard, lowEnergy, budget)?.let { return it }
@@ -1492,6 +1502,7 @@ object SessionSuggester {
             confidence = confidence(input),
             boardPlan = boardPlan,
             addOn = addOn,
+            heldBack = ctx.heldBack,
         )
     }
 
