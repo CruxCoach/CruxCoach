@@ -120,6 +120,17 @@ object NextTargets {
     fun longPlainHold(def: ExerciseDefinition, plannedS: Int?): Boolean =
         def.kind == ExerciseKind.TIME && LoadDomain.FINGER !in def.domains && (plannedS ?: def.defaults.durationS ?: 30) >= LONG_HOLD_S
 
+    /** Seconds between two answers of the reserve question after a long plain hold ([longPlainHold]): 0, 5, 10, 15+. */
+    const val COARSE_RESERVE_STEP_S = 5
+
+    /**
+     * The reserve answer [level] of a long plain hold (0–3, as a set stores it) in the seconds it was asked in: "0",
+     * "5", "10", "15+". The question, the row of the done set and its correction say the same (device walk
+     * 2026-11-22: "10" was answered, the row said "2 s in reserve" and the correction offered 0, 1, 2, 3+).
+     */
+    fun coarseReserveLabel(level: Int): String =
+        if (level >= 3) "${3 * COARSE_RESERVE_STEP_S}+" else (level.coerceAtLeast(0) * COARSE_RESERVE_STEP_S).toString()
+
     /** The completed work sets of [side] per training, newest first, without the training [exceptWorkout]. */
     fun sessions(history: List<ExerciseSet>, side: Side?, exceptWorkout: String? = null): List<List<ExerciseSet>> =
         history.filter { it.isCompleted && it.setType == SetType.WORK && it.side == side && it.workoutId != exceptWorkout }

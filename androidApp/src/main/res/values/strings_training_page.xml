@@ -29,6 +29,7 @@
     <!-- A timed hold's reserve is in seconds: the question and the short line say so. -->
     <string name="trpg_reserve_question_seconds">How many more seconds?</string>
     <string name="trpg_rir_short_seconds">%1$d\u00A0s in reserve</string>
+    <string name="trpg_rir_short_seconds_coarse">%1$s\u00A0s in reserve</string>
     <string name="trpg_start_seconds">Start · %1$d\u00A0s</string>
     <string name="trpg_log_test">Log it</string>
     <string name="trpg_empty_hint">Add an exercise – or type several, e.g. “Pull-ups 5x5 +20\u00A0kg, plank 3x60\u00A0s”.</string>
