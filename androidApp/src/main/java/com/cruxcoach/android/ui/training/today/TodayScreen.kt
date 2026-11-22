@@ -1045,7 +1045,7 @@ private fun FoodTile(state: TodayState, onOpen: () -> Unit, modifier: Modifier) 
             t != null -> stringResource(R.string.trf_progress_g, protein, t.proteinG)
             else -> stringResource(R.string.trf_value_g, protein)
         },
-        progress = t?.let { if (it.proteinG > 0) protein.toFloat() / it.proteinG else 0f },
+        progress = foodTileProgress(state.profile.showCalories, (state.kcalToday ?: 0.0).roundToInt(), energyGoal, protein, t?.proteinG),
         supporting = if (t == null) stringResource(R.string.tru_tile_food_no_target)
             else stringResource(R.string.tru_tile_food_macros, state.carbsToday.roundToInt(), t.carbsG, protein, t.proteinG, state.fatToday.roundToInt(), t.fatG),
         tag = "today_fuel", onClick = onOpen, modifier = modifier,
