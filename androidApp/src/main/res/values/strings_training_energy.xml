@@ -20,7 +20,6 @@
     <string name="trn_deficit_line">Deficit for %1$s per week</string>
     <string name="trn_target">Calorie target</string>
     <string name="trn_eaten">Eaten</string>
-    <string name="trn_kcal">%1$d\u00A0kcal</string>
     <string name="trn_kcal_signed">%1$s\u00A0kcal</string>
     <string name="trn_everyday_seated">Mostly seated</string>
     <string name="trn_everyday_on_feet">On my feet a lot</string>

@@ -19,11 +19,8 @@
         <item quantity="other">%d\u00A0Sätze</item>
     </plurals>
 
-    <string name="trs_tile_this_week">Diese Woche</string>
     <string name="trs_tile_training_days">Trainingstage / Ziel</string>
-    <string name="trs_tile_range_days">Trainingstage</string>
-    <string name="trs_tile_records">Neue Bestwerte</string>
-    <string name="trs_empty">Noch keine Daten. Board-Sessions zählen automatisch, geloggte Trainings und dein Körpergewicht erscheinen hier, sobald du sie einträgst.</string>
+    <string name="trs_empty">Noch keine Daten. Board-Sessions zählen automatisch, Trainings und dein Körpergewicht erscheinen hier, sobald du sie einträgst.</string>
     <string name="trs_no_training">In diesem Zeitraum noch keine Trainingstage. Board-Sessions und Trainings zählen automatisch.</string>
     <string name="trs_days_per_week">Trainingstage pro Woche</string>
     <plurals name="trs_days_chart_cd">
@@ -37,20 +34,20 @@
     <string name="trs_calendar">Kalender</string>
     <string name="trs_calendar_cd">Trainingskalender der letzten 16\u00A0Wochen mit %1$d Trainingstagen.</string>
     <string name="trs_calendar_hint">Eine Spalte pro Woche, Montag oben. Kräftigere Farbe = härterer Tag.</string>
-    <string name="trs_load_title">Belastung pro Struktur</string>
+    <string name="trs_load_title">Belastung nach Körperbereich</string>
     <string name="trs_load_cd">%1$s: Belastungstage pro Woche, diese Woche %2$d.</string>
     <string name="trs_open_body">Körper öffnen</string>
     <string name="trs_body_empty">Trag dein Körpergewicht ein, dann siehst du hier den Trend.</string>
     <string name="trs_weight_cd">Trend des Körpergewichts im gewählten Zeitraum.</string>
     <string name="trs_strength_title">Kraft zu Gewicht</string>
     <string name="trs_strength_cd">Kraft in Prozent des Körpergewichts über die Zeit.</string>
-    <string name="trs_strength_hint">Fortschritt über Kraft, nicht über die Waage: 10-s-Max oder geschätztes 1RM in % des Körpergewichts.</string>
-    <string name="trs_exercises_empty">Übungen, die du loggst, erscheinen hier mit ihrem Fortschritt.</string>
+    <string name="trs_strength_hint">Fortschritt über Kraft, nicht über die Waage: 10-s-Max oder geschätztes Maximum in % des Körpergewichts.</string>
+    <string name="trs_exercises_empty">Übungen, die du einträgst, erscheinen hier mit ihrem Fortschritt.</string>
     <string name="trs_change_28">%1$s in 4\u00A0Wochen</string>
     <string name="trs_no_value">noch kein vergleichbarer Wert</string>
 
-    <string name="trs_capacity_meaning">Gezeigter Wert: %1$s – aus deinen geloggten Sätzen, Reserve-Wiederholungen eingerechnet.</string>
-    <string name="trs_exercise_empty">Noch keine geloggten Sätze. Logge die Übung in einem Training, dann erscheint hier ihr Fortschritt.</string>
+    <string name="trs_capacity_meaning">Gezeigter Wert: %1$s – aus deinen eingetragenen Sätzen, Reserve-Wiederholungen eingerechnet.</string>
+    <string name="trs_exercise_empty">Noch keine eingetragenen Sätze. Mach die Übung in einem Training, dann erscheint hier ihr Fortschritt.</string>
     <string name="trs_tile_best">Bestwert</string>
     <string name="trs_tile_last">Zuletzt</string>
     <string name="trs_tile_change">Änderung 4 Wo.</string>
@@ -72,8 +69,8 @@
     <string name="trs_sessions">Einheiten</string>
 
     <string name="trs_progress_title">Fortschritt</string>
-    <string name="trs_progress_empty">Noch keine geloggten Sätze – dein Fortschrittsdiagramm erscheint nach dem ersten Training.</string>
+    <string name="trs_progress_empty">Noch keine eingetragenen Sätze – dein Fortschrittsdiagramm erscheint nach dem ersten Training.</string>
     <string name="trs_open_stats">Statistik öffnen</string>
-    <string name="trs_load_hint">Tage pro Woche, an denen die Struktur belastet wurde – aus Board-Sessions und Training.</string>
+    <string name="trs_load_hint">Tage pro Woche, an denen der jeweilige Körperbereich belastet wurde – aus Board-Sessions und Training.</string>
     <string name="trs_open_exercise">Übung öffnen</string>
 </resources>

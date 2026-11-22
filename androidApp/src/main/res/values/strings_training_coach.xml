@@ -72,8 +72,8 @@
     <string name="trc_age_18_39">18–39</string>
     <string name="trc_age_40_54">40–54</string>
     <string name="trc_age_55_plus">55+</string>
-    <string name="trc_current_grade">Your boulder grade (what you can work)</string>
-    <string name="trc_flash_grade">Your flash grade</string>
+    <string name="trc_current_grade">Your boulder grade (with several tries)</string>
+    <string name="trc_flash_grade">Your flash grade (first try)</string>
     <string name="trc_rope_grade">Rope grade (optional, e.g. 7a)</string>
     <string name="trc_preview_finger_ok">Max finger work can be suggested.</string>
     <string name="trc_preview_finger_guard">No max hangs or campus yet – only after about three years of climbing and when you have finished growing.</string>
@@ -89,7 +89,7 @@
     <string name="trc_focus_power_endurance">Power endurance</string>
     <string name="trc_focus_core">Body tension</string>
     <string name="trc_focus_mobility">Mobility (hips, shoulders)</string>
-    <string name="trc_focus_prevention">Shoulder and elbow prevention</string>
+    <string name="trc_focus_prevention">Prevention (shoulders, elbows)</string>
     <string name="trc_focus_max">Without a choice the coach derives the focus from your logbook and tests.</string>
     <string name="trc_finger_pref">Finger training you like best</string>
     <string name="trc_finger_hangboard">Hangboard, both hands</string>
@@ -140,7 +140,7 @@
     <string name="trc_path_test">Test session (25–35\u00A0min)</string>
     <string name="trc_path_test_text">Guided: warm-up ramp, max hang, pull-ups, core hold.</string>
     <string name="trc_open_benchmarks">Enter values I already know</string>
-    <string name="trc_plan_title">Your proposed week</string>
+    <string name="trc_plan_title">Your proposed standard week</string>
     <string name="trc_plan_why">Built from your answers and your real rhythm. Nothing changes until you apply it.</string>
     <string name="trc_plan_apply">Apply</string>
     <string name="trc_plan_applied">Applied – adjust it any time under Workouts → Week plan.</string>
@@ -171,15 +171,10 @@
     <string name="trc_estimate_typical">typical for about %1$s</string>
     <string name="trc_estimate_high">unusually high for %1$s – please check the entry</string>
     <string name="trc_estimate_low">unusually low for %1$s – please check the entry</string>
-    <string name="trc_card_title">Set up your coach – 1\u00A0minute</string>
-    <string name="trc_card_title_continue">Coach profile</string>
     <string name="trc_card_level">Suggestions: %1$s</string>
     <string name="trc_level_basis">Basic</string>
     <string name="trc_level_personal">Personal</string>
     <string name="trc_level_precise">Precise</string>
-    <string name="trc_card_action_start">Start</string>
-    <string name="trc_card_action_continue">Continue</string>
-    <string name="trc_card_action_estimate">Estimate</string>
     <string name="trc_next_goal">Next: set a goal – it decides what comes first.</string>
     <string name="trc_next_week">Next: your week – for a proposed standard week.</string>
     <string name="trc_next_equipment">Next: equipment – so every suggestion fits what you have.</string>

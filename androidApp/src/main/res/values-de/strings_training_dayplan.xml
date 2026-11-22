@@ -20,7 +20,7 @@
     <string name="trdp_move_offer">%2$s: %1$s entfällt. Verschieben auf %3$s?</string>
     <string name="trdp_move_yes">Verschieben</string>
     <string name="trdp_move_no">Weglassen</string>
-    <string name="trdp_hint_after_hard">Coach: Erholung nach dem harten Tag, keine Maximalkraft für die Finger</string>
+    <string name="trdp_hint_after_hard">Coach: Erholung nach dem harten Tag, keine maximale Fingerlast</string>
     <string name="trdp_hint_before_limit">Coach: Beine und Rumpf, Finger und Zug bleiben frisch für den Limit-Tag</string>
     <string name="trdp_hint_before_hard">Coach: ohne Fingertraining, frisch für den nächsten Tag</string>
     <string name="trdp_hint_paused">Pause</string>

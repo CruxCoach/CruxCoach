@@ -20,7 +20,7 @@
     <string name="trdp_move_offer">%2$s: %1$s is off. Move it to %3$s?</string>
     <string name="trdp_move_yes">Move</string>
     <string name="trdp_move_no">Leave out</string>
-    <string name="trdp_hint_after_hard">Coach: recovery after the hard day, no maximal finger work</string>
+    <string name="trdp_hint_after_hard">Coach: recovery after the hard day, no max finger work</string>
     <string name="trdp_hint_before_limit">Coach: legs and core, fingers and pulling stay fresh for the limit day</string>
     <string name="trdp_hint_before_hard">Coach: no finger training, fresh for the next day</string>
     <string name="trdp_hint_paused">Pause</string>
