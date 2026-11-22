@@ -329,7 +329,12 @@ internal fun PlanChooserDialog(
     swapLabel: @Composable (LocalDate) -> String = { it.toString() },
     onSwap: (LocalDate) -> Unit = {},
 ) {
-    val trainings: List<String> = routines.map { it.id } + BuiltinRoutines.all.map { "builtin:" + it.builtinKey }
+    // What a whole day can be planned as (owner 2026-11-22): the warm-up before climbing, the 15-minute add-on, the
+    // injury workout and the strength test are parts of a day or tools, not a day's training – they stay out unless one
+    // of them is what this day already holds.
+    val starters = PLANNABLE_STARTERS.map { "builtin:$it" } + listOfNotNull(current?.takeIf { c ->
+        c.startsWith("builtin:") && c.removePrefix("builtin:") !in PLANNABLE_STARTERS && BuiltinRoutines.byKey(c.removePrefix("builtin:")) != null })
+    val own = routines.map { it.id }
     val currentClimb = DayPlans.climbOf(current)
     var kind by rememberSaveable { mutableStateOf(currentClimb?.kind ?: ClimbingDayKind.GYM_BOULDER) }
     var intensity by rememberSaveable { mutableStateOf(currentClimb?.intensity ?: ClimbIntensity.VOLUME) }
@@ -337,12 +342,15 @@ internal fun PlanChooserDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            LazyColumn(Modifier.heightIn(max = 480.dp).testTag("week_plan_chooser")) {
+            LazyColumn(Modifier.heightIn(max = 520.dp).testTag("week_plan_chooser")) {
                 if (standardLabel != null) {
                     item(key = "standard") { ChooserRow(standardLabel, false, "week_plan_option_standard", onStandard) }
                 }
                 item(key = "free") { ChooserRow(freeLabel, current == null, "week_plan_option_free") { onChoose(null) } }
                 item(key = PLAN_REST) { ChooserRow(planEntryLabel(PLAN_REST, routines), current == PLAN_REST, "week_plan_option_$PLAN_REST") { onChoose(PLAN_REST) } }
+
+                item(key = "h_climb") { ChooserHeader(stringResource(R.string.trdp_group_climbing)) }
+                item(key = PLAN_BOARD) { ChooserRow(planEntryLabel(PLAN_BOARD, routines), current == PLAN_BOARD, "week_plan_option_$PLAN_BOARD") { onChoose(PLAN_BOARD) } }
                 item(key = "climb") {
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("week_plan_climb")) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -371,14 +379,23 @@ internal fun PlanChooserDialog(
                         }
                     }
                 }
-                item(key = PLAN_BOARD) { ChooserRow(planEntryLabel(PLAN_BOARD, routines), current == PLAN_BOARD, "week_plan_option_$PLAN_BOARD") { onChoose(PLAN_BOARD) } }
+
+                item(key = "h_training") { ChooserHeader(stringResource(R.string.trdp_training)) }
+                items(starters, key = { it }) { entry ->
+                    ChooserRow(planEntryLabel(entry, routines), entry == current, "week_plan_option_$entry") { onChoose(entry) }
+                }
+                if (own.isNotEmpty()) {
+                    item(key = "h_own") { ChooserHeader(stringResource(R.string.trdp_group_own)) }
+                    items(own, key = { it }) { entry ->
+                        ChooserRow(planEntryLabel(entry, routines), entry == current, "week_plan_option_$entry") { onChoose(entry) }
+                    }
+                }
+
+                // Swapping is the last thing in the list: an action on the day, not one of its kinds.
                 if (swapTargets.isNotEmpty()) {
                     item(key = "swap") {
                         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("week_plan_swap")) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.SwapHoriz, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
-                                Text(stringResource(R.string.trdp_swap), style = MaterialTheme.typography.bodyLarge)
-                            }
+                            ChooserHeader(stringResource(R.string.trdp_swap))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 swapTargets.forEach { d ->
                                     AssistChip(onClick = { onSwap(d) }, label = { Text(swapLabel(d)) },
@@ -388,13 +405,20 @@ internal fun PlanChooserDialog(
                         }
                     }
                 }
-                items(trainings, key = { it }) { entry ->
-                    ChooserRow(planEntryLabel(entry, routines), entry == current, "week_plan_option_$entry") { onChoose(entry) }
-                }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.tr_action_cancel)) } },
     )
+}
+
+/** The starter workouts that are a day's training; the others are parts of a day (a warm-up, an add-on) or tools. */
+internal val PLANNABLE_STARTERS = listOf(BuiltinRoutines.FINGER_BASICS, BuiltinRoutines.PULL_ANTAGONIST, BuiltinRoutines.LEGS_BASICS,
+    BuiltinRoutines.CORE_CLIMBER, BuiltinRoutines.MOBILITY_10)
+
+@Composable
+private fun ChooserHeader(text: String) {
+    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp))
 }
 
 @Composable
