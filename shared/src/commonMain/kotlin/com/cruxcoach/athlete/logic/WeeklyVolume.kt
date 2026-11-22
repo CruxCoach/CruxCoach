@@ -50,7 +50,8 @@ enum class AreaStatus { BELOW, ON_TRACK, DONE, OVER }
 
 /**
  * The week so far for one area. [doneSets] are logged hard sets; [sessions]
- * the days with such sets (finger days at least 48 h apart);
+ * the days with such sets (finger days at least 48 h apart, for a seasoned
+ * climber every day: [WeeklyVolume.fingerGapDays]);
  * [climbingCredit] what climbing added — finger sessions for FINGER, set
  * equivalents for PULL and CORE. [expectedByNow] is the share of the minimum
  * a steady week would have reached by today.
