@@ -2,19 +2,13 @@
 <!-- Training logger, timer, summary, routines and history (FEAT-066). -->
 <resources>
     <!-- Logger -->
-    <string name="trw_title_workout">Training</string>
     <string name="trw_no_open">No training is running right now.</string>
-    <string name="trw_empty_workout">Add your first exercise.</string>
     <string name="trw_add_exercise">Add exercise</string>
     <string name="trw_finish">Finish training</string>
     <string name="trw_add_set">+ Set</string>
-    <string name="trw_menu_more">More actions</string>
-    <string name="trw_easier">Easier: %1$s</string>
-    <string name="trw_harder">Harder: %1$s</string>
     <string name="trw_add_warmup">Add warm-up sets</string>
     <string name="trw_remove_exercise">Remove exercise</string>
     <string name="trw_remove_exercise_confirm">Remove %1$s and all its sets from this training?</string>
-    <string name="trw_target_reps">Target %1$d</string>
     <string name="trw_target_seconds">Target %1$d\u00A0s</string>
     <string name="trw_reps_label">Reps</string>
     <string name="trw_seconds_label">Sec</string>
@@ -25,26 +19,15 @@
     <string name="trw_typed_skipped">Left out because of your injury: %1$s</string>
     <string name="trw_load_assisted">%1$s assisted</string>
     <string name="trw_load_per_block">With two blocks: %1$s each</string>
-    <string name="trw_load_input_hint">Negative = assistance (e.g. −10 with a pulley), 0 = bodyweight.</string>
     <string name="trw_minus">Decrease %1$s</string>
     <string name="trw_plus">Increase %1$s</string>
-    <string name="trw_done_set">Mark set as done</string>
-    <string name="trw_reopen_set">Reopen set</string>
-    <string name="trw_rir_label">Reps in reserve</string>
     <string name="trw_rir_3plus">3+</string>
     <string name="trw_rir_short">%1$d in reserve</string>
-    <string name="trw_rest_start">Start rest</string>
-    <string name="trw_timer_open">Open timer</string>
     <string name="trw_interval_format">%1$d\u00A0s on / %2$d\u00A0s off ×\u00A0%3$d</string>
-    <string name="trw_note">Note</string>
-    <string name="trw_note_hint">e.g. which boulder</string>
-    <string name="trw_elapsed_cd">Training time %1$s</string>
     <string name="trw_side_short_left">L</string>
     <string name="trw_side_short_right">R</string>
     <string name="trw_warmup_short">W</string>
-    <string name="trw_test_short">T</string>
     <string name="trw_set_cd">Set %1$d</string>
-    <string name="trw_record_snack">New best – %1$s: %2$s</string>
     <string name="trw_record_total">%1$s total</string>
     <string name="trw_record_e1rm">e1RM %1$s</string>
     <plurals name="trw_reps">
@@ -142,7 +125,6 @@
         <item quantity="one">%d\u00A0set</item>
         <item quantity="other">%d\u00A0sets</item>
     </plurals>
-    <string name="trw_open_player">Guided mode</string>
     <string name="trw_timer_released">Let go</string>
     <string name="trw_open_title">“%1$s” is still open</string>
     <string name="trw_open_untitled">Training</string>

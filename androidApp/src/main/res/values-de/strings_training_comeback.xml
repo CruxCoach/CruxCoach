@@ -162,7 +162,6 @@
     <string name="cb_nb21_text">Dein Schmerz ist seit drei Wochen etwa gleich. Ein Ultraschall kann zeigen, was los ist – vielleicht muss der Plan angepasst werden.</string>
     <string name="cb_sign_title">Etwas Neues?</string>
     <string name="cb_sign_text">Du hast etwas Neues von den Warnzeichen vermerkt. Schau die Liste an und kreuz an, was passt.</string>
-    <string name="cb_open_signs">Warnzeichen öffnen</string>
     <string name="cb_ok">OK</string>
     <string name="cb_remind_week">In einer Woche erinnern</string>
 
@@ -208,7 +207,6 @@
     <!-- Karte auf Heute -->
     <string name="cb_today_title">Comeback-Plan · %1$s</string>
     <string name="cb_today_question">Wie ist es heute Morgen?</string>
-    <string name="cb_today_open">Plan öffnen</string>
     <string name="cb_today_prompt">Der Plan hat einen Hinweis für dich.</string>
 
     <!-- Gründe des Coaches -->

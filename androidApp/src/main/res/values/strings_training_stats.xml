@@ -19,10 +19,7 @@
         <item quantity="other">%d\u00A0sets</item>
     </plurals>
 
-    <string name="trs_tile_this_week">This week</string>
     <string name="trs_tile_training_days">training days / goal</string>
-    <string name="trs_tile_range_days">Training days</string>
-    <string name="trs_tile_records">New bests</string>
     <string name="trs_empty">No data yet. Board sessions count automatically, logged training sessions and body weight appear here as soon as you enter them.</string>
     <string name="trs_no_training">No training days in this period yet. Board sessions and training sessions count automatically.</string>
     <string name="trs_days_per_week">Training days per week</string>

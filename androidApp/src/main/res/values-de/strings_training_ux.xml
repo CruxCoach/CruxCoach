@@ -21,15 +21,9 @@
     <string name="tru_equipment_why">CruxCoach schlägt dann nur Übungen vor, die du wirklich machen kannst.</string>
 
     <!-- Checkliste -->
-    <string name="tru_setup_title">In 3 Schritten einrichten</string>
-    <string name="tru_setup_progress">%1$d von %2$d</string>
-    <string name="tru_setup_coach">Ziel und Trainingswoche</string>
-    <string name="tru_setup_coach_text">1\u00A0Minute – damit die Vorschläge zu dir passen</string>
     <string name="tru_setup_equipment">Deine Ausrüstung</string>
-    <string name="tru_setup_equipment_text">Nur Übungen, die du machen kannst</string>
     <string name="tru_setup_weight">Dein Körpergewicht</string>
     <string name="tru_setup_weight_text">Für Ernährungsziele und Lasten</string>
-    <string name="tru_setup_done">Erledigt</string>
 
     <!-- Check-in im Training von heute -->
     <string name="tru_checkin_action">Check-in</string>
@@ -48,11 +42,8 @@
     <string name="tru_tile_weight_rate">%1$s pro Woche</string>
     <string name="tru_tile_weight_tap">Antippen zum Eintragen</string>
     <string name="tru_open_body">Gewichtsverlauf und Maße</string>
-    <string name="tru_tile_food_protein">Essen · Protein</string>
     <string name="tru_tile_food">Essen</string>
     <string name="tru_tile_food_macros">K\u00A0%1$d/%2$d · P\u00A0%3$d/%4$d · F\u00A0%5$d/%6$d\u00A0g</string>
-    <string name="tru_tile_food_left">noch %1$d\u00A0g</string>
-    <string name="tru_tile_food_reached">Ziel erreicht</string>
     <string name="tru_tile_food_no_target">Ziel braucht dein Gewicht</string>
     <string name="tru_tile_water">Wasser</string>
     <string name="tru_tile_water_tap">Tippen: +\u00A0%1$s</string>
@@ -125,8 +116,6 @@
     <string name="tru_set_sex">Geschlecht</string>
     <string name="tru_set_birth_year">Geburtsjahr</string>
     <string name="tru_water_reached">Trinkziel erreicht</string>
-    <string name="tru_setup_ready_title">Alles eingerichtet!</string>
-    <string name="tru_setup_ready_text">Dein Coach kennt jetzt das Wichtigste. Jeder eingetragene Tag macht die Vorschläge persönlicher.</string>
     <string name="tru_new_food">Neu</string>
     <plurals name="tru_hub_records">
         <item quantity="one">%d Bestwert</item>

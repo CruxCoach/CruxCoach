@@ -19,10 +19,7 @@
         <item quantity="other">%d\u00A0Sätze</item>
     </plurals>
 
-    <string name="trs_tile_this_week">Diese Woche</string>
     <string name="trs_tile_training_days">Trainingstage / Ziel</string>
-    <string name="trs_tile_range_days">Trainingstage</string>
-    <string name="trs_tile_records">Neue Bestwerte</string>
     <string name="trs_empty">Noch keine Daten. Board-Sessions zählen automatisch, geloggte Trainings und dein Körpergewicht erscheinen hier, sobald du sie einträgst.</string>
     <string name="trs_no_training">In diesem Zeitraum noch keine Trainingstage. Board-Sessions und Trainings zählen automatisch.</string>
     <string name="trs_days_per_week">Trainingstage pro Woche</string>

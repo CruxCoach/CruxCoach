@@ -1,16 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Daily training suggestion (climber version). -->
 <resources>
-    <string name="trsg_card_label">Suggestion for today</string>
     <string name="trsg_why_title">Why this suggestion?</string>
-    <string name="trsg_planned_today">Planned for today in your week plan</string>
     <plurals name="trsg_meta_count">
         <item quantity="one">%d exercise</item>
         <item quantity="other">%d exercises</item>
     </plurals>
     <string name="trsg_start">Start training</string>
-    <string name="trsg_next">Another suggestion</string>
-    <string name="trsg_edit">Adjust</string>
     <string name="trsg_save">Save as workout</string>
     <string name="trsg_saved">Saved as a workout – you find it under Workouts.</string>
 

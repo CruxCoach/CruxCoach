@@ -1,16 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Tagesvorschlag fürs Training (für Kletterer). -->
 <resources>
-    <string name="trsg_card_label">Vorschlag für heute</string>
     <string name="trsg_why_title">Warum dieser Vorschlag?</string>
-    <string name="trsg_planned_today">Heute laut deinem Wochenplan</string>
     <plurals name="trsg_meta_count">
         <item quantity="one">%d Übung</item>
         <item quantity="other">%d Übungen</item>
     </plurals>
     <string name="trsg_start">Training starten</string>
-    <string name="trsg_next">Anderer Vorschlag</string>
-    <string name="trsg_edit">Anpassen</string>
     <string name="trsg_save">Als Workout speichern</string>
     <string name="trsg_saved">Als Workout gespeichert – du findest es unter Workouts.</string>
 

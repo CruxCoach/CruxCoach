@@ -1,19 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Trainings-Logger, Timer, Zusammenfassung, Routinen und Verlauf (FEAT-066). -->
 <resources>
-    <string name="trw_title_workout">Training</string>
     <string name="trw_no_open">Gerade läuft kein Training.</string>
-    <string name="trw_empty_workout">Füge deine erste Übung hinzu.</string>
     <string name="trw_add_exercise">Übung hinzufügen</string>
     <string name="trw_finish">Training beenden</string>
     <string name="trw_add_set">+ Satz</string>
-    <string name="trw_menu_more">Weitere Aktionen</string>
-    <string name="trw_easier">Leichter: %1$s</string>
-    <string name="trw_harder">Schwerer: %1$s</string>
     <string name="trw_add_warmup">Aufwärmsätze hinzufügen</string>
     <string name="trw_remove_exercise">Übung entfernen</string>
     <string name="trw_remove_exercise_confirm">%1$s mit allen Sätzen aus diesem Training entfernen?</string>
-    <string name="trw_target_reps">Ziel %1$d</string>
     <string name="trw_target_seconds">Ziel %1$d\u00A0s</string>
     <string name="trw_reps_label">Wdh.</string>
     <string name="trw_seconds_label">Sek.</string>
@@ -24,26 +18,15 @@
     <string name="trw_typed_skipped">Wegen deiner Verletzung ausgelassen: %1$s</string>
     <string name="trw_load_assisted">%1$s entlastet</string>
     <string name="trw_load_per_block">Mit zwei Blöcken: je %1$s</string>
-    <string name="trw_load_input_hint">Negativ = Entlastung (z. B. −10 mit Umlenkrolle), 0 = Körpergewicht.</string>
     <string name="trw_minus">%1$s verringern</string>
     <string name="trw_plus">%1$s erhöhen</string>
-    <string name="trw_done_set">Satz abhaken</string>
-    <string name="trw_reopen_set">Satz wieder öffnen</string>
-    <string name="trw_rir_label">Wdh. in Reserve</string>
     <string name="trw_rir_3plus">3+</string>
     <string name="trw_rir_short">Reserve %1$d</string>
-    <string name="trw_rest_start">Pause starten</string>
-    <string name="trw_timer_open">Timer öffnen</string>
     <string name="trw_interval_format">%1$d\u00A0s an / %2$d\u00A0s Pause ×\u00A0%3$d</string>
-    <string name="trw_note">Notiz</string>
-    <string name="trw_note_hint">z. B. welcher Boulder</string>
-    <string name="trw_elapsed_cd">Trainingszeit %1$s</string>
     <string name="trw_side_short_left">L</string>
     <string name="trw_side_short_right">R</string>
     <string name="trw_warmup_short">A</string>
-    <string name="trw_test_short">T</string>
     <string name="trw_set_cd">Satz %1$d</string>
-    <string name="trw_record_snack">Neuer Bestwert – %1$s: %2$s</string>
     <string name="trw_record_total">%1$s gesamt</string>
     <string name="trw_record_e1rm">e1RM %1$s</string>
     <plurals name="trw_reps">
@@ -136,7 +119,6 @@
         <item quantity="one">%d Satz</item>
         <item quantity="other">%d\u00A0Sätze</item>
     </plurals>
-    <string name="trw_open_player">Geführter Modus</string>
     <string name="trw_timer_released">Losgelassen</string>
     <string name="trw_open_title">„%1$s“ läuft noch</string>
     <string name="trw_open_untitled">Training</string>

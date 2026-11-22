@@ -5,7 +5,6 @@
     <string name="trb_tile_trend">Trend</string>
     <string name="trb_tile_rate">Pro Woche</string>
     <string name="trb_tile_entries">Messungen</string>
-    <string name="trb_rate_value">%1$s / Woche</string>
     <string name="trb_direction_up">leicht steigend</string>
     <string name="trb_direction_flat">stabil</string>
     <string name="trb_direction_down">leicht fallend</string>
@@ -20,7 +19,6 @@
     <string name="trb_no_weight">Noch kein Gewicht eingetragen. Tippe auf +, um zu starten – gelegentliches Wiegen reicht.</string>
     <string name="trb_measurements">Messwerte</string>
     <string name="trb_add_measurement">Messwert</string>
-    <string name="trb_add">Eintrag hinzufügen</string>
     <string name="trb_delta">%1$s zum Vorwert</string>
     <string name="trb_no_measurements">Noch keine Messwerte.</string>
     <string name="trb_ape_index">Ape-Index</string>

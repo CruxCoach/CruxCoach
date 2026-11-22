@@ -96,8 +96,6 @@
     <string name="trt_injury_mode">Verletzung eingetragen</string>
     <string name="trt_injury_mode_paused">Verletzungsmodus – Klettern pausiert</string>
     <string name="trt_injury_manage">Verwalten</string>
-    <string name="trt_workout_untitled">Training</string>
-    <string name="trt_routines">Workouts</string>
     <string name="trt_weekly_review">Wochenrückblick</string>
     <string name="trt_report_injury">Verletzung eintragen</string>
     <string name="trt_sugg_equipment_title">Was hast du?</string>
@@ -115,14 +113,8 @@
     <string name="trt_reds_low_carbs">An mehreren Trainingstagen hast du deutlich weniger Kohlenhydrate eingetragen, als das Training braucht.</string>
     <string name="trt_spike_title">Belastungssprung: %1$s</string>
     <string name="trt_spike_text">Mehr Belastungstage als in den drei Wochen davor. Kein Verbot – nur gut zu wissen.</string>
-    <string name="trt_trend_direction">Trendrichtung</string>
-    <string name="trt_trend_weight">Trend: %1$s</string>
-    <string name="trt_weight_today">Gewicht heute (%1$s)</string>
-    <string name="trt_fuel_needs_weight">Trag dein Körpergewicht ein, dann siehst du Protein- und Kohlenhydrat-Ziele.</string>
-    <string name="trt_protein">Protein</string>
     <string name="trt_sugg_benchmarks_title">Kraftwerte eintragen</string>
     <string name="trt_sugg_benchmarks_text">Max Hang, Blockheben, Klimmzug mit Zusatzgewicht: Aus dem, was du schaffst, plant CruxCoach deine Lasten.</string>
-    <string name="trt_sugg_benchmarks_action">Eintragen</string>
     <string name="trt_today_hero">Dein Training heute</string>
     <string name="trt_more_exercises">+\u00A0%1$d weitere</string>
     <string name="trt_low_data">Noch wenig Daten – mit jedem Eintrag wird der Vorschlag persönlicher</string>
@@ -131,15 +123,8 @@
     <string name="trt_warmup_start">Aufwärmen starten</string>
     <string name="trt_more_actions">Weitere Aktionen</string>
     <string name="trt_based_on_title">Basierend auf</string>
-    <string name="trt_checkin_prompt_hint">4 kurze Fragen – damit der Vorschlag zu heute passt</string>
     <string name="trt_pause_short">Pause aktiv</string>
-    <string name="trt_quick_climbing">Klettertag</string>
-    <string name="trt_quick_weight">Gewicht</string>
-    <string name="trt_quick_food">Essen</string>
     <string name="trt_quick_free">Freies Training</string>
-    <string name="trt_done_today">Heute erledigt</string>
-    <string name="trt_tile_trend">Trend</string>
-    <string name="trt_tile_water">Wasser %1$s</string>
     <string name="trt_numbers_hidden_short">verborgen</string>
     <string name="trt_done_hero_title">Für heute geschafft</string>
     <string name="trt_done_hero_text">Erholung gehört zum Training. Willst du trotzdem mehr, schlägt der Coach etwas vor, das zu deinem heutigen Training passt.</string>
@@ -157,7 +142,6 @@
     <!-- Bekannte Übungen zuerst (Issue #68): eine für dich neue Übung, und „Kenne ich nicht“ (keine Abneigung). -->
     <string name="trt_new_to_you">Neu für dich</string>
     <string name="trt_new_how">So geht\'s</string>
-    <string name="trt_dont_know">Kenne ich nicht</string>
     <string name="trt_dont_know_to">Kenne ich nicht: stattdessen %1$s</string>
     <string name="trt_dont_know_hint">Tauscht sie gegen eine Übung, die du kennst. Das zählt nicht gegen diese Übung.</string>
     <string name="trt_dont_know_none">Heute passt hier nichts, was du schon kennst.</string>

@@ -3,24 +3,17 @@
 <resources>
     <string name="trp_title">Geführtes Training</string>
     <string name="trp_overview">Übersicht</string>
-    <string name="trp_progress">%1$d von %2$d Sätzen erledigt</string>
     <string name="trp_set_of">Satz %1$d von %2$d</string>
     <string name="trp_start_timer">Start</string>
     <string name="trp_done_without_timer">Ohne Timer erledigt</string>
     <string name="trp_done_set">Satz erledigt</string>
-    <string name="trp_skip">Überspringen</string>
-    <string name="trp_prev_set">Vorheriger Satz</string>
     <string name="trp_next_set">Nächster Satz</string>
-    <string name="trp_resume">Weiter</string>
     <string name="trp_reopen">Doch nicht erledigt</string>
     <string name="trp_set_done_label">Erledigt</string>
-    <string name="trp_review_hint">So eingetragen. Ändere einen Wert, wenn es anders war.</string>
     <plurals name="trp_load_carried">
         <item quantity="one">Gilt auch für den nächsten Satz</item>
         <item quantity="other">Gilt auch für die nächsten %1$d\u00A0Sätze</item>
     </plurals>
-    <string name="trp_correct_done">Letzten Satz korrigieren</string>
-    <string name="trp_correct_title">%1$s korrigieren</string>
     <string name="trp_next_after">Danach: %1$s</string>
     <string name="trp_climb_now">Aufgewärmt – jetzt klettern</string>
     <string name="trp_after_climbing">Nach dem Klettern: %1$s</string>
@@ -33,23 +26,14 @@
         <item quantity="other">%d Runden</item>
     </plurals>
     <string name="trp_complete_title">Alle Sätze erledigt</string>
-    <plurals name="trp_complete_text">
-        <item quantity="one">%d Satz geschafft – stark.</item>
-        <item quantity="other">%d\u00A0Sätze geschafft – stark.</item>
-    </plurals>
     <string name="trp_finish_training">Training beenden</string>
 
     <string name="trp_rest_title">Pause</string>
     <string name="trp_rest_go">Los geht\'s!</string>
     <string name="trp_side_switch">Seitenwechsel</string>
-    <string name="trp_side_switch_to">Jetzt: %1$s</string>
     <string name="trp_rest_remaining_cd">Noch %1$s Pause</string>
     <string name="trp_rest_minus">−15\u00A0s</string>
     <string name="trp_rest_plus">+15\u00A0s</string>
-    <string name="trp_rest_skip">Pause beenden</string>
-    <string name="trp_next_up">Als Nächstes</string>
-    <string name="trp_rir_question_reps">Wie viele Wiederholungen wären noch gegangen?</string>
-    <string name="trp_rir_question_seconds">Wie viele Sekunden wären noch gegangen?</string>
     <string name="trp_record">Neuer Bestwert: %1$s</string>
     <string name="trp_benchmark_raised">Kraftwert angehoben: %1$s</string>
     <string name="trp_benchmark_first">Dein Startwert: %1$s</string>
@@ -66,5 +50,4 @@
     <string name="trp_exercise_menu">Übung tauschen oder überspringen</string>
     <string name="trp_swap_exercise">Übung tauschen</string>
     <string name="trp_skip_exercise">Übung überspringen</string>
-    <string name="trp_skip_rest">Restliche Sätze überspringen</string>
 </resources>

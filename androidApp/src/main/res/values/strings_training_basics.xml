@@ -3,19 +3,7 @@
 <resources>
     <string name="trq_title">Your start</string>
     <string name="trq_later">Later</string>
-    <string name="trq_back">Back</string>
-    <string name="trq_next">Next</string>
-    <string name="trq_done">Done</string>
-    <string name="trq_you_title">About you</string>
-    <string name="trq_you_why">For your protein, carbohydrate and water targets, your energy need and loads in % of body weight. Everything optional, changeable any time.</string>
-    <string name="trq_weight">Body weight</string>
-    <string name="trq_height">Height</string>
-    <string name="trq_birth_year">Birth year</string>
-    <string name="trq_sex">Sex (for energy and micronutrient reference values)</string>
-    <string name="trq_sex_none">No answer</string>
     <string name="trq_private">Everything you enter here stays encrypted on your phone.</string>
-    <string name="trq_climb_title">Your climbing</string>
-    <string name="trq_climb_why">Sets the start loads and keeps finger loads careful: no max hangs or campus in your first climbing years.</string>
     <string name="trq_grade">How hard do you boulder?</string>
     <string name="trq_grade_from_logbook">Suggested from your board logbook.</string>
     <string name="trq_intro">Four answers and your first training is ready.</string>

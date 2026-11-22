@@ -169,15 +169,10 @@
     <string name="trc_estimate_typical">typisch für etwa %1$s</string>
     <string name="trc_estimate_high">ungewöhnlich hoch für %1$s – Eingabe prüfen?</string>
     <string name="trc_estimate_low">ungewöhnlich niedrig für %1$s – Eingabe prüfen?</string>
-    <string name="trc_card_title">Coach einrichten – 1\u00A0Minute</string>
-    <string name="trc_card_title_continue">Coach-Profil</string>
     <string name="trc_card_level">Vorschläge: %1$s</string>
     <string name="trc_level_basis">Basis</string>
     <string name="trc_level_personal">Persönlich</string>
     <string name="trc_level_precise">Präzise</string>
-    <string name="trc_card_action_start">Los geht\'s</string>
-    <string name="trc_card_action_continue">Weiter</string>
-    <string name="trc_card_action_estimate">Schätzen</string>
     <string name="trc_next_goal">Als Nächstes: Ziel festlegen – es entscheidet, was Vorrang hat.</string>
     <string name="trc_next_week">Als Nächstes: deine Woche – für einen Wochenplan-Vorschlag.</string>
     <string name="trc_next_equipment">Als Nächstes: Ausrüstung – damit jeder Vorschlag zu dem passt, was du hast.</string>
