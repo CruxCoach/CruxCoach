@@ -620,8 +620,11 @@ private fun DoneRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPage,
 private fun LatestDoneExtras(set: ExerciseSet, def: ExerciseDefinition, state: PlayerState, actions: PageActions, askReserve: Boolean = true) {
     val units = state.profile.units
     val asks = askReserve && set.setType == SetType.WORK && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG, ExerciseKind.TIME)
+    // A long plain hold is asked in steps that mean something there (0, 5, 10, 15+ s): "1, 2 or 3+ seconds more" after
+    // a 30-second side plank said nothing (Nokia walk 2026-11-22). The answer is stored as the same four levels.
+    val coarse = com.cruxcoach.athlete.logic.NextTargets.longPlainHold(def, (set.targetDurationS ?: set.durationS)?.roundToInt())
     Column(Modifier.padding(start = 48.dp, bottom = 4.dp)) {
-        if (asks) ReserveChoice(set, reserveInSeconds(def), actions, "player_rir_", Modifier.padding(bottom = 4.dp))
+        if (asks) ReserveChoice(set, reserveInSeconds(def), actions, "player_rir_", Modifier.padding(bottom = 4.dp), coarse = coarse)
         state.feedback?.takeIf { it.def.slug == def.slug }?.let { fb ->
             val resources = LocalResources.current
             Column(Modifier.testTag("player_feedback")) {
@@ -787,14 +790,21 @@ private fun reserveInSeconds(def: ExerciseDefinition): Boolean = def.kind == Exe
 
 /** "How many more?" (seconds for a timed hold) with 0, 1, 2, 3+ in one row; a second tap takes the answer back. */
 @Composable
-private fun ReserveChoice(set: ExerciseSet, seconds: Boolean, actions: PageActions, tagPrefix: String, modifier: Modifier = Modifier) {
+private fun ReserveChoice(
+    set: ExerciseSet, seconds: Boolean, actions: PageActions, tagPrefix: String, modifier: Modifier = Modifier, coarse: Boolean = false,
+) {
     Column(modifier.fillMaxWidth()) {
         Text(stringResource(if (seconds) R.string.trpg_reserve_question_seconds else R.string.trpg_reserve_question),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(bottom = 4.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
             listOf(0, 1, 2, 3).forEach { value ->
-                NumberChip(if (value == 3) stringResource(R.string.trw_rir_3plus) else value.toString(), "$tagPrefix$value",
+                val label = when {
+                    coarse -> if (value == 3) "15+" else (value * 5).toString()
+                    value == 3 -> stringResource(R.string.trw_rir_3plus)
+                    else -> value.toString()
+                }
+                NumberChip(label, "$tagPrefix$value",
                     Modifier.weight(1f), selected = set.rir == value) {
                     actions.onReserve(set.id, if (set.rir == value) null else value)
                 }

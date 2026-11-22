@@ -22,6 +22,8 @@
     <string name="trp_correct_done">Correct the last set</string>
     <string name="trp_correct_title">Correct %1$s</string>
     <string name="trp_next_after">After this: %1$s</string>
+    <string name="trp_climb_now">Warmed up – time to climb</string>
+    <string name="trp_after_climbing">After climbing: %1$s</string>
     <plurals name="trp_reps_big">
         <item quantity="one">%d\u00A0rep</item>
         <item quantity="other">%d\u00A0reps</item>

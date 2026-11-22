@@ -334,6 +334,7 @@ fun TodayScreen(
             onPlace = { id -> askWhy = false; viewModel.pickPlace(id) },
             onRestToday = { askWhy = false; viewModel.restToday() },
             onClimbToday = { kind -> askWhy = false; viewModel.climbToday(kind) },
+            onNoClimbToday = { askWhy = false; viewModel.noClimbToday() },
             onPlanDays = { askWhy = false; planDays = true },
         )
     }
@@ -1027,18 +1028,18 @@ private fun FoodTile(state: TodayState, onOpen: () -> Unit, modifier: Modifier) 
     val protein = state.proteinToday.roundToInt()
     com.cruxcoach.android.ui.training.common.ValueTile(
         icon = Icons.Default.Restaurant, tint = CruxCoachDesign.colors.positive,
-        // The grams are protein: the label says so (device test 2026-10-10: "0 / 111 g" of what?).
-        label = stringResource(R.string.tru_tile_food_protein),
-        value = if (t != null) stringResource(R.string.trf_progress_g, protein, t.proteinG) else stringResource(R.string.trf_value_g, protein),
-        progress = t?.let { if (it.proteinG > 0) protein.toFloat() / it.proteinG else 0f },
-        supporting = when {
-            t == null -> stringResource(R.string.tru_tile_food_no_target)
-            // Energy in the open next to protein: eaten of the need, or of the calorie target while losing weight.
-            state.profile.showCalories && energyGoal != null ->
-                stringResource(R.string.trn_tile_kcal, (state.kcalToday ?: 0.0).roundToInt(), energyGoal)
-            protein >= t.proteinG -> stringResource(R.string.tru_tile_food_reached)
-            else -> stringResource(R.string.tru_tile_food_left, t.proteinG - protein)
+        // All three macros, as on the nutrition page (owner 2026-11-22: protein alone makes no sense); the big number
+        // is the energy when the athlete sees calories, else protein of its target.
+        label = stringResource(R.string.tru_tile_food),
+        value = when {
+            state.profile.showCalories && energyGoal != null -> stringResource(R.string.trn_tile_kcal, (state.kcalToday ?: 0.0).roundToInt(), energyGoal)
+            state.profile.showCalories -> stringResource(R.string.trf_kcal_value, (state.kcalToday ?: 0.0).roundToInt())
+            t != null -> stringResource(R.string.trf_progress_g, protein, t.proteinG)
+            else -> stringResource(R.string.trf_value_g, protein)
         },
+        progress = t?.let { if (it.proteinG > 0) protein.toFloat() / it.proteinG else 0f },
+        supporting = if (t == null) stringResource(R.string.tru_tile_food_no_target)
+            else stringResource(R.string.tru_tile_food_macros, state.carbsToday.roundToInt(), t.carbsG, protein, t.proteinG, state.fatToday.roundToInt(), t.fatG),
         tag = "today_fuel", onClick = onOpen, modifier = modifier,
     )
 }
@@ -1363,7 +1364,17 @@ private fun DailySuggestionCard(
                 // steps and "Don't know it" belong before the start. It stays open after "Don't know it" on it.
                 var expanded by rememberSaveable(s.routine.items.size) { mutableStateOf(main.drop(4).any { it.slug in state.newToYou }) }
                 val shown = if (expanded) main else main.take(4)
+                // A climbing day: the list is the block for afterwards – say so, and that the warm-up comes first (Nokia
+                // walk 2026-11-22: two exercises, 36 minutes and "start warm-up" did not add up).
+                val warmups = s.routine.items.count { it.warmup }
+                val beforeClimbing = warmups > 0 && !s.addOn && (s.boardPlan != null || com.cruxcoach.athlete.logic.DayPlans.isClimb(s.plannedEntry))
                 Column(Modifier.padding(top = 4.dp).testTag("today_suggestion_items")) {
+                    if (beforeClimbing) {
+                        Text(stringResource(R.string.trt_before_climbing, pluralStringResource(R.plurals.trsg_meta_count, warmups, warmups)),
+                            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp).testTag("today_before_climbing"))
+                        Text(stringResource(R.string.trt_after_climbing), style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(top = 8.dp))
+                    }
                     shown.forEachIndexed { index, item ->
                         // A circuit's members under one header: rounds and rests, a tap changes them.
                         val circuit = item.circuit
@@ -1869,6 +1880,7 @@ private fun NextSuggestionSheet(
     onPlace: (String) -> Unit = {},
     onRestToday: () -> Unit = {},
     onClimbToday: (com.cruxcoach.athlete.model.ClimbingDayKind?) -> Unit = {},
+    onNoClimbToday: () -> Unit = {},
     onPlanDays: () -> Unit = {},
     onMinutes: (Int?) -> Unit = {},
     onCircuit: (Boolean) -> Unit = {},
@@ -1900,10 +1912,13 @@ private fun NextSuggestionSheet(
                 listOf(com.cruxcoach.athlete.model.ClimbingDayKind.GYM_BOULDER, com.cruxcoach.athlete.model.ClimbingDayKind.GYM_ROPE,
                     com.cruxcoach.athlete.model.ClimbingDayKind.OUTDOOR).forEach { k ->
                     val entry = com.cruxcoach.athlete.logic.DayPlans.climbOf(state.suggestion?.plannedEntry)
-                    FilterChip(selected = entry?.kind == k, onClick = { onClimbToday(k) }, label = { Text(climbingDayKindLabel(k)) },
+                    // A second tap takes the choice back.
+                    FilterChip(selected = entry?.kind == k, onClick = { if (entry?.kind == k) onNoClimbToday() else onClimbToday(k) },
+                        label = { Text(climbingDayKindLabel(k)) },
                         modifier = Modifier.testTag("today_climb_${k.name.lowercase()}"))
                 }
-                FilterChip(selected = state.suggestion?.plannedEntry == com.cruxcoach.athlete.model.PLAN_BOARD, onClick = { onClimbToday(null) },
+                val boardToday = state.suggestion?.plannedEntry == com.cruxcoach.athlete.model.PLAN_BOARD
+                FilterChip(selected = boardToday, onClick = { if (boardToday) onNoClimbToday() else onClimbToday(null) },
                     label = { Text(kindLabel(SuggestionFocus.BOARD_DAY)) }, modifier = Modifier.testTag("today_climb_board"))
             }
             Spacer(Modifier.height(16.dp))
@@ -1911,8 +1926,9 @@ private fun NextSuggestionSheet(
             Text(stringResource(R.string.trt_next_kind), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // The board has its chip under "Heute klettere ich" (it stood here a second time).
                 listOf(SuggestionFocus.FINGER_STRENGTH, SuggestionFocus.PULL_PUSH, SuggestionFocus.LEGS_CORE,
-                    SuggestionFocus.BOARD_DAY, SuggestionFocus.MOBILITY_RECOVERY).forEach { f ->
+                    SuggestionFocus.MOBILITY_RECOVERY).forEach { f ->
                     FilterChip(
                         selected = state.wish == f,
                         onClick = { onFocus(if (state.wish == f) null else f) },

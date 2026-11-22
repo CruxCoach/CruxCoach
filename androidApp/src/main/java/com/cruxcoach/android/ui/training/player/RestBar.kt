@@ -58,6 +58,11 @@ fun RestBar(
         state.sets.none { !it.isCompleted && it.blockIndex == done.set.blockIndex } && state.pages.none { p ->
             done.set.blockIndex in p.blockIndexes && next.set.blockIndex in p.blockIndexes
         }
+    // The warm-up on the wall is done and what follows is off the wall: this is where the climbing happens (Nokia walk
+    // 2026-11-22: a climbing day's warm-up ran straight into the block for afterwards). The training stays open.
+    val climbNow = finishedExercise && done != null && next != null && done.def.needsClimbingWall && !next.def.needsClimbingWall &&
+        state.sets.none { it.blockIndex == done.set.blockIndex && it.setType == SetType.WORK } &&
+        state.sets.none { it.setType == SetType.WARMUP && !it.isCompleted }
     Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth().testTag("player_rest")) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -67,6 +72,7 @@ fun RestBar(
                 }
                 Column(Modifier.weight(1f)) {
                     val headline = when {
+                        climbNow -> stringResource(R.string.trp_climb_now)
                         state.restFinished -> stringResource(R.string.trp_rest_go)
                         finishedExercise -> {
                             val work = state.sets.filter { it.blockIndex == done!!.set.blockIndex && it.setType == SetType.WORK }
@@ -110,7 +116,8 @@ fun RestBar(
                     }
                     if (finishedExercise && next != null) {
                         val parts = listOfNotNull(next.def.name(language), targetSummary(next.set, next.def, null, state.profile.units))
-                        Text(stringResource(R.string.trp_next_after, parts.joinToString(" · ")), style = MaterialTheme.typography.bodyMedium,
+                        Text(stringResource(if (climbNow) R.string.trp_after_climbing else R.string.trp_next_after, parts.joinToString(" · ")),
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.testTag("player_upcoming"))
                     }

@@ -94,7 +94,10 @@ fun WeightSheet(
                     value = input, onValueChange = { input = it }, singleLine = true,
                     textStyle = MaterialTheme.typography.headlineMedium.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
                     suffix = { Text(Units.massUnit(units), style = MaterialTheme.typography.titleMedium) },
+                    // Clearly an example, not a value: it read as a filled-in 70 kg above a greyed-out "Save" (Nokia walk
+                    // 2026-11-22).
                     placeholder = { Text(if (units == UnitSystem.IMPERIAL) "150" else "70", style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
                         textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
                     // "Fertig" on the keyboard saves, like the button.
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = androidx.compose.ui.text.input.ImeAction.Done),

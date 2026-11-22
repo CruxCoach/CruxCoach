@@ -126,6 +126,8 @@
     <string name="trt_today_hero">Dein Training heute</string>
     <string name="trt_more_exercises">+\u00A0%1$d weitere</string>
     <string name="trt_low_data">Noch wenig Daten – mit jedem Eintrag wird der Vorschlag persönlicher</string>
+    <string name="trt_before_climbing">Vor dem Klettern: Aufwärmen, %1$s</string>
+    <string name="trt_after_climbing">Nach dem Klettern</string>
     <string name="trt_warmup_start">Aufwärmen starten</string>
     <string name="trt_more_actions">Weitere Aktionen</string>
     <string name="trt_based_on_title">Basierend auf</string>

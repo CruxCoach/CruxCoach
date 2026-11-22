@@ -571,7 +571,8 @@ private fun CompletePage(state: PlayerState, onFinish: (Int?, String?, Int?) -> 
     var pain by rememberSaveable { mutableStateOf<Int?>(null) }
     val comeback = com.cruxcoach.athlete.logic.Comeback.parseRoutineId(state.workout?.routineId) != null
     var notes by rememberSaveable { mutableStateOf("") }
-    val doneSets = state.sets.count { it.isCompleted && it.setType != SetType.WARMUP }
+    // As the summary counts them, warm-up sets included ("14 sets" here and "18" one screen later – Nokia walk 2026-11-22).
+    val doneSets = state.sets.count { it.isCompleted }
     val exercises = state.sets.filter { it.isCompleted }.map { it.blockIndex }.distinct().size
     val minutes = state.workout?.let { ((System.currentTimeMillis() - it.startedAt) / 60_000L).toInt().coerceAtLeast(0) } ?: 0
     Column(

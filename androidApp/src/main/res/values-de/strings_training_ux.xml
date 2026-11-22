@@ -49,6 +49,8 @@
     <string name="tru_tile_weight_tap">Antippen zum Eintragen</string>
     <string name="tru_open_body">Gewichtsverlauf und Maße</string>
     <string name="tru_tile_food_protein">Essen · Protein</string>
+    <string name="tru_tile_food">Essen</string>
+    <string name="tru_tile_food_macros">K\u00A0%1$d/%2$d · P\u00A0%3$d/%4$d · F\u00A0%5$d/%6$d\u00A0g</string>
     <string name="tru_tile_food_left">noch %1$d\u00A0g</string>
     <string name="tru_tile_food_reached">Ziel erreicht</string>
     <string name="tru_tile_food_no_target">Ziel braucht dein Gewicht</string>
