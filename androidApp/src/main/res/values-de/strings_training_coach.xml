@@ -44,6 +44,8 @@
     <string name="trc_week_why">Daraus schlägt der Coach eine Standardwoche vor und hält Fingertage auseinander.</string>
     <string name="trc_training_days">Trainingstage pro Woche, Klettern eingerechnet</string>
     <string name="trc_days_per_week">%1$d\u00A0Tage</string>
+    <string name="trc_tier_advanced">Mit deinen Jahren, deinem Grad und deinen Trainingstagen hält der Coach weniger zurück: Harte Tage hintereinander sind in Ordnung, und die Wochenziele haben mehr Raum.</string>
+    <string name="trc_tier_elite">Mit deinen Jahren, deinem Grad und deinen Trainingstagen überlässt dir der Coach die Last: keine Warnungen im Planer, drei Finger-Einheiten pro Woche, mehr Raum bei den Wochenzielen.</string>
     <string name="trc_climbing_days">An diesen Tagen kletterst du meistens</string>
     <string name="trc_session_minutes">Länge eines Trainings ohne Wand</string>
     <string name="trc_minutes">%1$d\u00A0min</string>

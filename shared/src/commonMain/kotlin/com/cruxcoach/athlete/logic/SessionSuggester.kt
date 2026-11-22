@@ -953,7 +953,7 @@ object SessionSuggester {
     private fun recovery(input: SuggestionInput, ageBand: AgeBand?): Recovery {
         var latest: Evidence? = null
         var blocking: SuggestionReason? = null
-        val tier = DayPlans.tier(input.coach, DayPlans.observedDays(input.activities.filterValues { it.trained }.keys, input.today))
+        val tier = DayPlans.tier(input.coach, DayPlans.observedDays(input.activities.filterValues { it.trained }.keys, input.today), input.profile.sex)
         for (daysAgo in 0..3) {
             val day = input.today.minus(DatePeriod(days = daysAgo))
             val a = input.activities[day] ?: continue

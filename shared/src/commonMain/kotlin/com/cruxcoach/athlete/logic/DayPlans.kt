@@ -207,10 +207,12 @@ object DayPlans {
      *   hard day holds maximal finger work back the same day only (a limit day the next one too), the weekly targets
      *   have a quarter more room at the top.
      * - [ELITE]: from [ELITE_GRADE], [ELITE_DAYS] days. No planner warnings, a limit day holds back the same day only,
-     *   half as much room again in the weekly targets, three finger sessions a week.
+     *   the same room in the weekly targets, three finger sessions a week.
      *
-     * The grade bands follow the usual research classification for bouldering (advanced about 7A–7B+, elite from
-     * about 7C); one scale for everyone.
+     * The grade bands follow the research classification of climbing ability (IRCRA position statement, Draper et
+     * al. 2016): for men elite begins at IRCRA 24, about Font 7C in bouldering, advanced at 18; the coach asks for 7A
+     * there (owner). The statement sets every band for women three steps lower (elite from 21, about 7A+) – so do
+     * we, when the profile says so ([FEMALE_STEPS]).
      */
     enum class Tier { STANDARD, ADVANCED, ELITE }
 
@@ -221,12 +223,16 @@ object DayPlans {
     /** The days [observedDays] looks back over. */
     const val OBSERVED_WINDOW_DAYS = 28
 
-    fun tier(coach: com.cruxcoach.athlete.model.CoachProfile, observedDays: Int? = null): Tier {
+    /** Grade steps the bands lie lower for women. */
+    const val FEMALE_STEPS = 3
+
+    fun tier(coach: com.cruxcoach.athlete.model.CoachProfile, observedDays: Int? = null, sex: com.cruxcoach.athlete.model.Sex? = null): Tier {
         if (coach.experience != com.cruxcoach.athlete.model.ExperienceBand.OVER_5 ||
             coach.ageBand == com.cruxcoach.athlete.model.AgeBand.UNDER_16 || coach.ageBand == com.cruxcoach.athlete.model.AgeBand.Y16_17) return Tier.STANDARD
         val grade = coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) } ?: return Tier.STANDARD
         val days = maxOf(coach.trainingDaysPerWeek ?: 0, observedDays ?: 0)
-        fun from(font: String) = LogbookSummaries.difficultyOf(font) ?: Double.MAX_VALUE
+        val lower = if (sex == com.cruxcoach.athlete.model.Sex.FEMALE) FEMALE_STEPS else 0
+        fun from(font: String) = LogbookSummaries.difficultyOf(font)?.minus(lower) ?: Double.MAX_VALUE
         return when {
             grade >= from(ELITE_GRADE) && days >= ELITE_DAYS -> Tier.ELITE
             grade >= from(ADVANCED_GRADE) && days >= ADVANCED_DAYS -> Tier.ADVANCED
@@ -241,7 +247,8 @@ object DayPlans {
     }
 
     /** Advanced or elite ([tier]). */
-    fun seasoned(coach: com.cruxcoach.athlete.model.CoachProfile, observedDays: Int? = null): Boolean = tier(coach, observedDays) != Tier.STANDARD
+    fun seasoned(coach: com.cruxcoach.athlete.model.CoachProfile, observedDays: Int? = null, sex: com.cruxcoach.athlete.model.Sex? = null): Boolean =
+        tier(coach, observedDays, sex) != Tier.STANDARD
 
     /**
      * A free day for the training [entry] that had to give way on [from] (owner 2026-10-19: "the rest adjusts"):

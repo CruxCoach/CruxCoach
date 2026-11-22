@@ -113,7 +113,7 @@ class DayPlannerViewModel @Inject constructor(private val service: AthleteServic
         val seen = service.repo.settingsWithPrefix(WARNING_SEEN).keys
         val observed = DayPlans.observedDays(service.activities(days = DayPlans.OBSERVED_WINDOW_DAYS + 1).filterValues { it.trained }.keys
             .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }, today)
-        val warnings = DayPlans.warnings(days, today, DayPlans.tier(profile.coach, observed)) { fingerWork(it, routines) }
+        val warnings = DayPlans.warnings(days, today, DayPlans.tier(profile.coach, observed, profile.sex)) { fingerWork(it, routines) }
             .filter { warningKey(it) !in seen }
         _state.update { it.copy(loading = false, today = today, profile = profile, routines = routines, days = days, warnings = warnings) }
     }

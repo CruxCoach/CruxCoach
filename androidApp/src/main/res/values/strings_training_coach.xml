@@ -44,6 +44,8 @@
     <string name="trc_week_why">From this the coach proposes a standard week and keeps finger days apart.</string>
     <string name="trc_training_days">Training days per week, climbing included</string>
     <string name="trc_days_per_week">%1$d\u00A0days</string>
+    <string name="trc_tier_advanced">With your years, grade and training days the coach holds back less: hard days in a row are fine, and the weekly targets have more room.</string>
+    <string name="trc_tier_elite">With your years, grade and training days the coach leaves the load to you: no warnings in the planner, three finger sessions a week, more room in the weekly targets.</string>
     <string name="trc_climbing_days">Days you usually climb</string>
     <string name="trc_session_minutes">Length of a training without the wall</string>
     <string name="trc_minutes">%1$d\u00A0min</string>
