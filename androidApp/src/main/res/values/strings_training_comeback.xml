@@ -202,7 +202,7 @@
     <string name="cb_delete_all">Delete all comeback data</string>
     <string name="cb_delete_title">Delete all comeback data?</string>
     <string name="cb_delete_text">The answers, the plan and the diary of this injury are deleted from this phone. The injury entry itself stays.</string>
-    <string name="cb_privacy">Your entries stay on this phone. They go into a backup only if you pick \"Injuries &amp; comeback diary\".</string>
+    <string name="cb_privacy">Your entries stay on this phone. They go into a backup only if you pick “Injuries, illness pauses &amp; comeback diary”.</string>
 
     <!-- Today card -->
     <string name="cb_today_title">Comeback plan · %1$s</string>

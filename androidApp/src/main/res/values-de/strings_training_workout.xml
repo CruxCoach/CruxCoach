@@ -28,7 +28,7 @@
     <string name="trw_warmup_short">A</string>
     <string name="trw_set_cd">Satz %1$d</string>
     <string name="trw_record_total">%1$s gesamt</string>
-    <string name="trw_record_e1rm">e1RM %1$s</string>
+    <string name="trw_record_e1rm">geschätztes Max. %1$s</string>
     <plurals name="trw_reps">
         <item quantity="one">%d\u00A0Wdh.</item>
         <item quantity="other">%d\u00A0Wdh.</item>
@@ -68,8 +68,8 @@
     <string name="trw_summary_exercises">Übungen</string>
     <string name="trw_summary_duration">Dauer</string>
     <plurals name="trw_minutes">
-        <item quantity="one">%d\u00A0Min.</item>
-        <item quantity="other">%d\u00A0Min.</item>
+        <item quantity="one">%d\u00A0min</item>
+        <item quantity="other">%d\u00A0min</item>
     </plurals>
     <string name="trw_records_title">Neue Bestwerte</string>
     <string name="trw_suggestions_title">Für das nächste Mal</string>
@@ -99,7 +99,7 @@
         <item quantity="one">%d Übung</item>
         <item quantity="other">%d Übungen</item>
     </plurals>
-    <string name="trw_est_minutes">ca. %1$d\u00A0Min.</string>
+    <string name="trw_est_minutes">ca. %1$d\u00A0min</string>
     <string name="trw_delete_routine_title">Workout löschen?</string>
     <string name="trw_delete_routine_text">„%1$s“ wird gelöscht.</string>
     <string name="trw_open_running">Es läuft schon ein Training. Du kommst direkt dorthin zurück.</string>

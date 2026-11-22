@@ -71,7 +71,7 @@
     <string name="tra_review_sets">Work sets</string>
     <string name="tra_review_records">New personal bests</string>
     <string name="tra_review_no_records">No new bests this week – consistency is what builds them.</string>
-    <string name="tra_review_load">Load per structure</string>
+    <string name="tra_review_load">Load by body area</string>
     <plurals name="tra_review_domain_days">
         <item quantity="one">%1$s: %2$d\u00A0day</item>
         <item quantity="other">%1$s: %2$d\u00A0days</item>
@@ -90,7 +90,7 @@
         <item quantity="other">Food logged on %d\u00A0days</item>
     </plurals>
     <string name="tra_review_checkins">Check-in averages</string>
-    <string name="tra_review_e1rm">estimated 1RM %1$s</string>
+    <string name="tra_review_e1rm">estimated max %1$s</string>
     <plurals name="tra_reps">
         <item quantity="one">%d\u00A0rep</item>
         <item quantity="other">%d\u00A0reps</item>

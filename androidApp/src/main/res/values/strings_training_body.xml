@@ -71,7 +71,7 @@
         <item quantity="one">%d existing value kept</item>
         <item quantity="other">%d existing values kept</item>
     </plurals>
-    <string name="trb_import_empty">No body data found in this file. In Waistline, export under Settings → Import/Export: "Export database" (JSON) or "Export diary" (CSV).</string>
+    <string name="trb_import_empty">No body data found in this file. In Waistline, export under Settings → Import/Export: “Export database” (JSON) or “Export diary” (CSV).</string>
     <string name="trb_import_failed">The file could not be read.</string>
     <string name="trb_import_too_large">The file is too large (max. 20 MB).</string>
     <string name="trb_waistline_badge">Waistline</string>

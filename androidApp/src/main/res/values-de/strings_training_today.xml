@@ -101,7 +101,7 @@
     <string name="trt_sugg_equipment_title">Was hast du?</string>
     <string name="trt_sugg_equipment_text">Sag CruxCoach, welche Ausrüstung du hast, dann schlägt es nur Machbares vor.</string>
     <string name="trt_sugg_equipment_action">Einrichten</string>
-    <string name="trt_sugg_test_title">Zeit für einen Leistungstest</string>
+    <string name="trt_sugg_test_title">Zeit für einen Krafttest</string>
     <string name="trt_sugg_test_text">Max Hang, Klimmzüge und Hollow Hold zeigen deinen Fortschritt bei Kraft zu Gewicht.</string>
     <string name="trt_sugg_weight_title">Körpergewicht eintragen</string>
     <string name="trt_sugg_weight_text">Damit passen die Lasten am Hangboard und dein Protein-Ziel.</string>

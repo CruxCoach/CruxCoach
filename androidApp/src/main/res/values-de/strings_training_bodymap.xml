@@ -43,10 +43,10 @@
     <string name="trb_area_knee">Knie</string>
     <string name="trb_area_ankle">Sprunggelenk</string>
     <string name="trb_grip_half_crimp">Halb aufgestellt</string>
-    <string name="trb_grip_open_hand">Offen hängend</string>
+    <string name="trb_grip_open_hand">Offene Hand</string>
     <string name="trb_grip_full_crimp">Voll aufgestellt</string>
     <string name="trb_grip_pinch">Zange</string>
-    <string name="trb_grip_sloper">Sloper</string>
+    <string name="trb_grip_sloper">Aufleger</string>
     <string name="trb_grip_jug">Henkel</string>
     <string name="trb_grip_pocket">Loch</string>
     <string name="trb_grip_bar">Stange</string>

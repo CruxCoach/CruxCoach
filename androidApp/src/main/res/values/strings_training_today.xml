@@ -84,7 +84,7 @@
     <string name="trt_reason_sick">You feel ill – rest and recover. Your streak is paused.</string>
     <string name="trt_reason_injury_paused">Injury mode: climbing is paused. Off-wall training that spares the injured area is fine.</string>
     <string name="trt_reason_injury">An injury is open – exercises that load it are marked.</string>
-    <string name="trt_reason_fingers">Tired fingers – no max finger load today. Pull, core, legs or mobility are fine.</string>
+    <string name="trt_reason_fingers">Tired fingers – no max finger work today. Pull, core, legs or mobility are fine.</string>
     <string name="trt_reason_skin">Skin needs a break – skip the board. Hangboard on bigger edges or strength work instead.</string>
     <string name="trt_reason_sleep">Short on sleep – keep volume low, technique and mobility work well.</string>
     <string name="trt_reason_energy">Low energy – an easy session or a rest day.</string>
@@ -177,7 +177,7 @@
     <string name="trt_climbed_yesterday">Climbed yesterday? Log it</string>
     <string name="trt_climb_today">Climbing today</string>
     <string name="trt_climb_today_done">Today is a climbing day now.</string>
-    <string name="trt_insist">Anyway: %1$s</string>
+    <string name="trt_insist">%1$s anyway</string>
     <string name="trt_form_more">More detail</string>
     <string name="trt_sugg_week_title">Plan your week</string>
     <string name="trt_sugg_week_text">Tell the coach on which days you climb. It plans the rest around them.</string>

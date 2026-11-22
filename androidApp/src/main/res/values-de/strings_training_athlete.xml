@@ -32,7 +32,7 @@
     <string name="tra_plan_title">Plan</string>
     <string name="tra_weekly_goal">Wochenziel: %1$d Trainingstage</string>
     <string name="tra_module_checkin">Morgendlicher Check-in</string>
-    <string name="tra_module_body">Körper-Tracking</string>
+    <string name="tra_module_body">Körper (Gewicht und Maße)</string>
     <string name="tra_hide_numbers">Körperzahlen ausblenden (nur Trend)</string>
     <string name="tra_module_fuel">Ernährung</string>
     <string name="tra_show_calories">Kalorien anzeigen</string>
@@ -58,7 +58,7 @@
     <string name="tra_review_next">Nächste Woche</string>
     <string name="tra_review_week_of">Woche ab %1$s</string>
     <string name="tra_review_goal_reached">Wochenziel erreicht: %1$d von %2$d Trainingstagen.</string>
-    <string name="tra_review_goal_open">%1$d von %2$d Trainingstagen – Pause ist auch Training.</string>
+    <string name="tra_review_goal_open">%1$d von %2$d Trainingstagen – Erholung ist auch Training.</string>
     <plurals name="tra_review_paused">
         <item quantity="one">%d\u00A0Tag pausiert</item>
         <item quantity="other">%d\u00A0Tage pausiert</item>
@@ -68,7 +68,7 @@
     <string name="tra_review_sets">Arbeitssätze</string>
     <string name="tra_review_records">Neue Bestwerte</string>
     <string name="tra_review_no_records">Diese Woche keine neuen Bestwerte – Konstanz baut sie auf.</string>
-    <string name="tra_review_load">Belastung pro Struktur</string>
+    <string name="tra_review_load">Belastung nach Körperbereich</string>
     <plurals name="tra_review_domain_days">
         <item quantity="one">%1$s: %2$d\u00A0Tag</item>
         <item quantity="other">%1$s: %2$d\u00A0Tage</item>
@@ -87,7 +87,7 @@
         <item quantity="other">Ernährung an %d\u00A0Tagen erfasst</item>
     </plurals>
     <string name="tra_review_checkins">Check-in-Durchschnitt</string>
-    <string name="tra_review_e1rm">geschätztes 1RM %1$s</string>
+    <string name="tra_review_e1rm">geschätztes Maximum %1$s</string>
     <plurals name="tra_reps">
         <item quantity="one">%d\u00A0Wiederholung</item>
         <item quantity="other">%d\u00A0Wiederholungen</item>

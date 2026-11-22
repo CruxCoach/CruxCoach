@@ -29,7 +29,7 @@
     <string name="trw_warmup_short">W</string>
     <string name="trw_set_cd">Set %1$d</string>
     <string name="trw_record_total">%1$s total</string>
-    <string name="trw_record_e1rm">e1RM %1$s</string>
+    <string name="trw_record_e1rm">est. max %1$s</string>
     <plurals name="trw_reps">
         <item quantity="one">%d\u00A0rep</item>
         <item quantity="other">%d\u00A0reps</item>
@@ -97,7 +97,7 @@
 
     <!-- Routines -->
     <string name="trw_routines_title">Workouts</string>
-    <string name="trw_builtin_section">Starter workouts</string>
+    <string name="trw_builtin_section">Starter templates</string>
     <string name="trw_own_section">Your workouts</string>
     <string name="trw_own_empty">No workouts of your own yet. Save a training as a workout from its summary.</string>
     <plurals name="trw_exercise_count">

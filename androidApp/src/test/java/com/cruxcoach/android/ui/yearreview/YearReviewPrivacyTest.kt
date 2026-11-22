@@ -51,20 +51,20 @@ class YearReviewPrivacyTest {
 
         shown.values.forEach { (screen, image) ->
             assertEquals(screen.value, image.value)
-            assertFalse(image.detail!!, image.detail!!.contains("%") || image.detail!!.contains("BW"))
+            assertFalse(image.detail!!, image.detail!!.contains("%") || image.detail!!.contains("body weight"))
         }
         // A hang keeps its load, time, edge and sets; the 10-second max with the share of body weight stays on the phone.
         for (b in listOf(hang, hangSets)) {
             val (screen, image) = shown.getValue(b)
-            assertTrue(screen.detail!!, screen.detail!!.contains("% BW"))
+            assertTrue(screen.detail!!, screen.detail!!.contains("% of body weight"))
             assertEquals(screen.detail!!.substringBefore(" · 10-s max"), image.detail)
         }
         assertEquals("+20\u00A0kg · 10\u00A0s · 20\u00A0mm", shown.getValue(hang).second.detail)
         assertTrue(shown.getValue(hangSets).second.detail!!.startsWith("3\u00A0×\u00A010\u00A0s"))
         // Load and reps stay; the estimated max with body weight in it goes.
         shown.getValue(weighted).let { (screen, image) ->
-            assertTrue(screen.detail!!, screen.detail!!.contains("1RM"))
-            assertEquals(screen.detail!!.substringBefore(" · est. 1RM"), image.detail)
+            assertTrue(screen.detail!!, screen.detail!!.contains("est. max"))
+            assertEquals(screen.detail!!.substringBefore(" · est. max"), image.detail)
         }
         // Reps alone, and a lifted weight without body weight, are the same on the image.
         assertEquals(shown.getValue(pullUps).first.detail, shown.getValue(pullUps).second.detail)

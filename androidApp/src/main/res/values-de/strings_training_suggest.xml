@@ -38,7 +38,7 @@
     <string name="trsg_reason_legs_longer_ago">Zug und Druck hast du zuletzt trainiert, Beine und Rumpf ist länger her.</string>
     <string name="trsg_reason_low_energy">Wenig Schlaf oder Energie – die Einheit ist heute kürzer.</string>
     <string name="trsg_reason_goal_strength">Dein Ziel ist Kraft, darum kommen Kraftübungen zuerst.</string>
-    <string name="trsg_reason_favorites">Deine Lieblingsübungen werden bevorzugt.</string>
+    <string name="trsg_reason_favorites">Deine Favoriten werden bevorzugt.</string>
     <string name="trsg_reason_shortened">Gekürzt, damit es zu deiner bevorzugten Trainingsdauer passt.</string>
     <string name="trsg_reason_no_finger_equipment">Kein Hangboard oder Block dabei – heute Zug und Druck statt Finger.</string>
 </resources>

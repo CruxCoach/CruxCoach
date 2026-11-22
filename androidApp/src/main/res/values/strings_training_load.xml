@@ -3,12 +3,12 @@
 <resources>
     <string name="trl_profile_title">Climber profile</string>
     <string name="trl_tile_working">Working grade</string>
-    <string name="trl_tile_working_sub">from %1$d sends</string>
+    <string name="trl_tile_working_sub">sends: %1$d</string>
     <string name="trl_tile_flash">Flash grade</string>
     <string name="trl_tile_max_sub">hardest: %1$s</string>
     <string name="trl_tile_finger">Finger strength</string>
     <string name="trl_tile_finger_sub">max hang 20\u00A0mm, total load per body weight</string>
-    <string name="trl_tile_pull">Pull 1RM</string>
+    <string name="trl_tile_pull">Pulling strength</string>
     <string name="trl_tile_pull_sub">weighted pull-up, total load per body weight</string>
     <string name="trl_empty_title">Your profile starts with a few numbers</string>
     <string name="trl_empty_text">Log boulders on the board or a climbing day, and add a strength value for max hangs or weighted pull-ups. Then you will see where you stand and how grade and strength move together.</string>
@@ -74,7 +74,7 @@
     <string name="trl_pickup_title">One-arm pick-up per hand</string>
     <string name="trl_pickup_cd">One-arm pick-up per hand in percent of body weight over time.</string>
     <string name="trl_pickup_balanced">Both hands are within five percent of each other.</string>
-    <string name="trl_pickup_imbalance">The %1$s hand is %2$d\u00A0%% stronger.</string>
+    <string name="trl_pickup_imbalance">Stronger hand: %1$s (difference %2$d\u00A0%%)</string>
 
     <string name="trl_load_title">Load</string>
     <string name="trl_load_cd">Daily load on %1$s over eight weeks with 7-day and 28-day mean; trend: %2$s.</string>
@@ -88,17 +88,17 @@
     <string name="trl_trend_normal">normal</string>
     <string name="trl_trend_rising">rising</string>
     <string name="trl_trend_spike">jump</string>
-    <string name="trl_trend_low_text">Well below your normal – fine after a pause or as a deload; build up again gradually.</string>
+    <string name="trl_trend_low_text">Well below your normal – fine after a pause or in a lighter week; build up again gradually.</string>
     <string name="trl_trend_normal_text">In the range of your last four weeks.</string>
     <string name="trl_trend_rising_text">+%1$d\u00A0%% against your normal: fine for a while if you recover well.</string>
-    <string name="trl_trend_spike_text">+%1$d\u00A0%% against your normal: load is rising faster than tissue adapts. The coach suggests less maximal finger work for a few days.</string>
+    <string name="trl_trend_spike_text">+%1$d\u00A0%% against your normal: load is rising faster than tissue adapts. The coach suggests less max finger work for a few days.</string>
     <string name="trl_trend_new_text">Load is building up without much history yet – start gently.</string>
 
     <string name="trl_bottleneck_title">Strengths and bottlenecks</string>
     <string name="trl_area_finger">Fingers</string>
     <string name="trl_area_pull">Pulling</string>
     <string name="trl_area_power">Limit and power</string>
-    <string name="trl_area_endurance">Endurance</string>
+    <string name="trl_area_endurance">Power endurance</string>
     <string name="trl_area_core">Core</string>
     <string name="trl_reason_below">below what is typical for your grade</string>
     <string name="trl_reason_within">typical for your grade</string>

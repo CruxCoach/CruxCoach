@@ -5,7 +5,7 @@
     <string name="trwo_mine">My workouts</string>
     <string name="trwo_mine_empty">No workouts of your own yet. Create one with “New workout”, copy a template below, or save a finished training as a workout from its summary.</string>
     <string name="trwo_week_plan">Week plan</string>
-    <string name="trwo_week_plan_empty">No standard week yet. The coach proposes one – one tap takes it.</string>
+    <string name="trwo_week_plan_empty">No standard week yet. The coach proposes one – one tap applies it.</string>
     <string name="trwo_week_plan_edit">Plan your standard week</string>
     <string name="trwo_week_plan_intro">Your standard week: what belongs to which day. Today\'s suggestion follows this plan; your weekly goal of training days stays separate.</string>
     <string name="trwo_templates">Starter templates</string>
