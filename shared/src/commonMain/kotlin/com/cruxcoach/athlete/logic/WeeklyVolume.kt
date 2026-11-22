@@ -157,8 +157,13 @@ object WeeklyVolume {
         entry == PLAN_BOARD || DayPlans.isClimb(entry) || (entry == null && day in profile.coach.climbingDays)
     }
 
-    fun targets(profile: AthleteProfile, block: BlockState?, injuries: List<Injury>, trainingDaysPerWeek: Int): List<AreaTarget> {
+    fun targets(
+        profile: AthleteProfile, block: BlockState?, injuries: List<Injury>, trainingDaysPerWeek: Int,
+        /** Training days a week as the last weeks show them ([DayPlans.observedDays]), for the athlete's [DayPlans.tier]. */
+        observedDays: Int? = null,
+    ): List<AreaTarget> {
         val coach = profile.coach
+        val tier = DayPlans.tier(coach, observedDays)
         val phaseFactor = block?.let { TrainingBlocks.setsFactor(it.phase) } ?: 1.0
         val days = trainingDaysPerWeek.coerceIn(1, 7)
         fun dayFactor(n: Int) = when {
@@ -225,7 +230,17 @@ object WeeklyVolume {
 
             if (phaseFactor == 0.0) return@map AreaTarget(area, 0, 0, 0)
             var minSets = (base.min * f).roundToInt()
-            var maxSets = max(minSets, (base.max * f).roundToInt())
+            // An advanced climber ([DayPlans.tier]) under 40: the upper end opens by a quarter, an elite one by half (16 hard sets of
+            // pulling become 20). Trained athletes gain from moderate to high volume, with small returns at the top –
+            // so only the room grows, not what the coach asks for (owner 2026-11-22, after the meta-analyses on
+            // weekly set volume: about 12–20 sets per muscle group for trained people). Finger sessions stay at two.
+            val room = when {
+                ageFactor != 1.0 || area == VolumeArea.FINGER -> 1.0
+                tier == DayPlans.Tier.ELITE -> ELITE_ROOM
+                tier == DayPlans.Tier.ADVANCED -> SEASONED_ROOM
+                else -> 1.0
+            }
+            var maxSets = max(minSets, (base.max * f * room).roundToInt())
             var sessions = base.sessions
             if (area == VolumeArea.FINGER) {
                 val youth = coach.ageBand == AgeBand.UNDER_16 || coach.ageBand == AgeBand.Y16_17
@@ -237,6 +252,8 @@ object WeeklyVolume {
                     (coach.goal == CoachGoal.CLIMB_HARDER || coach.goal == CoachGoal.PROJECT) && days >= 5 &&
                         (coach.experience == ExperienceBand.Y3_5 || coach.experience == ExperienceBand.OVER_5) &&
                         coach.ageBand != AgeBand.Y40_54 && coach.ageBand != AgeBand.Y55_PLUS -> 3
+                    // An elite climber's week holds three finger sessions whatever the goal.
+                    tier == DayPlans.Tier.ELITE && ageFactor == 1.0 -> 3
                     else -> 2
                 }
                 if (!fingerEquipment) sessions = min(sessions, climbingDays)
@@ -253,6 +270,10 @@ object WeeklyVolume {
             AreaTarget(area, minSets, maxSets, sessions)
         }.map { withOwn(it, profile) }
     }
+
+    /** How much higher the upper end of an area lies for a seasoned climber ([targets]). */
+    const val SEASONED_ROOM = 1.25
+    const val ELITE_ROOM = 1.5
 
     /** Sessions a week an own finger target may ask for, and hard sets a week for the other areas. */
     val OWN_FINGER_SESSIONS = 0..5

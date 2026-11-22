@@ -232,7 +232,7 @@ fun TodayScreen(
             // "Your logbook shows 7a – take it over?" once per grade.
             state.gradeOffer?.let { grade -> item(key = "grade_offer") { GradeOfferCard(grade, onAnswer = viewModel::answerGradeOffer) } }
             if (state.energy.signals.isNotEmpty()) item { EnergyCareCard(state.energy, state.profile, "today_reds", onAdjustGoal = { showGoal = true }) }
-            if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state, onSeen = viewModel::dismissLoadSpike) }
+            if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state, onSeen = viewModel::dismissLoadSpike, onLighterWeek = viewModel::startLighterWeek) }
             item(key = "day") {
                 DayGrid(
                     state = state,
@@ -361,6 +361,19 @@ fun TodayScreen(
                 snackbar.currentSnackbarData?.dismiss()
                 if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
                     viewModel.undoRestToday(before)
+                }
+            }
+        }
+    }
+    // "Leichte Woche starten" from the load card: one line with "Rückgängig".
+    state.lighterWeekUndo?.let { before ->
+        val text = stringResource(R.string.tre_deload_started)
+        LaunchedEffect(before) {
+            viewModel.consumeLighterWeekUndo()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoLighterWeek(before)
                 }
             }
         }
@@ -1632,7 +1645,7 @@ private fun WhySheet(state: TodayState, onDismiss: () -> Unit, onOpenLearned: ()
 // ── Safety cards ────────────────────────────────────────────────────
 
 @Composable
-private fun LoadSpikeCard(state: TodayState, onSeen: () -> Unit = {}) {
+private fun LoadSpikeCard(state: TodayState, onSeen: () -> Unit = {}, onLighterWeek: () -> Unit = {}) {
     OutlinedCard(Modifier.fillMaxWidth().testTag("today_load_spike")) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Speed, null, tint = CruxCoachDesign.colors.caution)
@@ -1642,7 +1655,11 @@ private fun LoadSpikeCard(state: TodayState, onSeen: () -> Unit = {}) {
                     style = MaterialTheme.typography.titleSmall)
                 Text(stringResource(R.string.trt_spike_text), style = MaterialTheme.typography.bodySmall)
             }
-            // Advice the athlete has read does not come back every day: quiet until next week.
+        }
+        // Advice the athlete has read does not come back every day: quiet until next week. The lighter week is an
+        // offer here, never something the coach starts by itself.
+        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onLighterWeek, modifier = Modifier.testTag("today_load_spike_lighter")) { Text(stringResource(R.string.tre_deload_action)) }
             TextButton(onClick = onSeen, modifier = Modifier.testTag("today_load_spike_seen")) { Text(stringResource(R.string.action_understood)) }
         }
     }

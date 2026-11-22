@@ -145,6 +145,8 @@ data class TodayState(
     val restTodayUndo: Map<String, String>? = null,
     /** "Heute klettere ich" just set: the date plan before it, for "Rückgängig". */
     val climbTodayUndo: Map<String, String>? = null,
+    /** "Leichte Woche starten" just tapped: the block start before it ("" = none), for "Rückgängig". */
+    val lighterWeekUndo: String? = null,
     /** Per exercise of today's suggestion: last time and the plan, for "last time 3 × 5" and "+1 rep" on its row. */
     val rows: Map<String, TodayRow> = emptyMap(),
     /** "Montags machst du meist …": take the usual workout into the standard week (owner 2026-10-19). */
@@ -590,6 +592,26 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     }
 
     fun consumeClimbTodayUndo() = _state.update { it.copy(climbTodayUndo = null) }
+
+    /**
+     * "Leichte Woche starten" on the load card: the training block jumps to its lighter week (as the summary's offer
+     * does), and the card is read. The block start before it comes back with "Rückgängig".
+     */
+    fun startLighterWeek() = io {
+        val today = service.today()
+        val start = today.minus(DatePeriod(days = 7 * (TrainingBlocks.INTRO_WEEKS + TrainingBlocks.BUILD_WEEKS)))
+        var before: String? = null
+        service.repo.updateProfile { p -> before = p.coach.blockStartDay; p.copy(coach = p.coach.copy(blockStartDay = start.toString())) }
+        service.repo.putSetting(LOAD_SPIKE_SEEN, WeeklyVolume.weekStartOf(today).toString())
+        _state.update { it.copy(lighterWeekUndo = before ?: "") }
+    }
+
+    fun consumeLighterWeekUndo() = _state.update { it.copy(lighterWeekUndo = null) }
+
+    fun undoLighterWeek(before: String) = io {
+        service.repo.updateProfile { p -> p.copy(coach = p.coach.copy(blockStartDay = before.ifEmpty { null })) }
+        service.repo.putSetting(LOAD_SPIKE_SEEN, "")
+    }
 
     /** "Verstanden" on the load card: quiet for the rest of this week; a new week tells again. */
     fun dismissLoadSpike() = io {
