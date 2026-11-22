@@ -114,9 +114,8 @@ fun FuelScreen(
     val foodsById = remember(state.foods) { state.foods.associateBy { it.id } }
     /** Saved dishes by their food id: a dish's name is its own, so one tap never has to choose between two. */
     val dishNames = remember(state.foods) { state.foods.filter { it.source == Recipe.SOURCE }.associate { it.id to it.name } }
-    val isDrink: (FoodLogEntry) -> Boolean = { e ->
-        foodsById[e.foodItemId]?.let { FuelUnits.isDrink(it.id, it.name, it.servingLabel) } ?: FuelUnits.isDrink(e.foodItemId, e.name)
-    }
+    /** An entry's saved food while there is one: its amount reads by it (a dish by its portions, a drink in ml). */
+    val foodOf: (FoodLogEntry) -> FoodItem? = { e -> foodsById[e.foodItemId] }
     val deletedText = stringResource(R.string.trf_deleted)
     val waterRemovedText = stringResource(R.string.trf_water_removed)
     val undoText = stringResource(R.string.trf_undo)
@@ -214,7 +213,7 @@ fun FuelScreen(
                         val savedAs = remember(foods, state.dishes, dishNames) {
                             if (foods.size < 2) null else Recipe.savedDish(foods, state.dishes)?.let { dishNames[it] }
                         }
-                        MealCard(meal, byMeal[meal], foods, state.profile.showCalories, units, isDrink,
+                        MealCard(meal, byMeal[meal], foods, state.profile.showCalories, units, foodOf,
                             onAdd = { openAdd(meal) }, onEdit = { editing = it }, onDelete = ::deleteEntry, onSaveMeal = { savingMeal = meal },
                             savedAs = savedAs)
                     }
@@ -1073,7 +1072,7 @@ fun macrosText(protein: Double?, carbs: Double?, fat: Double?, energy: MacroTota
 @Composable
 private fun MealCard(
     meal: Meal, totals: MacroTotals?, entries: List<FoodLogEntry>, showCalories: Boolean,
-    units: UnitSystem, isDrink: (FoodLogEntry) -> Boolean,
+    units: UnitSystem, foodOf: (FoodLogEntry) -> FoodItem?,
     onAdd: () -> Unit, onEdit: (FoodLogEntry) -> Unit, onDelete: (FoodLogEntry) -> Unit, onSaveMeal: () -> Unit = {},
     /** The name of the saved dish that holds exactly this meal; null while it is none. */
     savedAs: String? = null,
@@ -1097,7 +1096,7 @@ private fun MealCard(
             }
             entries.forEach { entry ->
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                EntryRow(entry, showCalories, FuelUnits.unitFor(units, isDrink(entry)), onEdit = { onEdit(entry) }, onDelete = { onDelete(entry) })
+                EntryRow(entry, showCalories, entryAmountText(entry, foodOf(entry), units), onEdit = { onEdit(entry) }, onDelete = { onDelete(entry) })
             }
             // Several foods eaten together: saved as one dish, they are one tap next time. A meal that already is a
             // dish says which one instead of offering to save it once more.
@@ -1188,13 +1187,8 @@ private fun ProgressRow(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun EntryRow(entry: FoodLogEntry, showCalories: Boolean, unit: FuelUnits.Amount, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun EntryRow(entry: FoodLogEntry, showCalories: Boolean, amount: String?, onEdit: () -> Unit, onDelete: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
-    val amount = when {
-        entry.amountG != null -> amountText(entry.amountG!!, unit)
-        entry.portions != null && entry.portions != 1.0 -> stringResource(R.string.trf_entry_portions, formatNumber(entry.portions!!))
-        else -> null
-    }
     val macros = macrosText(entry.proteinG, entry.carbsG, entry.fatG, MacroTotals.energy(entry), showCalories)
     ListItem(
         colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),

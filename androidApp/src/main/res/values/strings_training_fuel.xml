@@ -162,6 +162,8 @@
     <string name="trf_dishes_title">My dishes</string>
     <string name="trf_dishes_all">Show all %1$d dishes</string>
     <string name="trf_dish_log">Log %1$s</string>
+    <!-- A dish's amount: its portions, then their weight – "1 portion (200 g)" -->
+    <string name="trf_amount_portions_weight">%1$s (%2$s)</string>
     <string name="trf_one_portion">1\u00A0portion</string>
     <string name="trf_food_new">Food</string>
     <string name="trf_food_choose_amount">Choose amount</string>

@@ -11,10 +11,12 @@ import com.cruxcoach.android.foodvision.DeviceFactsReader
 import com.cruxcoach.android.foodvision.OffRepository
 import com.cruxcoach.android.foodvision.VisionModelStore
 import com.cruxcoach.android.ui.training.AthleteScreenTest
+import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.Recipe
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.FoodLogEntry
 import com.cruxcoach.athlete.model.Meal
+import com.cruxcoach.athlete.model.UnitSystem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
@@ -131,6 +133,10 @@ class MealLoggingFlowTest : AthleteScreenTest() {
         scrollTo("fuel_list", "fuel_add_lunch")
         click("fuel_add_lunch")
         scrollTo("fuel_foods_list", "fuel_dish_${dish.id}")
+        // The row says what the tap logs, in the words the confirmation and the day's list use afterwards
+        // (Nokia check: the row said "1 portion", the other two "200 g").
+        val onePortion = "1\u00A0portion (350\u00A0g)"
+        compose.onNodeWithTag("fuel_dish_${dish.id}").assertTextContains(onePortion, substring = true)
         click("fuel_dish_${dish.id}")
         compose.waitUntil(WAIT_MS) { repo.foodLog(day).any { it.meal == Meal.LUNCH } }
         val lunch = repo.foodLog(day).single { it.meal == Meal.LUNCH }
@@ -140,8 +146,48 @@ class MealLoggingFlowTest : AthleteScreenTest() {
         assertEquals(440.0, lunch.kcal!!, 0.001)
         assertEquals(26.0, lunch.proteinG!!, 0.001)
         waitForTag("fuel_logged")
-        compose.onNodeWithTag("fuel_logged_text", useUnmergedTree = true).assertTextContains("Logged: Rice bowl", substring = true)
+        compose.onNodeWithTag("fuel_logged_text", useUnmergedTree = true).assertTextContains("Logged: Rice bowl · $onePortion", substring = true)
+        scrollTo("fuel_list", "fuel_entry_${lunch.id}")
+        compose.onNodeWithTag("fuel_entry_${lunch.id}").assertTextContains(onePortion, substring = true)
         assertEquals(1, dishes().size)
+    }
+
+    \u00A0Test
+    fun `an amount reads the same in a dish's row, in the confirmation and in the day's list`() {
+        val texts = mutableMapOf<String, String?>()
+        render {
+            val g = FuelUnits.Amount.G
+            // A dish is eaten by the portion: its portions lead, their weight follows.
+            texts["dish"] = loggedAmountText(1.0, 200.0, g, dish = true)
+            texts["dish half"] = loggedAmountText(0.5, 100.0, g, dish = true)
+            texts["dish no weight"] = loggedAmountText(1.0, null, g, dish = true)
+            // Typed in grams, it is the weight alone.
+            texts["dish grams"] = loggedAmountText(null, 240.0, g, dish = true)
+            texts["dish drink"] = loggedAmountText(2.0, 500.0, FuelUnits.Amount.ML, dish = true)
+            // Any other food reads as before: by its weight when one is known, else by its portions.
+            texts["food pieces"] = loggedAmountText(2.0, 240.0, g, dish = false)
+            texts["food portions"] = loggedAmountText(2.0, null, g, dish = false)
+            texts["food one portion"] = loggedAmountText(1.0, null, g, dish = false)
+            texts["food grams"] = loggedAmountText(null, 80.0, g, dish = false)
+            // The same through a logged entry and its saved food.
+            val bowl = FoodItem(id = "bowl", name = "Rice bowl", servingG = 200.0, source = Recipe.SOURCE)
+            val entry = FoodLogEntry("e", "2026-11-22", 1, Meal.LUNCH, foodItemId = "bowl", name = "Rice bowl", portions = 1.0, amountG = 200.0)
+            texts["entry of a dish"] = entryAmountText(entry, bowl, UnitSystem.METRIC)
+            // The dish was deleted since: the entry is a food like any other.
+            texts["entry without its dish"] = entryAmountText(entry, null, UnitSystem.METRIC)
+        }
+        compose.waitUntil(WAIT_MS) { texts.size == 11 }
+        assertEquals("1\u00A0portion (200\u00A0g)", texts["dish"])
+        assertEquals("0.5\u00A0× portion (100\u00A0g)", texts["dish half"])
+        assertEquals("1\u00A0portion", texts["dish no weight"])
+        assertEquals("240\u00A0g", texts["dish grams"])
+        assertEquals("2\u00A0× portion (500\u00A0ml)", texts["dish drink"])
+        assertEquals("240\u00A0g", texts["food pieces"])
+        assertEquals("2\u00A0× portion", texts["food portions"])
+        assertNull(texts["food one portion"])
+        assertEquals("80\u00A0g", texts["food grams"])
+        assertEquals("1\u00A0portion (200\u00A0g)", texts["entry of a dish"])
+        assertEquals("200\u00A0g", texts["entry without its dish"])
     }
 
     @Test

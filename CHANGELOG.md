@@ -442,7 +442,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   "Cancel" at the amount comes back to your search. A meal of several foods is
   saved as a dish once ("Saved as a dish: …" instead of a second dish of the
   same name; a name another dish has replaces that dish), and dishes stand
-  first in the add sheet under "My dishes", logged with one tap. One word for
+  first in the add sheet under "My dishes", logged with one tap – a dish reads
+  "1 portion (200 g)" in its row, in the confirmation and in the day's list. One word for
   it: dish. Lines show energy, carbohydrates, protein and fat in the order of
   the rings; a food's actions sit behind "⋮"; a new food asks for its amount
   at once; an ingredient's amount is changed by a tap. The day's label names
