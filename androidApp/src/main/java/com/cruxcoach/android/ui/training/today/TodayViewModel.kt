@@ -143,6 +143,8 @@ data class TodayState(
     val climbDeleted: AthleteService.DeletedClimb? = null,
     /** The date plans before "Heute Ruhetag", for the snackbar and "Rückgängig" (owner 2026-10-19). */
     val restTodayUndo: Map<String, String>? = null,
+    /** "Heute klettere ich" just set: the date plan before it, for "Rückgängig". */
+    val climbTodayUndo: Map<String, String>? = null,
     /** Per exercise of today's suggestion: last time and the plan, for "last time 3 × 5" and "+1 rep" on its row. */
     val rows: Map<String, TodayRow> = emptyMap(),
     /** "Montags machst du meist …": take the usual workout into the standard week (owner 2026-10-19). */
@@ -241,6 +243,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     private var ignoreHabit = false
     /** "Train anyway" on the recovery card: the week's training days do not limit today. */
     private var trainAnyway = false
+    /** "Anyway" for the kind the coach held back today; resets with the day. */
+    private var insist = false
     /** Today's plan as this screen last stored it for nutrition ([AthleteService.rememberPlannedToday]). */
     private var plannedWritten: String? = null
     /** Suggestions already in the ledger as SHOWN today (focus + slugs). */
@@ -261,7 +265,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         if (variantDay != today) {
             variant = 0; variantDay = today
             budgetFactor = 1.0; levelShift = 0; wish = null; minutesToday = null; dislikedToday.clear(); shownToday.clear(); swapsToday.clear(); ignoreUsualKind = false; ignoreHabit = false
-            trainAnyway = false
+            trainAnyway = false; insist = false
             circuitToday = false; circuitRounds = null; circuitRestS = null; circuitRoundRestS = null
             runCatching {
                 val todays = service.repo.suggestionEventsForDay(today.toString()).sortedBy { it.createdAt }
@@ -302,6 +306,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         val spikes = LoadBalance.compute(today, climbingDays,
             recentSets.mapNotNull { s -> workoutDays[s.workoutId]?.let { it to s } }, service.catalog)
             .filter { it.spike }.map { it.domain }
+            // Read and acknowledged this week: no card until the next week.
+            .takeIf { service.repo.setting(LOAD_SPIKE_SEEN) != WeeklyVolume.weekStartOf(today).toString() }.orEmpty()
 
         val suggestions = buildList {
             if (!i.profile.equipmentConfigured) add(TodaySuggestion.CONFIGURE_EQUIPMENT)
@@ -503,7 +509,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 choices = com.cruxcoach.athlete.data.TodayCoach.Choices(
                     variant = variant, budgetFactor = budgetFactor, levelShift = levelShift, wish = wish, minutesToday = minutesToday,
                     dislikedToday = dislikedToday.toSet(), ignoreHabit = ignoreHabit, ignoreUsualKind = ignoreUsualKind,
-                    trainAnyway = trainAnyway,
+                    trainAnyway = trainAnyway, insist = insist,
                 ),
             )
             lastHabit = built.habit
@@ -556,6 +562,41 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
      * "Train anyway" on the recovery card (owner 2026-11-06): once the week's training days are done, one tap
      * gives the training Today would suggest without the day limit. Holds for the day, also after a restart.
      */
+    /**
+     * "Anyway" on the card (owner 2026-11-22): the coach held the chosen kind back because of the fingers; the athlete
+     * read why and decides. Holds for today.
+     */
+    fun insistToday() = io {
+        synchronized(refreshLock) {
+            insist = true
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /**
+     * "Heute klettere ich" (owner 2026-11-22): today becomes a climbing day or a board session, this day only – the
+     * coach plans the warm-up, a short block after it and the days around it. Snackbar with "Rückgängig".
+     */
+    fun climbToday(kind: com.cruxcoach.athlete.model.ClimbingDayKind?) = io {
+        val today = service.today()
+        var before: Map<String, String>? = null
+        val entry = kind?.let { DayPlans.Climb(it, com.cruxcoach.athlete.model.ClimbIntensity.VOLUME).entry } ?: com.cruxcoach.athlete.model.PLAN_BOARD
+        service.repo.updateProfile { p ->
+            before = p.datePlan
+            DayPlans.withDay(p, today, entry, today)
+        }
+        synchronized(refreshLock) { wish = null }
+        _state.update { it.copy(climbTodayUndo = before) }
+    }
+
+    fun consumeClimbTodayUndo() = _state.update { it.copy(climbTodayUndo = null) }
+
+    /** "Verstanden" on the load card: quiet for the rest of this week; a new week tells again. */
+    fun dismissLoadSpike() = io {
+        service.repo.putSetting(LOAD_SPIKE_SEEN, WeeklyVolume.weekStartOf(service.today()).toString())
+        lastInputs?.let { synchronized(refreshLock) { refreshUnlocked(it) } }
+    }
+
     fun trainAnyway() = io {
         synchronized(refreshLock) {
             val s = _state.value.suggestion
@@ -1113,6 +1154,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         const val MAX_CIRCUIT_ROUNDS = 5
         /** The card's "Wie lange heute?" choices in minutes. */
         val DURATION_OPTIONS = listOf(15, 20, 30, 45, 60, 75, 90, 120)
+        /** Setting: the week (its Monday) in which the load card was acknowledged. */
+        const val LOAD_SPIKE_SEEN = "loadspike.seen"
 
         /** The next choice clearly below [minutes], at least the shortest. */
         internal fun shorterThan(minutes: Int): Int = DURATION_OPTIONS.lastOrNull { it < minutes - 2 } ?: DURATION_OPTIONS.first()

@@ -69,6 +69,19 @@ object PreferenceLearning {
     const val CIRCUIT_SETUP = "circuit_setup:"
     /** Ledger [SuggestionEventKind.FEEDBACK] focus for "train anyway" on the recovery card, for a restart; recorded only. */
     const val TRAIN_ANYWAY = "train_anyway"
+    /** "Train anyway" in this many different weeks of [WINDOW_DAYS]: the coach stops proposing rest for the used-up days. */
+    const val TRAIN_ANYWAY_WEEKS = 2
+
+    /**
+     * The athlete trains past the week's days as a habit: "train anyway" in [TRAIN_ANYWAY_WEEKS] different weeks
+     * lately (owner 2026-11-22: overruled twice, the coach plans around it instead of asking every week).
+     */
+    fun trainsPastWeekDays(events: List<SuggestionEvent>, today: LocalDate, resets: Map<String, Long> = emptyMap()): Boolean {
+        val from = today.minus(DatePeriod(days = WINDOW_DAYS)).toString()
+        return events.filter { it.kind == SuggestionEventKind.FEEDBACK && it.focus == TRAIN_ANYWAY && it.day >= from && it.createdAt > since(resets, "") }
+            .mapNotNull { runCatching { LocalDate.parse(it.day) }.getOrNull() }
+            .map { d -> d.minus(DatePeriod(days = d.dayOfWeek.isoDayNumber - 1)) }.distinct().size >= TRAIN_ANYWAY_WEEKS
+    }
     /** A DISLIKE_EXERCISE with this value is "leave it out today" (no replacement), not "not today, something else". */
     const val LEFT_OUT = 1.0
     /**

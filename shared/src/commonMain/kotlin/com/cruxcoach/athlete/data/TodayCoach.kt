@@ -63,6 +63,8 @@ class TodayCoach(
         val ignoreUsualKind: Boolean = false,
         /** "Train anyway" on the recovery card: the week's training days do not limit today. */
         val trainAnyway: Boolean = false,
+        /** "Anyway" for the kind the coach held back today ([SessionSuggestion.heldBack]). */
+        val insist: Boolean = false,
     )
 
     /** The engine input plus what the card shows next to it. */
@@ -241,7 +243,8 @@ class TodayCoach(
             wishLearned = choices.wish == null && usualWish != null,
             minutesLearned = choices.minutesToday == null && usualMinutes != null,
             kept = kept.preferred,
-            beyondWeekDays = choices.trainAnyway,
+            beyondWeekDays = choices.trainAnyway || PreferenceLearning.trainsPastWeekDays(events, today, resets),
+            insist = choices.insist,
             known = known,
             unfamiliar = unfamiliar,
             starter = ExerciseFamiliarity.starter(known),

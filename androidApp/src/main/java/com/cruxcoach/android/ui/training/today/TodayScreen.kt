@@ -214,6 +214,7 @@ fun TodayScreen(
                         onSetCircuit = viewModel::setCircuit,
                         onLighter = { viewModel.chooseLevel(-1) },
                         onTrainAnyway = viewModel::trainAnyway,
+                        onInsist = viewModel::insistToday,
                     )
                 }
                 state.durationHint?.let { minutes ->
@@ -231,7 +232,7 @@ fun TodayScreen(
             // "Your logbook shows 7a – take it over?" once per grade.
             state.gradeOffer?.let { grade -> item(key = "grade_offer") { GradeOfferCard(grade, onAnswer = viewModel::answerGradeOffer) } }
             if (state.energy.signals.isNotEmpty()) item { EnergyCareCard(state.energy, state.profile, "today_reds", onAdjustGoal = { showGoal = true }) }
-            if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state) }
+            if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state, onSeen = viewModel::dismissLoadSpike) }
             item(key = "day") {
                 DayGrid(
                     state = state,
@@ -332,6 +333,7 @@ fun TodayScreen(
             onEquipment = { askWhy = false; showEquipment = true },
             onPlace = { id -> askWhy = false; viewModel.pickPlace(id) },
             onRestToday = { askWhy = false; viewModel.restToday() },
+            onClimbToday = { kind -> askWhy = false; viewModel.climbToday(kind) },
             onPlanDays = { askWhy = false; planDays = true },
         )
     }
@@ -355,6 +357,19 @@ fun TodayScreen(
         val text = stringResource(R.string.trt_rest_today_done)
         LaunchedEffect(before) {
             viewModel.consumeRestTodayUndo()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoRestToday(before)
+                }
+            }
+        }
+    }
+    // "Heute klettere ich": one line with "Rückgängig".
+    state.climbTodayUndo?.let { before ->
+        val text = stringResource(R.string.trt_climb_today_done)
+        LaunchedEffect(before) {
+            viewModel.consumeClimbTodayUndo()
             snackScope.launch {
                 snackbar.currentSnackbarData?.dismiss()
                 if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
@@ -1285,6 +1300,7 @@ private fun DailySuggestionCard(
     onLighter: () -> Unit = {},
     /** "Trotzdem trainieren" on the recovery card once the week's training days are done (owner 2026-11-06). */
     onTrainAnyway: () -> Unit = {},
+    onInsist: () -> Unit = {},
 ) {
     val s = state.suggestion ?: return
     var circuitSheet by remember { mutableStateOf(false) }
@@ -1479,6 +1495,13 @@ private fun DailySuggestionCard(
                     Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp))
                     Text(stringResource(if (climbDay) R.string.trt_warmup_start else R.string.trsg_start))
                 }
+                // The coach held the chosen kind back because of the fingers: advice, and one tap decides otherwise.
+                s.heldBack?.let { kind ->
+                    OutlinedButton(onClick = onInsist, colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_insist")) {
+                        Text(stringResource(R.string.trt_insist, kindLabel(kind)))
+                    }
+                }
                 // Only when the week's training days are done, not when an area's volume is: one tap trains anyway.
                 if (s.reasons.firstOrNull() == SuggestionReason.WEEK_DAYS_DONE) {
                     OutlinedButton(onClick = onTrainAnyway, colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
@@ -1609,7 +1632,7 @@ private fun WhySheet(state: TodayState, onDismiss: () -> Unit, onOpenLearned: ()
 // ── Safety cards ────────────────────────────────────────────────────
 
 @Composable
-private fun LoadSpikeCard(state: TodayState) {
+private fun LoadSpikeCard(state: TodayState, onSeen: () -> Unit = {}) {
     OutlinedCard(Modifier.fillMaxWidth().testTag("today_load_spike")) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Speed, null, tint = CruxCoachDesign.colors.caution)
@@ -1619,6 +1642,8 @@ private fun LoadSpikeCard(state: TodayState) {
                     style = MaterialTheme.typography.titleSmall)
                 Text(stringResource(R.string.trt_spike_text), style = MaterialTheme.typography.bodySmall)
             }
+            // Advice the athlete has read does not come back every day: quiet until next week.
+            TextButton(onClick = onSeen, modifier = Modifier.testTag("today_load_spike_seen")) { Text(stringResource(R.string.action_understood)) }
         }
     }
 }
@@ -1826,6 +1851,7 @@ private fun NextSuggestionSheet(
     onEquipment: () -> Unit,
     onPlace: (String) -> Unit = {},
     onRestToday: () -> Unit = {},
+    onClimbToday: (com.cruxcoach.athlete.model.ClimbingDayKind?) -> Unit = {},
     onPlanDays: () -> Unit = {},
     onMinutes: (Int?) -> Unit = {},
     onCircuit: (Boolean) -> Unit = {},
@@ -1850,6 +1876,20 @@ private fun NextSuggestionSheet(
                 }
                 Spacer(Modifier.height(16.dp))
             }
+            // "Heute klettere ich" (owner 2026-11-22): one tap makes today a climbing day; the coach plans around it.
+            Text(stringResource(R.string.trt_climb_today), style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf(com.cruxcoach.athlete.model.ClimbingDayKind.GYM_BOULDER, com.cruxcoach.athlete.model.ClimbingDayKind.GYM_ROPE,
+                    com.cruxcoach.athlete.model.ClimbingDayKind.OUTDOOR).forEach { k ->
+                    val entry = com.cruxcoach.athlete.logic.DayPlans.climbOf(state.suggestion?.plannedEntry)
+                    FilterChip(selected = entry?.kind == k, onClick = { onClimbToday(k) }, label = { Text(climbingDayKindLabel(k)) },
+                        modifier = Modifier.testTag("today_climb_${k.name.lowercase()}"))
+                }
+                FilterChip(selected = state.suggestion?.plannedEntry == com.cruxcoach.athlete.model.PLAN_BOARD, onClick = { onClimbToday(null) },
+                    label = { Text(kindLabel(SuggestionFocus.BOARD_DAY)) }, modifier = Modifier.testTag("today_climb_board"))
+            }
+            Spacer(Modifier.height(16.dp))
             // What the athlete feels like today (owner 2026-10-15: "rather push and pull than fingers").
             Text(stringResource(R.string.trt_next_kind), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))

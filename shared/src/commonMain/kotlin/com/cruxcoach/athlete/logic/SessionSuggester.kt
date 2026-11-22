@@ -273,6 +273,8 @@ data class SuggestionInput(
      * other rule applies; the suggestion is the one Today would make without the day limit.
      */
     val beyondWeekDays: Boolean = false,
+    /** "Anyway" on today's card: the athlete heard the coach's advice about the fingers and decides to train as chosen. */
+    val insist: Boolean = false,
     /**
      * Exercises the athlete logged in at least [ExerciseFamiliarity.KNOWN_AFTER_TRAININGS] trainings or has an own performance
      * value for (issue #68, [ExerciseFamiliarity.known]); favourites, kept choices and own exercises count as known too
@@ -314,6 +316,12 @@ data class SessionSuggestion(
     val timeAdjustable: Boolean = true,
     /** Already shorter because of little sleep or energy: starting it takes no extra set off (audit W7). */
     val shortenedForFatigue: Boolean = false,
+    /**
+     * The kind the athlete chose today and the coach held back (tired fingers, recovery after climbing, a rising
+     * load): the card offers it "anyway" – the coach advises, the athlete decides (owner 2026-11-22). Null where
+     * nothing was held back or the reason is a hard one (ill, an injury, the youth rules, a comeback).
+     */
+    val heldBack: SuggestionFocus? = null,
 ) {
     /** The whole session in minutes, the board part included. */
     val totalMinutes: Int get() = estimatedMinutes + (boardPlan?.minutes ?: 0)
@@ -836,9 +844,14 @@ object SessionSuggester {
                 ctx.input.profile.equipmentConfigured && ctx.input.profile.equipment.none {
                     it == EquipmentV2.WALL || it == EquipmentV2.BOARD || it == EquipmentV2.CAMPUS_BOARD
                 } -> { reasons.add(0, SuggestionReason.NO_WALL_HERE); pullPush() }
-                readiness.avoidClimbing || skinSpike || fingerBlock == SuggestionReason.FINGERS_TIRED -> {
+                readiness.avoidClimbing -> {
                     reasons.add(0, fingerBlock ?: if (skinSpike) SuggestionReason.SKIN_LOAD_RISING else SuggestionReason.BOARD_SKIPPED_TODAY)
                     pullPush()
+                }
+                // Advice, not a lock: tired fingers or skin turn the board day into pull and push, and "anyway" gives it back.
+                (skinSpike || fingerBlock == SuggestionReason.FINGERS_TIRED) && !ctx.input.insist -> {
+                    reasons.add(0, fingerBlock ?: SuggestionReason.SKIN_LOAD_RISING)
+                    pullPush().copy(heldBack = wish)
                 }
                 // The comeback stage keeps the board out: the wish turns into pull and push, with why.
                 comebackLevel != null && comebackLevel < ClimbingLevel.HARD -> {
@@ -852,18 +865,22 @@ object SessionSuggester {
                 }
                 // Chosen while the fingers recover from climbing: the board day as a light session, the same rule
                 // as a planned one (audit W6) – the wish counts, the recovery decides how hard.
-                fingerBlock != null -> {
+                fingerBlock != null && !ctx.input.insist -> {
                     reasons.add(0, SuggestionReason.BOARD_LIGHT)
                     reasons += fingerBlock
-                    boardDay(ctx, planned, fresh = false, light = true)
+                    boardDay(ctx, planned, fresh = false, light = true).copy(heldBack = wish)
                 }
-                else -> boardDay(ctx, planned, fresh = readiness.level == ReadinessLevel.GO)
+                else -> {
+                    if (fingerBlock != null) reasons += fingerBlock
+                    boardDay(ctx, planned, fresh = readiness.level == ReadinessLevel.GO && fingerBlock == null)
+                }
             }
             SuggestionFocus.FINGER_STRENGTH -> when {
                 climbingPaused -> { reasons.add(0, SuggestionReason.INJURY_CLIMBING_PAUSED); safe() }
-                fingerBlock != null -> { reasons.add(0, fingerBlock); pullPush() }
+                fingerBlock != null && !ctx.input.insist -> { reasons.add(0, fingerBlock); pullPush().copy(heldBack = wish) }
                 else -> {
-                    // Chosen anyway: the wish counts, the card says what is coming tomorrow.
+                    // Chosen anyway: the wish counts, the card says what the coach sees and what is coming tomorrow.
+                    if (fingerBlock != null) reasons += fingerBlock
                     if (hardDayTomorrow(ctx.input)) reasons += SuggestionReason.HARD_DAY_TOMORROW
                     val result = build(ctx, SuggestionFocus.FINGER_STRENGTH,
                         withFocusAreas(slotsFor(SuggestionFocus.FINGER_STRENGTH), SuggestionFocus.FINGER_STRENGTH, areas, ctx), budget, planned, weekly = false)
