@@ -37,10 +37,10 @@
     <string name="trx_unilateral">Eine Seite nach der anderen</string>
     <string name="trx_contraindications">Vorsicht bei: %1$s</string>
     <string name="trx_safety_title">Sicherheit</string>
-    <string name="trx_progression">Progression</string>
+    <string name="trx_progression">Varianten</string>
     <string name="trx_progression_hint">Links leichter, rechts schwerer.</string>
     <string name="trx_current">aktuell</string>
-    <string name="trx_history">Deine Historie</string>
+    <string name="trx_history">Dein Verlauf</string>
     <string name="trx_bests">Bestwerte</string>
     <string name="trx_best_any">Beliebige Leiste</string>
     <string name="trx_best_overall">Insgesamt</string>
@@ -69,9 +69,9 @@
     <string name="trx_custom_guessed">Bereich, Art und Gewicht sind aus dem Namen erkannt. Tippe unten, um sie zu ändern.</string>
     <string name="trx_custom_name_required">Bitte gib einen Namen ein.</string>
     <string name="trx_custom_category">Kategorie</string>
-    <string name="trx_custom_kind">So wird geloggt</string>
+    <string name="trx_custom_kind">So trägst du ein</string>
     <string name="trx_custom_load">Gewicht</string>
-    <string name="trx_custom_unilateral">Pro Seite loggen (links / rechts)</string>
+    <string name="trx_custom_unilateral">Pro Seite eintragen (links / rechts)</string>
     <string name="trx_custom_equipment">Benötigte Ausrüstung</string>
     <string name="trx_custom_domains">Was wird belastet</string>
     <string name="trx_custom_implements">Wie viele gleichzeitig</string>
@@ -97,7 +97,7 @@
     <string name="trx_add_to_workout">%1$s zu Training oder Workout hinzufügen</string>
     <string name="trx_to_workout">Zu Workout</string>
     <plurals name="trx_filter_categories_count">
-        <item quantity="one">%1$d Kategorien</item>
+        <item quantity="one">%1$d Kategorie</item>
         <item quantity="other">%1$d Kategorien</item>
     </plurals>
     <string name="trx_filter_categories_all">Alle Kategorien</string>

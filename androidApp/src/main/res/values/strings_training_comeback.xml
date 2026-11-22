@@ -162,7 +162,6 @@
     <string name="cb_nb21_text">Your pain has stayed about the same for three weeks. An ultrasound can show what\'s going on, and the plan may need to change.</string>
     <string name="cb_sign_title">Something new?</string>
     <string name="cb_sign_text">You noted something new from the warning signs. Have a look at the list and tick what fits.</string>
-    <string name="cb_open_signs">Open warning signs</string>
     <string name="cb_ok">OK</string>
     <string name="cb_remind_week">Remind me in a week</string>
 
@@ -203,12 +202,11 @@
     <string name="cb_delete_all">Delete all comeback data</string>
     <string name="cb_delete_title">Delete all comeback data?</string>
     <string name="cb_delete_text">The answers, the plan and the diary of this injury are deleted from this phone. The injury entry itself stays.</string>
-    <string name="cb_privacy">Your entries stay on this phone. They go into a backup only if you pick \"Injuries &amp; comeback diary\".</string>
+    <string name="cb_privacy">Your entries stay on this phone. They go into a backup only if you pick “Injuries, illness pauses &amp; comeback diary”.</string>
 
     <!-- Today card -->
     <string name="cb_today_title">Comeback plan · %1$s</string>
     <string name="cb_today_question">How is it this morning?</string>
-    <string name="cb_today_open">Open plan</string>
     <string name="cb_today_prompt">The plan has a note for you.</string>
 
     <!-- Coach reasons -->

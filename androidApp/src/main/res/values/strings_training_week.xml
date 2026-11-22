@@ -12,7 +12,7 @@
 
     <!-- Week view -->
     <string name="trw_week_title">This week</string>
-    <string name="trw_week_progress">%1$d of %2$d planned done</string>
+    <string name="trw_week_progress">Plan: %1$d of %2$d done</string>
     <string name="trw_short_board">Board</string>
     <string name="trw_short_rest">Rest</string>
     <string name="trw_status_done">done</string>
@@ -33,7 +33,7 @@
     <string name="trw_return_break">Easing back in: week %1$d of %2$d after %3$d\u00A0days off</string>
     <string name="trw_return_illness">After %1$d\u00A0days ill: week %2$d of %3$d</string>
     <string name="trw_return_finger">Finger re-entry: week %1$d of %2$d after the injury</string>
-    <string name="trw_return_detail_nomax">Shorter sessions (%1$d\u00A0%%) and no maximal finger load.</string>
+    <string name="trw_return_detail_nomax">Shorter sessions (%1$d\u00A0%%) and no max finger work.</string>
     <string name="trw_return_detail">Shorter sessions (%1$d\u00A0%%).</string>
     <string name="trw_return_detail_finger">Only light finger work, no max hangs – everything else as usual.</string>
     <string name="trw_return_info_title">Why ease back in?</string>

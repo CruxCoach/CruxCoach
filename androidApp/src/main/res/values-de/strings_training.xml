@@ -130,7 +130,6 @@
     <string name="tr_format_mm">%1$s\u00A0mm</string>
     <string name="tr_format_percent_bw">%1$d\u00A0%% Körpergewicht</string>
     <string name="tr_bodyweight">Körpergewicht</string>
-    <string name="tr_assisted">entlastet</string>
     <string name="tr_weight">Gewicht</string>
     <string name="tr_weight_added">Zusatzgewicht</string>
     <string name="tr_weight_per_dumbbell">Gewicht pro Hantel</string>
@@ -152,7 +151,6 @@
     <string name="tr_action_cancel">Abbrechen</string>
     <string name="tr_action_delete">Löschen</string>
     <string name="tr_action_done">Fertig</string>
-    <string name="tr_action_add">Hinzufügen</string>
     <string name="tr_action_edit">Bearbeiten</string>
     <string name="tr_action_settings">Trainingseinstellungen</string>
     <string name="tr_not_medical_advice">CruxCoach stellt keine Diagnosen und behandelt keine Verletzungen. Bei stechendem Schmerz, Schwellung oder anhaltenden Beschwerden: ärztlich oder physiotherapeutisch abklären lassen.</string>
@@ -175,6 +173,5 @@
     <string name="tr_tab_workouts">Workouts</string>
     <string name="tr_tab_exercises">Übungen</string>
     <string name="tr_tab_stats">Statistik</string>
-    <string name="tr_tab_body">Körper</string>
     <string name="tr_nav_training_nutrition">Training &amp; Ernährung</string>
 </resources>

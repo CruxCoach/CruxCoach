@@ -51,7 +51,7 @@
     <string name="trpg_dayform_climbed">hartes Klettern heute</string>
     <string name="trpg_dayform_set_less">ein Satz weniger</string>
     <string name="trpg_dayform_round_less">eine Runde weniger</string>
-    <string name="trpg_dayform_finger_cap">Fingermaximalkraft höchstens 2\u00A0Sätze</string>
+    <string name="trpg_dayform_finger_cap">höchstens 2\u00A0Sätze mit maximaler Fingerlast</string>
     <string name="trpg_dayform_load">Gewicht −%1$d\u00A0%%</string>
     <string name="trpg_dayform_as_planned">Wie geplant</string>
     <string name="trpg_skipped">„%1$s“ übersprungen</string>

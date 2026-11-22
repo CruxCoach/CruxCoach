@@ -86,7 +86,7 @@
     <string name="trt_reason_sick">You feel ill – rest and recover. Your streak is paused.</string>
     <string name="trt_reason_injury_paused">Injury mode: climbing is paused. Off-wall training that spares the injured area is fine.</string>
     <string name="trt_reason_injury">An injury is open – exercises that load it are marked.</string>
-    <string name="trt_reason_fingers">Tired fingers – no max finger load today. Pull, core, legs or mobility are fine.</string>
+    <string name="trt_reason_fingers">Tired fingers – no max finger work today. Pull, core, legs or mobility are fine.</string>
     <string name="trt_reason_skin">Skin needs a break – skip the board. Hangboard on bigger edges or strength work instead.</string>
     <string name="trt_reason_sleep">Short on sleep – keep volume low, technique and mobility work well.</string>
     <string name="trt_reason_energy">Low energy – an easy session or a rest day.</string>
@@ -98,8 +98,6 @@
     <string name="trt_injury_mode">Injury noted</string>
     <string name="trt_injury_mode_paused">Injury mode – climbing paused</string>
     <string name="trt_injury_manage">Manage</string>
-    <string name="trt_workout_untitled">Training</string>
-    <string name="trt_routines">Workouts</string>
     <string name="trt_weekly_review">Weekly review</string>
     <string name="trt_report_injury">Report injury</string>
     <string name="trt_sugg_equipment_title">What do you have?</string>
@@ -117,14 +115,8 @@
     <string name="trt_reds_low_carbs">On several training days you logged far less carbohydrate than the training needs.</string>
     <string name="trt_spike_title">Load jump: %1$s</string>
     <string name="trt_spike_text">More loading days than in the three weeks before. Not a ban – just worth knowing.</string>
-    <string name="trt_trend_direction">Trend direction</string>
-    <string name="trt_trend_weight">Trend: %1$s</string>
-    <string name="trt_weight_today">Weight today (%1$s)</string>
-    <string name="trt_fuel_needs_weight">Log your body weight to see protein and carbohydrate targets.</string>
-    <string name="trt_protein">Protein</string>
     <string name="trt_sugg_benchmarks_title">Enter your strength values</string>
     <string name="trt_sugg_benchmarks_text">Max hang, pick-up, weighted pull-up: from what you can do, CruxCoach plans your loads.</string>
-    <string name="trt_sugg_benchmarks_action">Enter</string>
     <string name="trt_today_hero">Your training today</string>
     <string name="trt_more_exercises">+\u00A0%1$d more</string>
     <string name="trt_low_data">Little data yet – the suggestion gets more personal as you log</string>
@@ -133,15 +125,8 @@
     <string name="trt_warmup_start">Start the warm-up</string>
     <string name="trt_more_actions">More actions</string>
     <string name="trt_based_on_title">Based on</string>
-    <string name="trt_checkin_prompt_hint">4 quick questions – they make the suggestion fit today</string>
     <string name="trt_pause_short">Pause active</string>
-    <string name="trt_quick_climbing">Climbing day</string>
-    <string name="trt_quick_weight">Weight</string>
-    <string name="trt_quick_food">Food</string>
     <string name="trt_quick_free">Free training</string>
-    <string name="trt_done_today">Done today</string>
-    <string name="trt_tile_trend">Trend</string>
-    <string name="trt_tile_water">Water %1$s</string>
     <string name="trt_numbers_hidden_short">hidden</string>
     <string name="trt_done_hero_title">Done for today</string>
     <string name="trt_done_hero_text">Recovery is part of training. If you still want more, the coach suggests something that fits what you already did.</string>
@@ -159,7 +144,6 @@
     <!-- Well-known exercises first (issue #68): an exercise new to the athlete, and "Don't know it" (no dislike). -->
     <string name="trt_new_to_you">New to you</string>
     <string name="trt_new_how">How it works</string>
-    <string name="trt_dont_know">Don\'t know it</string>
     <string name="trt_dont_know_to">Don\'t know it: %1$s instead</string>
     <string name="trt_dont_know_hint">Swaps it for an exercise you know. It doesn\'t count against this one.</string>
     <string name="trt_dont_know_none">Nothing you already know fits here today.</string>
@@ -196,7 +180,7 @@
     <string name="trt_climbed_yesterday">Climbed yesterday? Log it</string>
     <string name="trt_climb_today">Climbing today</string>
     <string name="trt_climb_today_done">Today is a climbing day now.</string>
-    <string name="trt_insist">Anyway: %1$s</string>
+    <string name="trt_insist">%1$s anyway</string>
     <string name="trt_form_more">More detail</string>
     <string name="trt_sugg_week_title">Plan your week</string>
     <string name="trt_sugg_week_text">Tell the coach on which days you climb. It plans the rest around them.</string>

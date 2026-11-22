@@ -6,10 +6,10 @@
     <string name="tre_block_event">Today is your day</string>
     <string name="tre_block_info_text">Training runs in simple cycles: one easier week to get going, three build weeks, one lighter week to recover. A trip or competition date adds a taper over the last ten days. Tired check-ins or a finger-load spike can bring the lighter week forward – the calendar is only one signal.</string>
     <string name="tre_block_intro">Easy start</string>
-    <string name="tre_block_taper">Taper: %1$d\u00A0days to go</string>
+    <string name="tre_block_taper">Taper – days to go: %1$d</string>
     <string name="tre_board_plan">%1$s · %2$d\u00A0min</string>
     <string name="tre_conf_high">Precise</string>
-    <string name="tre_conf_info_text">Basic: little data yet, so the coach stays careful. Personal: your logbook, strength values or several weeks of history shape the picks. Precise: all of that plus your coach setup. More data never makes a suggestion riskier – only better matched.</string>
+    <string name="tre_conf_info_text">Basic: little data yet, so the coach stays careful. Personal: your logbook, strength values or several weeks of history shape the picks. Precise: all of that plus your coach profile. More data never makes a suggestion riskier – only better matched.</string>
     <string name="tre_conf_info_title">How well the coach knows you</string>
     <string name="tre_conf_low">Basic</string>
     <string name="tre_conf_medium">Personal</string>
@@ -85,7 +85,7 @@
     <string name="tre_reason_goal_healthy">Your goal is to stay fit and injury-free – prevention and mobility get extra weight.</string>
     <string name="tre_reason_goal_project">Your goal is a project or grade – finger and pulling strength come first.</string>
     <string name="tre_reason_guard_masters">From 40 on the fingers get an extra recovery day.</string>
-    <string name="tre_reason_guard_novice">In the first climbing years: no max hangs, one-arm or campus work yet – the fingers adapt slower than the muscles.</string>
+    <string name="tre_reason_guard_novice">In the first climbing years: no max hangs, one-arm or campus work yet – the fingers adapt more slowly than the muscles.</string>
     <string name="tre_reason_guard_youth">While still growing: no max hangs, one-arm or campus work – only light finger training.</string>
     <string name="tre_reason_learned">Exercises you often pick or do come up more often.</string>
     <string name="tre_reason_level_easier">You found it too hard – today\'s picks are a step easier.</string>
@@ -116,7 +116,7 @@
     <string name="tre_trend_stall_generic">Try another edge or grip for a few weeks.</string>
     <string name="tre_trend_stall_try">Variation: %1$s</string>
     <string name="tre_trend_title">Across sessions</string>
-    <string name="tre_reason_return_break">Back after a break: fewer sets and no maximal finger load for now – the body needs a short ramp.</string>
+    <string name="tre_reason_return_break">Back after a break: fewer sets and no max finger work for now – the body needs a short ramp.</string>
     <string name="tre_reason_return_finger">You marked your finger injury as over recently: finger work stays light for a few more weeks.</string>
     <string name="tre_ev_return">Re-entry after %1$d\u00A0days (week %2$d of %3$d)</string>
     <string name="tre_after_title">After the training</string>

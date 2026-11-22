@@ -5,7 +5,6 @@
     <string name="trb_tile_trend">Trend</string>
     <string name="trb_tile_rate">Per week</string>
     <string name="trb_tile_entries">Readings</string>
-    <string name="trb_rate_value">%1$s / week</string>
     <string name="trb_direction_up">slightly rising</string>
     <string name="trb_direction_flat">stable</string>
     <string name="trb_direction_down">slightly falling</string>
@@ -20,7 +19,6 @@
     <string name="trb_no_weight">No weight logged yet. Tap + to start – weighing now and then is enough.</string>
     <string name="trb_measurements">Measurements</string>
     <string name="trb_add_measurement">Measurement</string>
-    <string name="trb_add">Add entry</string>
     <string name="trb_delta">%1$s vs. previous</string>
     <string name="trb_no_measurements">No measurements yet.</string>
     <string name="trb_ape_index">Ape index</string>
@@ -73,7 +71,7 @@
         <item quantity="one">%d existing value kept</item>
         <item quantity="other">%d existing values kept</item>
     </plurals>
-    <string name="trb_import_empty">No body data found in this file. In Waistline, export under Settings → Import/Export: "Export database" (JSON) or "Export diary" (CSV).</string>
+    <string name="trb_import_empty">No body data found in this file. In Waistline, export under Settings → Import/Export: “Export database” (JSON) or “Export diary” (CSV).</string>
     <string name="trb_import_failed">The file could not be read.</string>
     <string name="trb_import_too_large">The file is too large (max. 20 MB).</string>
     <string name="trb_waistline_badge">Waistline</string>

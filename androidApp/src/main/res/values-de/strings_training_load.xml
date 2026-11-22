@@ -3,15 +3,15 @@
 <resources>
     <string name="trl_profile_title">Kletterprofil</string>
     <string name="trl_tile_working">Arbeitsgrad</string>
-    <string name="trl_tile_working_sub">aus %1$d Sends</string>
+    <string name="trl_tile_working_sub">Begehungen: %1$d</string>
     <string name="trl_tile_flash">Flash-Grad</string>
     <string name="trl_tile_max_sub">härtester: %1$s</string>
     <string name="trl_tile_finger">Fingerkraft</string>
-    <string name="trl_tile_finger_sub">Max-Hang 20\u00A0mm, Gesamtlast pro Körpergewicht</string>
-    <string name="trl_tile_pull">Zug 1RM</string>
+    <string name="trl_tile_finger_sub">Max Hang 20\u00A0mm, Gesamtlast pro Körpergewicht</string>
+    <string name="trl_tile_pull">Zugkraft</string>
     <string name="trl_tile_pull_sub">Klimmzug mit Zusatzgewicht, Gesamtlast pro Körpergewicht</string>
     <string name="trl_empty_title">Dein Profil beginnt mit ein paar Zahlen</string>
-    <string name="trl_empty_text">Logge Boulder am Board oder einen Klettertag und trag einen Kraftwert für Max-Hangs oder Klimmzüge mit Zusatzgewicht ein. Dann siehst du, wo du stehst und wie Grad und Kraft zusammenhängen.</string>
+    <string name="trl_empty_text">Logge Boulder am Board oder trag einen Klettertag ein. Trag dazu einen Kraftwert für Max Hangs oder Klimmzüge mit Zusatzgewicht ein. Dann siehst du, wo du stehst und wie Grad und Kraft zusammenhängen.</string>
     <string name="trl_action_values">Kraftwerte eintragen</string>
     <string name="trl_action_log_climbing">Klettertag eintragen</string>
     <string name="trl_day_deleted">Klettertag gelöscht</string>
@@ -21,9 +21,9 @@
     <string name="trl_tab_pull">Zug</string>
     <string name="trl_position_finger_axis">Beidarmiges Hängen von etwa 10\u00A0s an einer 20-mm-Leiste: Körpergewicht plus Zusatzgewicht in Prozent des Körpergewichts, gegen den Grad, den du damals geklettert bist.</string>
     <string name="trl_position_pull_axis">Maximaler Klimmzug mit Zusatzgewicht: Körpergewicht plus Zusatzgewicht in Prozent des Körpergewichts, gegen den Grad, den du damals geklettert bist.</string>
-    <string name="trl_position_no_finger">Noch kein Fingerkraft-Wert. Trag einen Max-Hang ein (oder schätze ihn) oder logge einen im Training.</string>
+    <string name="trl_position_no_finger">Noch kein Fingerkraft-Wert. Trag einen Max Hang ein (oder schätze ihn) oder mach einen im Training.</string>
     <string name="trl_position_no_pull">Noch kein Zug-Wert. Trag Klimmzüge mit Zusatzgewicht oder deine maximalen Klimmzüge ein.</string>
-    <string name="trl_position_no_grade">Es gibt einen Kraftwert, aber noch keinen Grad: logge Boulder am Board oder einen Klettertag.</string>
+    <string name="trl_position_no_grade">Es gibt einen Kraftwert, aber noch keinen Grad: Logge Boulder am Board oder trag einen Klettertag ein.</string>
     <string name="trl_position_you">du: %1$s · %2$s</string>
     <string name="trl_position_cd">Kraft im Verhältnis zum Grad: dein neuester Wert %1$s bei %2$s, insgesamt %3$d Werte, gezeigt vor dem typischen Bereich.</string>
     <string name="trl_legend_band">typischer Bereich</string>
@@ -39,7 +39,7 @@
     <string name="trl_timeline_title">Grad und Fingerkraft im Verlauf</string>
     <string name="trl_timeline_grade">Arbeitsgrad</string>
     <string name="trl_timeline_finger">Fingerkraft</string>
-    <string name="trl_timeline_empty">Sobald es Board-Sends und Fingerkraft-Werte gibt, erscheinen hier beide Linien Woche für Woche.</string>
+    <string name="trl_timeline_empty">Sobald es Board-Begehungen und Fingerkraft-Werte gibt, erscheinen hier beide Linien Woche für Woche.</string>
     <string name="trl_timeline_cd">Arbeitsgrad über %1$d\u00A0Wochen und %2$d Fingerkraft-Werte auf einer gemeinsamen Zeitachse.</string>
     <string name="trl_corr_waiting">Noch %1$d\u00A0Wochen mit Grad und Fingerkraft-Wert, dann zeigen wir, wie eng beides zusammenhängt (bisher %2$d).</string>
     <string name="trl_corr_value">r = %1$s über %2$d\u00A0Wochen</string>
@@ -67,14 +67,14 @@
         <item quantity="one">%1$d Stufe zwischen Flash und Arbeitsgrad: Projektieren klappt, Flashen hinkt hinterher. Mehr Volumen nahe Flash-Niveau baut die Basis.</item>
         <item quantity="other">%1$d Stufen zwischen Flash und Arbeitsgrad: Projektieren klappt, Flashen hinkt hinterher. Mehr Volumen nahe Flash-Niveau baut die Basis.</item>
     </plurals>
-    <string name="trl_attempts_tile">Versuche pro Send</string>
+    <string name="trl_attempts_tile">Versuche je Begehung</string>
     <string name="trl_attempts_sub">letzte 12\u00A0Wochen</string>
     <string name="trl_angle_tile">Häufigster Winkel</string>
 
     <string name="trl_pickup_title">Blockheben einarmig je Hand</string>
     <string name="trl_pickup_cd">Blockheben einarmig je Hand in Prozent des Körpergewichts im Verlauf.</string>
     <string name="trl_pickup_balanced">Beide Hände liegen innerhalb von fünf Prozent.</string>
-    <string name="trl_pickup_imbalance">Die Hand %1$s ist %2$d\u00A0%% stärker.</string>
+    <string name="trl_pickup_imbalance">Stärkere Hand: %1$s (Unterschied %2$d\u00A0%%)</string>
 
     <string name="trl_load_title">Belastung</string>
     <string name="trl_load_cd">Tägliche Belastung %1$s über acht Wochen mit 7- und 28-Tage-Mittel; Trend: %2$s.</string>
@@ -88,10 +88,10 @@
     <string name="trl_trend_normal">normal</string>
     <string name="trl_trend_rising">steigt</string>
     <string name="trl_trend_spike">Sprung</string>
-    <string name="trl_trend_low_text">Deutlich unter deinem Normal – nach einer Pause oder als Entlastung okay; danach schrittweise wieder aufbauen.</string>
+    <string name="trl_trend_low_text">Deutlich unter deinem Normal – nach einer Pause oder in einer leichten Woche okay; danach schrittweise wieder aufbauen.</string>
     <string name="trl_trend_normal_text">Im Rahmen deiner letzten vier Wochen.</string>
     <string name="trl_trend_rising_text">+%1$d\u00A0%% gegenüber deinem Normal: eine Weile okay, wenn du dich gut erholst.</string>
-    <string name="trl_trend_spike_text">+%1$d\u00A0%% gegenüber deinem Normal: Die Belastung steigt schneller, als sich das Gewebe anpasst. Der Coach schlägt für ein paar Tage weniger maximale Fingerarbeit vor.</string>
+    <string name="trl_trend_spike_text">+%1$d\u00A0%% gegenüber deinem Normal: Die Belastung steigt schneller, als sich das Gewebe anpasst. Der Coach schlägt für ein paar Tage seltener maximale Fingerlast vor.</string>
     <string name="trl_trend_new_text">Die Belastung baut sich ohne viel Vorgeschichte auf – sanft einsteigen.</string>
 
     <string name="trl_bottleneck_title">Stärken und Engpässe</string>
@@ -106,12 +106,12 @@
     <string name="trl_reason_gap_normal">Flash und Arbeitsgrad im ausgewogenen Verhältnis</string>
     <string name="trl_reason_large_gap">großer Abstand zwischen Flash und Arbeitsgrad</string>
     <string name="trl_reason_small_gap">selten Versuche am Limit</string>
-    <string name="trl_reason_no_norm">geloggt, aber ohne Vergleich zum Grad</string>
+    <string name="trl_reason_no_norm">eingetragen, aber ohne Vergleich zum Grad</string>
     <string name="trl_reason_no_finger">noch kein Fingerkraft-Wert</string>
     <string name="trl_reason_no_pull">noch kein Zug-Wert</string>
-    <string name="trl_reason_no_grade">noch keine bewerteten Board-Sends</string>
-    <string name="trl_reason_no_endurance">noch keine Repeaters geloggt</string>
-    <string name="trl_reason_no_core">noch keine Rumpf-Werte geloggt</string>
+    <string name="trl_reason_no_grade">noch keine bewerteten Board-Begehungen</string>
+    <string name="trl_reason_no_endurance">noch keine Repeaters eingetragen</string>
+    <string name="trl_reason_no_core">noch keine Rumpf-Werte eingetragen</string>
     <string name="trl_disclaimer">Die typischen Bereiche sind eine grobe Orientierung aus veröffentlichter Kletterforschung und Trainer-Erhebungen. Menschen unterscheiden sich stark – das ist weder Ziel noch Rangliste, und nichts hier legt ein Körpergewicht nahe.</string>
 
     <string name="trl_card_grade">Arbeitsgrad %1$s</string>
@@ -130,7 +130,7 @@
     <string name="trl_day_minutes">Wie lange</string>
     <string name="trl_day_minutes_value">%1$d\u00A0min</string>
     <string name="trl_day_intensity">Wie hart</string>
-    <string name="trl_day_note">Notiz (freiwillig)</string>
+    <string name="trl_day_note">Notiz (optional)</string>
     <string name="trl_day_from_health">Aus Health Connect übernommen.</string>
     <string name="trl_day_overlap">Überschneidet sich mit der Board-Session (%1$d von %2$d\u00A0min) – nicht doppelt gezählt.</string>
     <string name="trl_day_overlap_counted">Überschneidet sich mit der Board-Session (%1$d von %2$d\u00A0min) – trotzdem gezählt.</string>

@@ -21,15 +21,9 @@
     <string name="tru_equipment_why">CruxCoach then only suggests exercises you can actually do.</string>
 
     <!-- Checklist -->
-    <string name="tru_setup_title">Set up in 3 steps</string>
-    <string name="tru_setup_progress">%1$d of %2$d</string>
-    <string name="tru_setup_coach">Goal and training week</string>
-    <string name="tru_setup_coach_text">1\u00A0minute – so the suggestions fit you</string>
     <string name="tru_setup_equipment">Your equipment</string>
-    <string name="tru_setup_equipment_text">Only exercises you can do</string>
     <string name="tru_setup_weight">Your body weight</string>
     <string name="tru_setup_weight_text">For nutrition targets and loads</string>
-    <string name="tru_setup_done">Done</string>
 
     <!-- Check-in inside today's training -->
     <string name="tru_checkin_action">Check in</string>
@@ -48,11 +42,8 @@
     <string name="tru_tile_weight_rate">%1$s per week</string>
     <string name="tru_tile_weight_tap">Tap to log</string>
     <string name="tru_open_body">Weight trend and measurements</string>
-    <string name="tru_tile_food_protein">Food · protein</string>
     <string name="tru_tile_food">Food</string>
     <string name="tru_tile_food_macros">C\u00A0%1$d/%2$d · P\u00A0%3$d/%4$d · F\u00A0%5$d/%6$d\u00A0g</string>
-    <string name="tru_tile_food_left">%1$d\u00A0g to go</string>
-    <string name="tru_tile_food_reached">Target reached</string>
     <string name="tru_tile_food_no_target">The target needs your weight</string>
     <string name="tru_tile_water">Water</string>
     <string name="tru_tile_water_tap">Tap: +\u00A0%1$s</string>
@@ -125,8 +116,6 @@
     <string name="tru_set_sex">Sex</string>
     <string name="tru_set_birth_year">Year of birth</string>
     <string name="tru_water_reached">Drinking target reached</string>
-    <string name="tru_setup_ready_title">All set!</string>
-    <string name="tru_setup_ready_text">Your coach now knows the basics. Every logged day makes the suggestions more personal.</string>
     <string name="tru_new_food">New</string>
     <plurals name="tru_hub_records">
         <item quantity="one">%d personal best</item>

@@ -140,9 +140,8 @@
     <string name="tr_format_in">%1$s\u00A0in</string>
     <string name="tr_format_seconds">%1$d\u00A0s</string>
     <string name="tr_format_mm">%1$s\u00A0mm</string>
-    <string name="tr_format_percent_bw">%1$d\u00A0%% BW</string>
+    <string name="tr_format_percent_bw">%1$d\u00A0%% of body weight</string>
     <string name="tr_bodyweight">Bodyweight</string>
-    <string name="tr_assisted">assisted</string>
     <!-- Weight fields: what the number refers to (issue #58) -->
     <string name="tr_weight">Weight</string>
     <string name="tr_weight_added">Added weight</string>
@@ -166,7 +165,6 @@
     <string name="tr_action_cancel">Cancel</string>
     <string name="tr_action_delete">Delete</string>
     <string name="tr_action_done">Done</string>
-    <string name="tr_action_add">Add</string>
     <string name="tr_action_edit">Edit</string>
     <string name="tr_action_settings">Training settings</string>
     <string name="tr_not_medical_advice">CruxCoach does not diagnose or treat injuries. If pain is sharp, swelling or lasts, see a doctor or physiotherapist.</string>
@@ -190,6 +188,5 @@
     <string name="tr_tab_workouts">Workouts</string>
     <string name="tr_tab_exercises">Exercises</string>
     <string name="tr_tab_stats">Stats</string>
-    <string name="tr_tab_body">Body</string>
     <string name="tr_nav_training_nutrition">Training &amp; nutrition</string>
 </resources>
