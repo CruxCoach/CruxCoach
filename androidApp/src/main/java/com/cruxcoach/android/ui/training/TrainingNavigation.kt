@@ -93,6 +93,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             onOpenCoachSetup = { go(TrainingRoutes.COACH_SETUP) },
             onOpenEstimate = { showEstimate = true },
             onLogClimbing = { climbingSheet = "" },
+            onLogClimbingYesterday = { climbingSheet = YESTERDAY_SHEET },
             onEditClimbing = { climbingSheet = it },
             onOpenClimbingDays = { go(TrainingRoutes.CLIMBING_DAYS) },
             onOpenLearned = { go(TrainingRoutes.athleteSettings(com.cruxcoach.android.ui.training.athlete.SettingsSection.EXCLUDED.key)) },
@@ -104,9 +105,10 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             // Keyed: "another session" opens a fresh sheet with its own view model and "done" listener.
             androidx.compose.runtime.key(id) {
                 com.cruxcoach.android.ui.training.today.ClimbingDaySheet(
-                    onDismiss = { climbingSheet = null }, editId = id.ifEmpty { null },
+                    onDismiss = { climbingSheet = null }, editId = id.takeIf { it.isNotEmpty() && it != YESTERDAY_SHEET },
+                    startYesterday = id == YESTERDAY_SHEET,
                     // A second session today stays one tap away from today's entry.
-                    onAddAnother = if (id.isNotEmpty()) ({ climbingSheet = "" }) else null,
+                    onAddAnother = if (id.isNotEmpty() && id != YESTERDAY_SHEET) ({ climbingSheet = "" }) else null,
                     onDeleted = todayViewModel::climbingDeleted,
                 )
             }
@@ -336,3 +338,6 @@ private fun BasicsGate(open: () -> Unit) {
         androidx.hilt.navigation.compose.hiltViewModel(key = "basics-gate")
     androidx.compose.runtime.LaunchedEffect(gate) { gate.open.collect { open() } }
 }
+
+/** The climbing sheet opened for a new entry on yesterday; no entry id looks like this. */
+private const val YESTERDAY_SHEET = "@yesterday"

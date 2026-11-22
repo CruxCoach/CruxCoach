@@ -125,6 +125,16 @@ class SessionSuggesterTest {
     // ── The athlete's choice for today (owner 2026-10-15) ──
 
     @Test
+    fun theFirstTrainingIsNoFingerSessionByItself() {
+        // Owner 2026-11-22: before the first training the coach knows nothing about the fingers (no logbook yet).
+        assertEquals(SuggestionFocus.FINGER_STRENGTH, SessionSuggester.suggest(input()).focus)
+        val first = SessionSuggester.suggest(input().copy(firstTraining = true))
+        assertTrue(first.focus != SuggestionFocus.FINGER_STRENGTH && SuggestionReason.FINGERS_RESTED !in first.reasons, "${first.focus} ${first.reasons}")
+        // Chosen by the athlete it still runs.
+        assertEquals(SuggestionFocus.FINGER_STRENGTH, SessionSuggester.suggest(input().copy(firstTraining = true, wish = SuggestionFocus.FINGER_STRENGTH)).focus)
+    }
+
+    @Test
     fun aChosenKindWinsOverTheRotation() {
         val fresh = SessionSuggester.suggest(input())
         assertEquals(SuggestionFocus.FINGER_STRENGTH, fresh.focus)
