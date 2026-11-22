@@ -154,6 +154,71 @@ class DayPlansTest {
     }
 
     @Test
+    fun theHintsAndAFreeDayFollowTheAthletesLevel() {
+        // A hard day on Tuesday, a limit day on Thursday.
+        val hardDay = DayPlans.Climb(ClimbingDayKind.OUTDOOR, ClimbIntensity.HARD).entry
+        val p = DayPlans.withDay(DayPlans.withDay(AthleteProfile(), day(1), hardDay, monday), day(3), limit, monday)
+        fun hints(tier: DayPlans.Tier) = DayPlans.preview(p, monday, 7, monday, tier = tier).map { it.hint }
+        val climb = DayPlans.Hint.CLIMB
+        val open = DayPlans.Hint.OPEN
+        assertEquals(listOf(DayPlans.Hint.BEFORE_HARD, climb, DayPlans.Hint.AFTER_HARD, climb, DayPlans.Hint.AFTER_HARD, open, open),
+            hints(DayPlans.Tier.STANDARD))
+        // Advanced: a hard day holds the fingers back the same day only, so the day after it is no recovery day (as
+        // on today's card); the day after the limit day still is. The day before a climbing day keeps the fingers
+        // fresh at every level, as the card does.
+        assertEquals(listOf(DayPlans.Hint.BEFORE_HARD, climb, DayPlans.Hint.BEFORE_LIMIT, climb, DayPlans.Hint.AFTER_HARD, open, open),
+            hints(DayPlans.Tier.ADVANCED))
+        // Elite: no day after a climbing day is held back.
+        assertEquals(listOf(DayPlans.Hint.BEFORE_HARD, climb, DayPlans.Hint.BEFORE_LIMIT, climb, open, open, open),
+            hints(DayPlans.Tier.ELITE))
+        // Climbing logged without an intensity holds the next day back at every level: the coach cannot say how hard it was.
+        assertEquals(DayPlans.Hint.AFTER_HARD,
+            DayPlans.preview(AthleteProfile(), monday, 1, monday, logged = mapOf(day(-1) to null), tier = DayPlans.Tier.ELITE)[0].hint)
+
+        // A finger training that gave way on Monday finds its free day by the same level.
+        assertEquals(day(5), DayPlans.freeDayFor(p, monday, monday, fingerWork = true))
+        assertEquals(day(5), DayPlans.freeDayFor(p, monday, monday, fingerWork = true, tier = DayPlans.Tier.ADVANCED))
+        assertEquals(day(4), DayPlans.freeDayFor(p, monday, monday, fingerWork = true, tier = DayPlans.Tier.ELITE))
+        assertEquals(day(4), DayPlans.freeDayFor(p, monday, monday, fingerWork = false, tier = DayPlans.Tier.ADVANCED))
+        // With the hard day alone, the day after it is free for an advanced climber's finger training.
+        val onlyHard = DayPlans.withDay(AthleteProfile(), day(1), hardDay, monday)
+        assertEquals(day(3), DayPlans.freeDayFor(onlyHard, monday, monday, fingerWork = true))
+        assertEquals(day(2), DayPlans.freeDayFor(onlyHard, monday, monday, fingerWork = true, tier = DayPlans.Tier.ADVANCED))
+
+        // From 40 on the recovery rules are the usual ones at every level; the warnings keep the level.
+        val pro = CoachProfile(experience = ExperienceBand.OVER_5, ageBand = AgeBand.Y18_39, trainingDaysPerWeek = 4, currentGrade = "7A")
+        assertEquals(DayPlans.Tier.ADVANCED, DayPlans.recoveryTier(pro))
+        assertEquals(DayPlans.Tier.STANDARD, DayPlans.recoveryTier(pro.copy(ageBand = AgeBand.Y40_54)))
+        assertEquals(DayPlans.Tier.ADVANCED, DayPlans.tier(pro.copy(ageBand = AgeBand.Y40_54)))
+    }
+
+    @Test
+    fun anAcknowledgedWarningHoldsUntilTheDaysGetHarder() {
+        val hardDay = DayPlans.Climb(ClimbingDayKind.OUTDOOR, ClimbIntensity.HARD).entry
+        val p = DayPlans.withDay(DayPlans.withDay(AthleteProfile(), day(1), hardDay, monday), day(2), hardDay, monday)
+        val w = DayPlans.Warning(DayPlans.WarningKind.HARD_BACK_TO_BACK, day(2), day(1))
+        val read = DayPlans.planned(w, DayPlans.preview(p, monday, 7, monday))
+        assertEquals("1,1", read)
+        assertTrue(DayPlans.covers(read, read))
+        // The same two days as limit days are another plan: the warning comes back.
+        val harder = DayPlans.withDay(DayPlans.withDay(p, day(1), limit, monday), day(2), limit, monday)
+        val now = DayPlans.planned(w, DayPlans.preview(harder, monday, 7, monday))
+        assertEquals("2,2", now)
+        assertFalse(DayPlans.covers(read, now))
+        // What got easier stays read; one day harder does not.
+        assertTrue(DayPlans.covers(now, read))
+        assertTrue(DayPlans.covers("2,1", "1,1"))
+        assertFalse(DayPlans.covers("1,2", "2,1"))
+        // Nothing read, or a value from before the plan was remembered ("1"): not covered.
+        assertFalse(DayPlans.covers(null, read))
+        assertFalse(DayPlans.covers("1", read))
+        // Finger training before a hard day: the training's own day counts 0.
+        val q = DayPlans.withDay(DayPlans.withDay(AthleteProfile(), day(4), fingers, monday), day(5), PLAN_BOARD, monday)
+        assertEquals("0,1", DayPlans.planned(DayPlans.Warning(DayPlans.WarningKind.FINGERS_BEFORE_HARD, day(5), day(4)),
+            DayPlans.preview(q, monday, 7, monday)))
+    }
+
+    @Test
     fun trainingPastTheWeeksDaysTwiceTeachesTheCoach() {
         fun anyway(id: String, day: LocalDate) = SuggestionEvent(id, day.toString(), 1_000, SuggestionEventKind.FEEDBACK, PreferenceLearning.TRAIN_ANYWAY)
         val today = day(20)
