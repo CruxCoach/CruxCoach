@@ -279,8 +279,9 @@ object WeekPlanSuggester {
      * looks across the week's end): no finger work the day before or after a hard day, legs and core before a limit
      * day. A training that does not fit its day changes places with one of the same week that does; only without
      * one it gives way. [tier] is the level [days] were previewed with ([DayPlans.recoveryTier]): the hints already
-     * follow it, and so does the week ([around]); above the standard level a finger day also never follows another,
-     * across the week's end either.
+     * follow it, and so does the week ([around]); above the standard level a finger day also never follows another.
+     * At every level finger work on a week's last day gives way to climbing or finger training on the next week's
+     * first, which the week itself cannot see.
      * A proposal is the plan the coach would write; on the day itself today's card still goes by form and recovery.
      */
     fun forDays(
@@ -341,7 +342,11 @@ object WeekPlanSuggester {
             val entry = result[date] ?: continue
             // Above the standard level a week can hold several finger days: none follows another.
             val follows = several && fingerWork(entry) && fingerDay(date.minus(DatePeriod(days = 1)))
-            if (advised(date, entry) && !follows) continue
+            // The week's own rules end with the week: finger work on its last day gives way to climbing or finger
+            // training on the first day of the next (the athlete's own days there are not this week's).
+            val tomorrow = date.plus(DatePeriod(days = 1))
+            val overEnd = fingerWork(entry) && mondayOf(tomorrow) != mondayOf(date) && (climbing(tomorrow) || fingerDay(tomorrow))
+            if (advised(date, entry) && !follows && !overEnd) continue
             val other = result.keys.firstOrNull { o ->
                 val there = result.getValue(o)
                 o != date && mondayOf(o) == mondayOf(date) && isTraining(there) &&

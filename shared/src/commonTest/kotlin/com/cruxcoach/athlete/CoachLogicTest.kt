@@ -154,6 +154,12 @@ class CoachLogicTest {
                 date(5) to legsDay, date(6) to mobilityDay),
             proposals(threeDays, DayPlans.preview(threeDays, monday, 7, monday, logged = mapOf(date(-1) to ClimbIntensity.LIMIT))),
         )
+        // The week's own rules end on Sunday: its finger day there gives way to a climbing day the athlete planned
+        // for the Monday after, also an easy one the hints say nothing about.
+        val weekend = threeDays.copy(coach = CoachProfile(climbingDays = setOf(2, 5), trainingDaysPerWeek = 4))
+        assertEquals(fingerDay, proposals(weekend, DayPlans.preview(weekend, monday, 8, monday))[date(6)])
+        val volumeMonday = DayPlans.withDay(weekend, date(7), DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.VOLUME).entry, monday)
+        assertEquals(pullDay, proposals(volumeMonday, DayPlans.preview(volumeMonday, monday, 8, monday))[date(6)])
         // Only without a training of the week to change places with, the one that does not fit gives way: the
         // same two days looked at alone.
         assertEquals(mapOf(date(1) to legsDay), proposals(limit, DayPlans.preview(limit, date(1), 1, monday)))
