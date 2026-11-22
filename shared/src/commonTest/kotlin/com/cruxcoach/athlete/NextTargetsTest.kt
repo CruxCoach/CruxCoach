@@ -415,6 +415,24 @@ class NextTargetsTest {
     }
 
     @Test
+    fun repetitionsTakenOffWithinATrainingAtBodyWeightStillReadAsTooHard() {
+        // Lunges cannot be assisted: at body weight a set without reserve takes a repetition off the next sets, not a
+        // kilo. Read against those lowered targets the training counted as reached, the plan said "the same again" for
+        // good, and the easier exercise was never offered.
+        val lunge = def("legs.walking_lunge", ExerciseKind.LOAD_REPS, LoadMode.BODYWEIGHT_PLUS,
+            defaults = Prescription(sets = 3, repsMin = 12, repsMax = 20)).copy(category = ExerciseCategoryV2.LEGS, easier = "legs.reverse_lunge")
+        // A value that plans 12 at body weight: 70 kg × (1 + (12 + 2) / 30).
+        val value = oneRepMax(70.0 * (1.0 + 14.0 / 30.0))
+        fun sets(targets: List<Int>, done: List<Int>, rir: List<Int?>) =
+            training(lunge, "w1", 1_000, target = 12, done = done, rir = rir, load = 0.0).mapIndexed { i, s -> s.copy(targetReps = targets[i]) }
+        val fading = sets(targets = listOf(12, 11, 10), done = listOf(12, 11, 10), rir = listOf(0, 0, 0))
+        assertEquals(NextTargets.Next(reps = 12, loadKg = 0.0, move = Move.DOWN, atBottom = true), next(lunge, fading, value))
+        // Reached as planned, only hard: the same again, and no step back on offer.
+        val hard = sets(targets = listOf(12, 12, 12), done = listOf(12, 12, 12), rir = listOf(1, 1, 0))
+        assertEquals(NextTargets.Next(reps = 12, loadKg = 0.0, move = Move.REPEAT), next(lunge, hard, value))
+    }
+
+    @Test
     fun aLoadTheAthleteWroteIntoTheWorkoutIsNeverMoved() {
         val value = oneRepMax(40.0 * (1.0 + 10.0 / 30.0))
         val bad = training(press, "w2", 2_000, 8, listOf(6, 5, 4), listOf(0, 0, 0), load = 45.0)

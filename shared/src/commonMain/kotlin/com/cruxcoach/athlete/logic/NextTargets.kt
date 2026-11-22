@@ -314,8 +314,15 @@ object NextTargets {
         val lastLoad = last.maxOf { it.loadKg!! }
         val lastReps = last.mapNotNull { it.targetReps }.maxOrNull() ?: last.minOf { it.reps!! }
         // A load step needs an answered reserve: "reached" alone must not make a load the athlete lowered heavier again.
-        fun readOf(sets: List<ExerciseSet>) = read(sets.map { it.reps!!.toDouble() }, sets.map { it.targetReps?.toDouble() },
-            sets.map { it.rir }, unknownIsEasy = false)
+        // A training is read against the repetitions it started with: where no weight is left to take off (body weight,
+        // for work that cannot be assisted), the sets after one without reserve get a repetition less
+        // ([SetAutoregulation]). Read against their own lowered targets, every such training counted as reached and the
+        // step back to the easier exercise was never offered (walking lunges at 12, 11, 10 and 9 without reserve, week
+        // after week: training simulation 2026-11-22).
+        fun readOf(sets: List<ExerciseSet>): Read {
+            val started = sets.mapNotNull { it.targetReps }.maxOrNull()?.toDouble()
+            return read(sets.map { it.reps!!.toDouble() }, sets.map { s -> s.targetReps?.let { started } }, sets.map { it.rir }, unknownIsEasy = false)
+        }
         val r = readOf(last)
         // One step lighter, where there is one: no dumbbell under its smallest step, no "assisted" leg work.
         val lighter = (lastLoad - step).takeIf {
