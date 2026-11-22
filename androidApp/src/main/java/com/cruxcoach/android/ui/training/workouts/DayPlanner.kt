@@ -327,8 +327,9 @@ fun DayPlannerSheet(onDismiss: () -> Unit, viewModel: DayPlannerViewModel = hilt
                         val hint = when {
                             own -> hintText(day, state.profile)
                             paused -> null
-                            // Whose plan this is; next to a hard day the coach's reason says it ("Coach: …").
-                            proposal != null -> when (day.hint) {
+                            // Whose plan this is. A training next to a hard day carries the coach's reason for it
+                            // ("Coach: …"); a rest day needs none ("Rest day" over "legs and core" contradicted itself).
+                            proposal != null -> when (day.hint.takeIf { WeekPlanSuggester.isTraining(proposal) }) {
                                 DayPlans.Hint.AFTER_HARD, DayPlans.Hint.BEFORE_LIMIT, DayPlans.Hint.BEFORE_HARD -> hintText(day, state.profile)
                                 else -> null
                             } ?: stringResource(R.string.trdp_proposal)
@@ -356,8 +357,11 @@ fun DayPlannerSheet(onDismiss: () -> Unit, viewModel: DayPlannerViewModel = hilt
             routines = state.routines,
             onDismiss = { choosing = null },
             onChoose = { entry -> viewModel.set(date, entry ?: PLAN_FREE); choosing = null },
-            // "Free" says what it means for this day: the coach's proposal stands again.
-            freeLabel = state.proposals[date]?.let { stringResource(R.string.trdp_free_proposal, planEntryLabel(it, state.routines)) }
+            // "Free" says what it stands for, the coach's proposal for the day – except on a usual climbing day, where
+            // "free" takes the climbing away and the coach plans the day anew.
+            freeLabel = state.proposals[date]
+                ?.takeIf { day?.hint != DayPlans.Hint.CLIMB || !(it == PLAN_BOARD || DayPlans.isClimb(it)) }
+                ?.let { stringResource(R.string.trdp_free_proposal, planEntryLabel(it, state.routines)) }
                 ?: stringResource(R.string.trdp_free),
             standardLabel = if (day?.overridden == true) stringResource(R.string.trdp_standard, planEntryLabel(standard, state.routines)) else null,
             onStandard = { viewModel.set(date, null); choosing = null },

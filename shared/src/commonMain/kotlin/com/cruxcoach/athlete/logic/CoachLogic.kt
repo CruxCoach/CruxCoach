@@ -120,9 +120,13 @@ object WeekPlanSuggester {
         val entries: Map<Int, String> = emptyMap(),
         /** Usual climbing weekdays the athlete freed this week: no climbing is proposed there, anything else is. */
         val freed: Set<Int> = emptySet(),
-        /** Weekdays within a pause: nothing is proposed. */
+        /** Weekdays within a pause: nothing is proposed there; the other days stay what they would be without it. */
         val paused: Set<Int> = emptySet(),
     )
+
+    /** A plan entry is a training: not a rest day, not climbing, not the short mobility session. */
+    fun isTraining(entry: String): Boolean =
+        entry != PLAN_REST && entry != PLAN_FREE && entry != PLAN_BOARD && entry != MOBILITY && !DayPlans.isClimb(entry)
 
     fun suggest(
         coach: CoachProfile,
@@ -135,8 +139,9 @@ object WeekPlanSuggester {
     /**
      * The week for the days [fixed] leaves open, planned around the athlete's own days: his climbing days count as
      * climbing days, his trainings as training days of the week (so the coach proposes fewer of its own, and none he
-     * already planned), and max finger work keeps a day's distance from every climbing day and from finger work he
-     * planned ([fingerWork] says which of his entries trains the fingers). Without anything fixed this is [suggest].
+     * already planned), max finger work keeps a day's distance from every climbing day, and there is one finger day
+     * a week, his or the coach's ([fingerWork] says which of his entries trains the fingers). Without anything fixed
+     * this is [suggest].
      */
     fun around(
         coach: CoachProfile,
@@ -150,10 +155,11 @@ object WeekPlanSuggester {
         val active = injuries.filter { it.isActive }
         val climbingPaused = active.any { it.climbingPaused }
         val usual = coach.climbingDays.ifEmpty { logbook.usualClimbingDays }.filter { it in 1..7 }.toSortedSet()
-        val own = fixed.entries.filter { (day, entry) -> day in 1..7 && day !in fixed.paused && entry != PLAN_FREE }
-        val taken: Set<Int> = own.keys + fixed.paused.filter { it in 1..7 }
+        val own = fixed.entries.filter { (day, entry) -> day in 1..7 && entry != PLAN_FREE }
+        val taken: Set<Int> = own.keys
         val ownClimbing: Set<Int> = own.filterValues { it == PLAN_BOARD || DayPlans.isClimb(it) }.keys
-        val ownTraining: Map<Int, String> = own.filterValues { it != PLAN_REST && it != PLAN_BOARD && !DayPlans.isClimb(it) }
+        // A mobility day of his own is no training day of the week, as the coach's own is none.
+        val ownTraining: Map<Int, String> = own.filterValues { isTraining(it) }
         // The climbing days the coach counts on: the usual ones the athlete left as they are.
         val proposed: Set<Int> = if (climbingPaused) emptySet() else usual.filter { it !in taken && it !in fixed.freed }.toSet()
         val climbing: Set<Int> = proposed + ownClimbing
@@ -173,10 +179,11 @@ object WeekPlanSuggester {
         chosen.sort()
 
         val all = rotation(coach, routines, equipment, active, climbingPaused)
-        val other = all.firstOrNull { it != FINGER } ?: PULL
         // What the athlete planned himself is not proposed a second time; one finger day a week, his or the coach's.
-        val ownFinger: Set<Int> = ownTraining.filterValues { fingerWork(it) }.keys
-        val rotation = all.filter { it !in ownTraining.values && (ownFinger.isEmpty() || it != FINGER) }.ifEmpty { listOf(other) }
+        val ownFinger = ownTraining.values.any { fingerWork(it) }
+        val left = all.filter { it !in ownTraining.values && (!ownFinger || it != FINGER) }
+        val other = left.firstOrNull { it != FINGER } ?: all.firstOrNull { it != FINGER } ?: PULL
+        val rotation = left.ifEmpty { listOf(other) }
         val plan = mutableMapOf<Int, String>()
         val climbingEntry = climbingEntry(coach, logbook, equipment)
         proposed.forEach { plan[it] = climbingEntry }
@@ -191,10 +198,7 @@ object WeekPlanSuggester {
         // exactly that, so the coach's own week must not start with it (phone check 2026-11-21). The finger day moves
         // to an off-wall day that fits; only without one it gives way (review 2026-11-21: it was dropped although
         // Saturday was free).
-        fun fingerFits(day: Int): Boolean {
-            val neighbours = setOf((day + 5) % 7 + 1, day % 7 + 1)
-            return neighbours.none { it in climbing || it in ownFinger }
-        }
+        fun fingerFits(day: Int) = ((day + 5) % 7 + 1) !in climbing && (day % 7 + 1) !in climbing
         val at = entries.indexOf(FINGER)
         if (at >= 0 && !fingerFits(chosen[at])) {
             val to = chosen.indices.firstOrNull { it != at && fingerFits(chosen[it]) }
@@ -211,14 +215,17 @@ object WeekPlanSuggester {
             plan[day] = MOBILITY
         }
         free.filter { it !in plan }.forEach { plan[it] = PLAN_REST }
-        return plan.toSortedMap()
+        // A pause takes its days out; it does not push the week's trainings into the days after it.
+        return plan.filterKeys { it !in fixed.paused }.toSortedMap()
     }
 
     /**
      * The coach's proposal for every day of [days] the athlete left open (a [DayPlans.preview]): each calendar week
      * is planned around what the athlete planned in it himself ([around]) – the standard week and single dates
-     * alike. Next to a hard day the proposal then follows the planner's own advice ([DayPlans.Hint]), which looks
-     * across the week's end too: no finger work the day before or after a hard day, legs and core before a limit day.
+     * alike. Next to a hard day the planner's own advice then decides ([DayPlans.Hint]; it knows what was logged and
+     * looks across the week's end): no finger work the day before or after a hard day, legs and core before a limit
+     * day. A training that does not fit its day changes places with one of the same week that does; only without
+     * one it gives way.
      * A proposal is the plan the coach would write; on the day itself today's card still goes by form and recovery.
      */
     fun forDays(
@@ -230,6 +237,7 @@ object WeekPlanSuggester {
         pauses: List<PausePeriod> = emptyList(),
         fingerWork: (String) -> Boolean,
     ): Map<LocalDate, String> {
+        fun mondayOf(date: LocalDate) = date.minus(DatePeriod(days = date.dayOfWeek.isoDayNumber - 1))
         val weeks = mutableMapOf<LocalDate, Map<Int, String>>()
         fun week(monday: LocalDate): Map<Int, String> = weeks.getOrPut(monday) {
             val entries = mutableMapOf<Int, String>()
@@ -238,25 +246,44 @@ object WeekPlanSuggester {
             for (weekday in 1..7) {
                 val date = monday.plus(DatePeriod(days = weekday - 1))
                 val entry = DayPlans.entry(profile, date)
-                when {
-                    DayPlans.paused(pauses, date) -> paused += weekday
-                    entry != null -> entries[weekday] = entry
-                    DayPlans.isOverridden(profile, date) -> freed += weekday
-                }
+                if (entry != null) entries[weekday] = entry else if (DayPlans.isOverridden(profile, date)) freed += weekday
+                if (DayPlans.paused(pauses, date)) paused += weekday
             }
             around(profile.coach, logbook, routines, profile.equipment, injuries, Fixed(entries, freed, paused), fingerWork)
         }
+        val hints = days.associate { it.date to it.hint }
         val result = mutableMapOf<LocalDate, String>()
         for (day in days) {
             if (day.entry != null || day.hint == DayPlans.Hint.PAUSED) continue
-            val weekday = day.date.dayOfWeek.isoDayNumber
-            val proposal = week(day.date.minus(DatePeriod(days = weekday - 1)))[weekday] ?: continue
-            val training = proposal != PLAN_REST && proposal != PLAN_BOARD && proposal != MOBILITY && !DayPlans.isClimb(proposal)
-            result[day.date] = when {
-                !training -> proposal
-                day.hint == DayPlans.Hint.BEFORE_LIMIT && proposal != LEGS && proposal != CORE -> LEGS
-                (day.hint == DayPlans.Hint.AFTER_HARD || day.hint == DayPlans.Hint.BEFORE_HARD) && fingerWork(proposal) -> PULL
-                else -> proposal
+            val proposal = week(mondayOf(day.date))[day.date.dayOfWeek.isoDayNumber] ?: continue
+            result[day.date] = proposal
+        }
+        // What the planner advises for the day.
+        fun advised(date: LocalDate, entry: String): Boolean = !isTraining(entry) || when (hints[date]) {
+            DayPlans.Hint.BEFORE_LIMIT -> entry == LEGS || entry == CORE
+            DayPlans.Hint.AFTER_HARD, DayPlans.Hint.BEFORE_HARD -> !fingerWork(entry)
+            else -> true
+        }
+        // Finger work that moves keeps the week's rule: no climbing the day before or after, planned or proposed.
+        fun clear(date: LocalDate, entry: String): Boolean = !fingerWork(entry) ||
+            listOf(date.minus(DatePeriod(days = 1)), date.plus(DatePeriod(days = 1))).none { next ->
+                val there = DayPlans.entry(profile, next) ?: week(mondayOf(next))[next.dayOfWeek.isoDayNumber]
+                there == PLAN_BOARD || DayPlans.isClimb(there)
+            }
+        for (day in days) {
+            val date = day.date
+            val entry = result[date] ?: continue
+            if (advised(date, entry)) continue
+            val other = result.keys.firstOrNull { o ->
+                val there = result.getValue(o)
+                o != date && mondayOf(o) == mondayOf(date) && isTraining(there) &&
+                    advised(date, there) && clear(date, there) && advised(o, entry) && clear(o, entry)
+            }
+            if (other != null) {
+                result[date] = result.getValue(other)
+                result[other] = entry
+            } else {
+                result[date] = if (day.hint == DayPlans.Hint.BEFORE_LIMIT) LEGS else PULL
             }
         }
         return result

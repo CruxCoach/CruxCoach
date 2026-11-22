@@ -118,8 +118,15 @@ class CoachLogicTest {
         // A rest day of his own stays his: the three trainings go to the other days.
         assertEquals(mapOf(2 to fingerDay, 3 to mobilityDay, 4 to PLAN_REST, 5 to pullDay, 6 to PLAN_REST, 7 to legsDay),
             around(WeekPlanSuggester.Fixed(entries = mapOf(1 to PLAN_REST))))
-        // Nothing is proposed within a pause.
-        assertEquals(mapOf(4 to fingerDay, 5 to pullDay, 6 to PLAN_REST, 7 to legsDay),
+        // His own pulling day is not proposed a second time, not even where the finger day is used up (five days a week).
+        val five = WeekPlanSuggester.around(CoachProfile(trainingDaysPerWeek = 5), LogbookSummary(), emptyList(), home, emptyList(),
+            WeekPlanSuggester.Fixed(entries = mapOf(2 to pullDay))) { it == fingerDay }
+        assertEquals(mapOf(1 to fingerDay, 3 to legsDay, 4 to PLAN_REST, 5 to coreDay, 6 to PLAN_REST, 7 to legsDay), five)
+        // A mobility day of his own costs no training: three trainings, and no second mobility day.
+        assertEquals(mapOf(1 to fingerDay, 3 to PLAN_REST, 4 to pullDay, 5 to PLAN_REST, 6 to legsDay, 7 to PLAN_REST),
+            around(WeekPlanSuggester.Fixed(entries = mapOf(2 to mobilityDay))))
+        // Nothing is proposed within a pause, and the days after it stay what they would be: no three trainings in four days.
+        assertEquals(mapOf(4 to pullDay, 5 to PLAN_REST, 6 to legsDay, 7 to mobilityDay),
             around(WeekPlanSuggester.Fixed(paused = setOf(1, 2, 3))))
     }
 
@@ -133,17 +140,25 @@ class CoachLogicTest {
 
     @Test
     fun theProposalFollowsTheAthletesHardDays() {
-        // A limit day on Wednesday, five days a week: pulling the day before becomes legs, as the planner advises.
+        // A limit day on Wednesday, five days a week: the day before it is for legs, as the planner advises – legs and
+        // pulling change places, the week keeps all its trainings.
         val five = threeDays.copy(coach = CoachProfile(trainingDaysPerWeek = 5))
         val limit = DayPlans.withDay(five, date(2), limitDay, monday)
         assertEquals(
-            mapOf(date(0) to fingerDay, date(1) to legsDay, date(3) to legsDay, date(4) to PLAN_REST, date(5) to coreDay, date(6) to PLAN_REST),
+            mapOf(date(0) to fingerDay, date(1) to legsDay, date(3) to pullDay, date(4) to PLAN_REST, date(5) to coreDay, date(6) to PLAN_REST),
             proposals(limit, DayPlans.preview(limit, monday, 7, monday)),
         )
-        // A limit day logged yesterday: no finger work today, the rest of the week as proposed.
-        val after = proposals(threeDays, DayPlans.preview(threeDays, monday, 7, monday, logged = mapOf(date(-1) to ClimbIntensity.LIMIT)))
-        assertEquals(pullDay, after[date(0)])
-        assertEquals(listOf(pullDay, legsDay, mobilityDay), listOf(after[date(3)], after[date(5)], after[date(6)]))
+        // A limit day logged yesterday: no finger work today – it changes places with Thursday's pulling.
+        assertEquals(
+            mapOf(date(0) to pullDay, date(1) to PLAN_REST, date(2) to PLAN_REST, date(3) to fingerDay, date(4) to PLAN_REST,
+                date(5) to legsDay, date(6) to mobilityDay),
+            proposals(threeDays, DayPlans.preview(threeDays, monday, 7, monday, logged = mapOf(date(-1) to ClimbIntensity.LIMIT))),
+        )
+        // Only without a training of the week to change places with, the one that does not fit gives way: the
+        // same two days looked at alone.
+        assertEquals(mapOf(date(1) to legsDay), proposals(limit, DayPlans.preview(limit, date(1), 1, monday)))
+        assertEquals(mapOf(date(0) to pullDay),
+            proposals(threeDays, DayPlans.preview(threeDays, monday, 1, monday, logged = mapOf(date(-1) to ClimbIntensity.LIMIT))))
     }
 
     @Test
@@ -157,9 +172,9 @@ class CoachLogicTest {
                 date(5) to pullDay, date(6) to PLAN_REST),
             proposals(freed, DayPlans.preview(freed, monday, 7, monday)),
         )
-        // A pause until Wednesday: nothing for its days, the week's trainings after it.
+        // A pause until Wednesday: nothing for its days, the days after it as in any week.
         val pause = listOf(PausePeriod("p", PauseReason.HOLIDAY, date(0).toString(), date(2).toString()))
-        assertEquals(mapOf(date(3) to fingerDay, date(4) to pullDay, date(5) to PLAN_REST, date(6) to legsDay),
+        assertEquals(mapOf(date(3) to pullDay, date(4) to PLAN_REST, date(5) to legsDay, date(6) to mobilityDay),
             proposals(threeDays, DayPlans.preview(threeDays, monday, 7, monday, pause), pause))
     }
 

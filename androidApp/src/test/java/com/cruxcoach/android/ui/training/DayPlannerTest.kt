@@ -13,6 +13,7 @@ import com.cruxcoach.android.ui.training.workouts.PLANNER_DAYS
 import com.cruxcoach.athlete.logic.BuiltinRoutines
 import com.cruxcoach.athlete.logic.DayPlans
 import com.cruxcoach.athlete.logic.SuggestionFocus
+import com.cruxcoach.athlete.logic.WeekPlanSuggester
 import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.ClimbingDayKind
 import com.cruxcoach.athlete.model.PLAN_REST
@@ -42,7 +43,8 @@ class DayPlannerTest : AthleteScreenTest() {
         val today = service.today()
         val d1 = today.plus(DatePeriod(days = 1))
         val d3 = today.plus(DatePeriod(days = 3))
-        repo.updateProfile { it.copy(weekPlan = mapOf(today.dayOfWeek.isoDayNumber to fingers)) }
+        // Seven days a week: the coach proposes a training for every open day, whatever weekday the test runs on.
+        repo.updateProfile { it.copy(weekPlan = mapOf(today.dayOfWeek.isoDayNumber to fingers), coach = it.coach.copy(trainingDaysPerWeek = 7)) }
         val vm = loaded(DayPlannerViewModel(service))
         render { DayPlannerSheet(onDismiss = {}, viewModel = vm) }
 
@@ -55,11 +57,13 @@ class DayPlannerTest : AthleteScreenTest() {
 
         // A climbing day is the day and how hard: no button after it (owner 2026-11-22: it was a tap too many).
         click("day_planner_day_$d1")
+        scrollTo("week_plan_chooser", "week_plan_climb")
         click("week_plan_climb_intensity_volume")
         val volume = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.VOLUME).entry
         compose.waitUntil(WAIT_MS) { repo.profile().datePlan[d1.toString()] == volume }
 
         click("day_planner_day_$d3")
+        scrollTo("week_plan_chooser", "week_plan_climb")
         click("week_plan_climb_intensity_limit")
         val limit = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.LIMIT).entry
         compose.waitUntil(WAIT_MS) { repo.profile().datePlan[d3.toString()] == limit }
@@ -67,6 +71,11 @@ class DayPlannerTest : AthleteScreenTest() {
         // The free day before the limit day keeps fingers and pulling fresh; the day after it recovers.
         compose.waitUntil(WAIT_MS) { vm.state.value.days.getOrNull(2)?.hint == DayPlans.Hint.BEFORE_LIMIT }
         assertEquals(DayPlans.Hint.AFTER_HARD, vm.state.value.days[4].hint)
+        // What the coach proposes for the day before the limit day is a legs or core training, and the row says why.
+        val before = vm.state.value.days[2].date
+        val legsOrCore = setOf("builtin:" + BuiltinRoutines.LEGS_BASICS, "builtin:" + BuiltinRoutines.CORE_CLIMBER)
+        compose.waitUntil(WAIT_MS) { vm.state.value.proposals[before]?.let { it in legsOrCore } == true }
+        assertTrue(vm.state.value.proposals.values.all { WeekPlanSuggester.isTraining(it) })
         waitForText("legs and core")
         waitForText("Gym bouldering · Limit")
 
@@ -97,10 +106,11 @@ class DayPlannerTest : AthleteScreenTest() {
         val day = vm.state.value.days.first { vm.state.value.proposals[it.date] == PLAN_REST }.date
         click("day_planner_day_$day")
         waitForText("Free – the coach proposes: Rest day")
+        scrollTo("week_plan_chooser", "week_plan_climb")
         click("week_plan_climb_intensity_hard")
         val hard = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.HARD).entry
         compose.waitUntil(WAIT_MS) { repo.profile().datePlan[day.toString()] == hard }
-        // The day is the athlete's now, and the coach plans the others around it: no finger work next to it.
+        // The day is the athlete's now, and the coach plans the others around it.
         compose.waitUntil(WAIT_MS) { vm.state.value.days.firstOrNull { it.date == day }?.entry == hard }
         compose.waitUntil(WAIT_MS) { day !in vm.state.value.proposals }
         assertTrue(vm.state.value.proposals.isNotEmpty())

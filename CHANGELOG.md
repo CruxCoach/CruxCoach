@@ -551,7 +551,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   limit), a board session, a training, or swap two days. A change holds for
   that date only; the standard week stays. The coach fits the free days around
   the climbing: no finger training before a hard day, legs and core before a
-  limit day, recovery after it, and it says so in the planner. Two hard days in
+  limit day, recovery after it, and it says so in the planner. A day left open
+  shows what the coach proposes for it, planned around your own days, and the
+  coach's proposal for the next seven days stands above them. Two hard days in
   a row or finger training before one are pointed out, nothing is locked. A
   training that gives way is offered the next free day that fits it. "Rest day
   today" sits in "Another suggestion", with Undo. On a planned climbing day
