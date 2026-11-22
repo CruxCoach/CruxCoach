@@ -1669,9 +1669,15 @@ private fun LoadSpikeCard(state: TodayState, onSeen: () -> Unit = {}, onLighterW
             }
         }
         // Advice the athlete has read does not come back every day: quiet until next week. The lighter week is an
-        // offer here, never something the coach starts by itself.
+        // offer here, never something the coach starts by itself – and none while the week already is a lighter one
+        // (a second tap started its seven days again) or the days before a trip or competition.
+        val phase = state.block?.phase
+        val lighterAlready = phase == com.cruxcoach.athlete.logic.BlockPhase.DELOAD || phase == com.cruxcoach.athlete.logic.BlockPhase.TAPER ||
+            phase == com.cruxcoach.athlete.logic.BlockPhase.EVENT
         Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onLighterWeek, modifier = Modifier.testTag("today_load_spike_lighter")) { Text(stringResource(R.string.tre_deload_action)) }
+            if (!lighterAlready) {
+                TextButton(onClick = onLighterWeek, modifier = Modifier.testTag("today_load_spike_lighter")) { Text(stringResource(R.string.tre_deload_action)) }
+            }
             TextButton(onClick = onSeen, modifier = Modifier.testTag("today_load_spike_seen")) { Text(stringResource(R.string.action_understood)) }
         }
     }
