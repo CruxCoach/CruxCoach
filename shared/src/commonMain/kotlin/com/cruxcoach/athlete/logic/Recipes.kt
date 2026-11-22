@@ -2,6 +2,7 @@ package com.cruxcoach.athlete.logic
 
 import com.cruxcoach.athlete.model.FoodItem
 import kotlinx.serialization.Serializable
+import kotlin.math.roundToLong
 
 /**
  * A recipe: ingredients with their raw weight, split into portions (FEAT-069).
@@ -48,10 +49,44 @@ data class Recipe(
         )
     }
 
+    /**
+     * What the dish is made of, whatever it is called and in whatever order: every ingredient by its name, its weight
+     * and what it brings, in tenths – so values that went through the database and back still match.
+     */
+    private fun contents(): List<String> = ingredients.map { i ->
+        fun tenths(per100: Double?) = per100?.let { (it * i.grams / 10.0).roundToLong().toString() } ?: "-"
+        listOf(i.name.trim().lowercase(), (i.grams * 10).roundToLong().toString(), tenths(i.kcalPer100), tenths(i.proteinPer100),
+            tenths(i.carbsPer100), tenths(i.fatPer100)).joinToString("|")
+    }.sorted()
+
+    /** The same dish under any name: the same ingredients in the same amounts, split and weighed the same way. */
+    fun sameDishAs(other: Recipe): Boolean =
+        portions == other.portions && (totalWeightG * 10).roundToLong() == (other.totalWeightG * 10).roundToLong() &&
+            contents() == other.contents()
+
     companion object {
         /** food_item.source of recipes; the ingredients are kept under [settingKey]. */
         const val SOURCE = "recipe"
         fun settingKey(foodItemId: String) = "recipe:$foodItemId"
+
+        /**
+         * The saved dish that holds exactly these [entries] – the key of one of [dishes], which are saved dishes by
+         * their food id – or null. A meal that already is a dish is not offered for saving again: saving twice made
+         * two dishes of the same name (Nokia walk 2026-11-22). The foods count by name, so the same meal entered
+         * again on another day is recognised too.
+         */
+        fun savedDish(entries: List<com.cruxcoach.athlete.model.FoodLogEntry>, dishes: Map<String, Recipe>): String? {
+            if (entries.isEmpty() || dishes.isEmpty()) return null
+            val meal = fromEntries("", entries)
+            return dishes.entries.firstOrNull { it.value.sameDishAs(meal) }?.key
+        }
+
+        /** The dish among [names] (food id to name) that is called [name], capitals and outer blanks aside; not [except]. */
+        fun namesake(name: String, names: Map<String, String>, except: String? = null): String? {
+            val wanted = name.trim().lowercase()
+            if (wanted.isEmpty()) return null
+            return names.entries.firstOrNull { it.key != except && it.value.trim().lowercase() == wanted }?.key
+        }
 
         /**
          * A logged meal as one dish (owner 2026-11-22: four foods entered for dinner are one tap next time): every
