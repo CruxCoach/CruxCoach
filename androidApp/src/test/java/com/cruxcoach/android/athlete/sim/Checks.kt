@@ -54,6 +54,7 @@ enum class Check(val group: String, val title: String) {
     SEASONED_HELD_BACK("Plan", "A seasoned climber held back after climbing for longer than their step allows"),
     SEASONED_FINGER_DAY("Plan", "A seasoned climber rarely got finger training on the free day after a climbing day"),
     SEASONED_FINGER_WEEK("Plan", "A seasoned climber's week asked for, or reached, too few finger sessions"),
+    SEASONED_FINGER_MORE("Plan", "Finger training suggested to a seasoned climber whose week already held its finger sessions"),
     STACKING("Stacking", "Reductions stacked into a pointless session"),
     SPECIAL_FOR_BEGINNER("Choice", "Special exercise for a beginner who does not know it (weeks 1–4)"),
     FEW_FAMILIAR("Choice", "Too few well-known exercises for a beginner (weeks 1–4) or with “Mostly classics”"),
@@ -403,6 +404,16 @@ object Checks {
                 "the week asks for ${finger.goal} finger sessions, the week of an ${step.name.lowercase()} climber holds $asked")
             else if (finger.effective < finger.goal) flags += Flag(Check.SEASONED_FINGER_WEEK, w.last().day,
                 "%.1f finger sessions against a goal of %d".format(finger.effective, finger.goal))
+            // A finger day right after another one is a session of its own for a seasoned climber – the coach itself
+            // puts finger training on the day after climbing. Once the week's finger days (hard and limit climbing
+            // days, days with finger sets) reach what the week asks for, it suggests no more of it by itself.
+            var held = 0
+            w.forEach { d ->
+                if (held >= finger.goal && d.climbed == null && d.suggestion?.focus == SuggestionFocus.FINGER_STRENGTH) flags += Flag(Check.SEASONED_FINGER_MORE, d.day,
+                    "finger training suggested after $held finger days this week, the week asks for ${finger.goal}")
+                val climbedHard = d.climbed?.intensity == ClimbIntensity.HARD || d.climbed?.intensity == ClimbIntensity.LIMIT
+                if (climbedHard || d.sets.any { it.setType == SetType.WORK && r.catalog[it.slug]?.category == ExerciseCategoryV2.FINGER }) held++
+            }
         }
     }
 

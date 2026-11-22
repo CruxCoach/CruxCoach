@@ -311,17 +311,19 @@ data class Persona(
         /**
          * The coach leaves more to a seasoned climber (owner 2026-11-22): one persona per step. The advanced one trains
          * the day after a hard climbing day, the elite one the day after a limit day – where the usual rules keep finger
-         * work away – and neither climbs the day after that training, so nothing else stands against it.
+         * work away – and neither climbs on the day after that, so nothing else stands against finger training there.
+         * The advanced one trains again two days later with no climbing around it: the day that shows whether the
+         * finger training of the day after climbing counted as one of the week's sessions.
          */
         private val SEASONED: List<Persona> = listOf(
             Persona("advanced-7a", "Advanced boulderer at 7A, four days a week",
-                "Over five years, boulders 7A. A hard board session on Tuesday and a limit session in the gym on Saturday, " +
-                    "trains on Wednesday and Friday with hangboard, bar and weights.",
+                "Over five years, boulders 7A. A hard board session on Monday and a limit session in the gym on Saturday, " +
+                    "trains on Tuesday and Thursday with hangboard, bar and weights.",
                 seed = 1515, weeks = 10, level = Level.ADVANCED, bodyweightKg = 69.0,
-                coach = coach(CoachGoal.CLIMB_HARDER, ExperienceBand.OVER_5, AgeBand.Y18_39, 4, setOf(2, 6),
+                coach = coach(CoachGoal.CLIMB_HARDER, ExperienceBand.OVER_5, AgeBand.Y18_39, 4, setOf(1, 6),
                     setOf(ClimbingContext.HOME_BOARD, ClimbingContext.GYM_BOULDER), FingerPreference.HANGBOARD).copy(currentGrade = "7A"),
-                equipment = HOME + setOf(EquipmentV2.PLATES, EquipmentV2.BOARD), trainingDays = setOf(3, 5),
-                climbing = mapOf(2 to board(100, ClimbIntensity.HARD), 6 to boulder(120, ClimbIntensity.LIMIT)),
+                equipment = HOME + setOf(EquipmentV2.PLATES, EquipmentV2.BOARD), trainingDays = setOf(2, 4),
+                climbing = mapOf(1 to board(100, ClimbIntensity.HARD), 6 to boulder(120, ClimbIntensity.LIMIT)),
                 seasoned = Seasoned.ADVANCED),
             Persona("elite-7c-plus", "Elite boulderer at 7C+, six days a week",
                 "Over five years, boulders 7C+. Limit sessions on the board on Monday and Saturday, a hard gym session on " +

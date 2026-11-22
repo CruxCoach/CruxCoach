@@ -142,7 +142,7 @@ strength and apart from the plan's rules:
 | `home-classics` | `home-hangboard` with "Mostly classics" |
 | `new-no-setup` | A new user who answers none of the coach setup; a pull-up bar and a mat |
 | `picky` | `home-hangboard`, but taps "Another suggestion" on about a third of the training days and swaps one exercise for one of its alternatives on about four in ten |
-| `advanced-7a` | Over five years, boulders 7A, four days a week: a hard board day and a limit day, trains the day after the hard one |
+| `advanced-7a` | Over five years, boulders 7A, four days a week: a hard board day and a limit day, trains the day after the hard one and again two days later |
 | `elite-7c-plus` | Over five years, boulders 7C+, six days a week: two limit days and a hard day, trains the day after a limit day |
 | `comeback-skipper` | `pulley-comeback`, but skips about half of the plan's sessions and keeps the stage when the plan proposes a step back |
 | `comeback-eager` | `pulley-comeback`, but on half of the climbing days the stage allows climbs one level harder |
@@ -188,8 +188,9 @@ that misfires is caught instead of confirmed.
 | Plan | No full training is suggested once the week's training days (climbing included) are used up, and "training days done" is not said while days are left | – |
 | Plan | At least six different exercises in every eight full trainings (the block after climbing is meant to repeat) | – |
 | Plan | A seasoned climber under 40 (the persona says who is one) is not told to recover from climbing on a day without climbing – except an advanced climber the day after a limit session | Owner 2026-11-22: a hard day holds finger work back the same day only, a limit day the next one too for an advanced climber and not for an elite one |
-| Plan | A seasoned climber gets finger training suggested on the training day after a hard day (an elite climber: after a limit day too) in at least half of the whole build weeks from week 3 on that were trained as planned | Owner 2026-11-22 |
+| Plan | A seasoned climber gets finger training suggested on the training day after a hard day (an elite climber: after a limit day too) in at least half of the whole build weeks from week 3 on that were trained as planned (judged from two such weeks on) | Owner 2026-11-22 |
 | Plan | In those weeks the coach asks an elite climber for three finger sessions (an advanced one for two at least; hard climbing days count), and the week reaches them | Owner 2026-11-22 |
+| Plan | In those weeks the coach suggests no finger training by itself once the week's finger days (hard and limit climbing days, days with finger sets, each day counted) reach what the week asks for | For a seasoned climber the finger training of the day after climbing is a session of its own: the coach puts it there |
 | Stacking | A suggested training has at least three work sets and 12 minutes | – |
 | Choice | Beginners (personas of the beginner level), weeks 1–4: no Special exercise they do not know yet | Novices start with simple exercises and proper technique; complexity grows with training status (ACSM 2009) |
 | Choice | Beginners, weeks 1–4: at least 70 % of the main exercises (warm-ups and mobility aside) are Basic or known to them; with "Mostly classics" 80 % outside the finger work, for the whole run, and no Special exercise they do not know | ACSM 2009; the shares are the values of the proposal in issue #68 |
@@ -229,7 +230,8 @@ and the full run fails when there is one.
 
 For every weaker quality the run writes `<persona>-reference.md`: each training with work for it,
 the app's sets next to the reference's, with the reserve the athlete truly had. `SIM_DETAIL=legs,prehab`
-writes it for these qualities of every persona of the run, weaker or not.
+writes it for these qualities of every compared persona of the run that trained them, weaker or not
+(personas with an injury are not compared).
 
 The first training of an exercise starts where the app started, with the load the athlete lifted
 there: a planned load far beyond them they lower by hand, in the replay as in the app's run.
