@@ -2,11 +2,17 @@
 <resources>
     <!-- Plan single days over the standard week (owner 2026-10-19). -->
     <string name="trdp_title">Plan single days</string>
-    <string name="trdp_intro">Tap a day to plan or swap it. The coach fits the free days around your climbing days.</string>
+    <!-- Button of the card "Plan your week" on Today; the sheet it opens keeps its own title. -->
+    <string name="trdp_card_action">Plan</string>
+    <string name="trdp_intro">Each day you have not planned shows the coach\'s proposal. Tap a day to plan or swap it yourself – the coach plans the rest around your choice.</string>
     <string name="trdp_today">Today</string>
     <string name="trdp_tomorrow">Tomorrow</string>
     <string name="trdp_free">Free – the coach decides</string>
     <string name="trdp_free_short">Coach decides</string>
+    <string name="trdp_free_proposal">Free – the coach proposes: %1$s</string>
+    <string name="trdp_proposal">The coach\'s proposal</string>
+    <string name="trdp_proposal_title">The coach\'s proposal for the next 7 days</string>
+    <string name="trdp_proposal_note">On the day itself the coach goes by your form and recovery.</string>
     <string name="trdp_usual_climb">Usual climbing day</string>
     <string name="trdp_only_this_day">this day only</string>
     <string name="trdp_standard">As in the standard week: %1$s</string>
@@ -14,8 +20,7 @@
     <string name="trdp_changed">Plan changed.</string>
     <string name="trdp_climb">Climbing day</string>
     <string name="trdp_climb_where">Where</string>
-    <string name="trdp_climb_how">How hard</string>
-    <string name="trdp_climb_apply">Plan climbing day</string>
+    <string name="trdp_climb_how">How hard – one tap plans the day</string>
     <string name="trdp_swap">Swap with</string>
     <string name="trdp_move_offer">%2$s: %1$s is off. Move it to %3$s?</string>
     <string name="trdp_move_yes">Move</string>
