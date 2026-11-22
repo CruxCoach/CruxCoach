@@ -37,83 +37,15 @@ import org.robolectric.annotation.Config
 
 /**
  * Owner 2026-11-21: simple by default, depth one tap away; the fitting progression is the main feature. The summary
- * opens with what the next training plans, the next step along a chain takes effect, and nutrition starts as one number.
+ * opens with what the next training plans, the next step along a chain takes effect.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
 class CoachSimpleTest : AthleteScreenTest() {
 
-    private fun fuel(): FuelViewModel {
-        val vm = FuelViewModel(service).tracked()
-        val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context)).tracked()
-        render { FuelScreen({}, {}, viewModel = vm, photoViewModel = photo) }
-        waitForTag("fuel_list")
-        return vm
-    }
-
-    private fun absent(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty()
-
-    @Test
-    fun `nutrition starts simple for someone new and exact is one tap away`() {
-        val today = service.today().toString()
-        repo.updateProfile { it.copy(fuelExact = null, fuelIntroAccepted = true) }
-        repo.saveMeasurement(BodyMeasurement(today, BodyMetric.WEIGHT.key, 70.0, "kg", 1))
-        val vm = fuel()
-        compose.waitUntil(WAIT_MS) { !vm.state.value.loading && !vm.state.value.exact }
-        waitForTag("fuel_simple_protein")
-        waitForTag("fuel_simple_eaten")
-        // One number: no rings for energy, carbohydrates and fat, no water glasses, no meal cards.
-        assertTrue(absent("fuel_targets") && absent("fuel_water") && absent("fuel_meal_lunch"))
-        // The choice is kept from the first look on.
-        compose.waitUntil(WAIT_MS) { repo.profile().fuelExact == false }
-        click("fuel_view_exact")
-        compose.waitUntil(WAIT_MS) { repo.profile().fuelExact == true }
-        waitForTag("fuel_targets")
-        assertTrue(absent("fuel_simple_protein"))
-    }
-
-    @Test
-    fun `whoever logged food before the choice existed keeps the exact view`() {
-        val yesterday = service.today().minus(DatePeriod(days = 1)).toString()
-        repo.updateProfile { it.copy(fuelExact = null, fuelIntroAccepted = true) }
-        repo.saveFoodLog(FoodLogEntry("a", yesterday, 1, Meal.LUNCH, name = "Pasta", amountG = 250.0, proteinG = 12.0, carbsG = 70.0, fatG = 2.0))
-        val vm = fuel()
-        compose.waitUntil(WAIT_MS) { !vm.state.value.loading && repo.profile().fuelExact == true }
-        waitForTag("fuel_targets")
-    }
-
-    @Test
-    fun `a day in the simple view never feeds the energy check`() {
-        // Protein-only logging says nothing about the day's energy: three "low" days must not raise a warning.
-        val today = service.today()
-        repo.updateProfile { it.copy(fuelExact = false) }
-        repo.saveMeasurement(BodyMeasurement(today.toString(), BodyMetric.WEIGHT.key, 70.0, "kg", 1))
-        repo.saveMeasurement(BodyMeasurement(today.toString(), BodyMetric.HEIGHT.key, 178.0, "cm", 1))
-        (1..4).forEach { back ->
-            val day = today.minus(DatePeriod(days = back)).toString()
-            listOf(Meal.BREAKFAST, Meal.LUNCH, Meal.DINNER).forEachIndexed { i, meal ->
-                repo.saveFoodLog(FoodLogEntry("$back-$i", day, i.toLong(), meal, name = "Quark", amountG = 250.0, proteinG = 30.0, carbsG = 10.0, fatG = 1.0))
-            }
-        }
-        val simple = service.energyReport(repo.profile(), service.activities(7))
-        assertTrue("${simple.signals}", simple.signals.none { it.name == "HIGH_DEFICIT" || it.name == "LOW_CARBS_ON_TRAINING_DAYS" })
-        // The same days in the exact view are whole days, and they are far too little.
-        repo.updateProfile { it.copy(fuelExact = true) }
-        val exact = service.energyReport(repo.profile(), service.activities(7))
-        assertTrue("${exact.signals}", exact.signals.any { it.name == "HIGH_DEFICIT" })
-        // Switched to "exact" today: the days before were logged for their protein and stay out (review 2026-11-21).
-        repo.updateProfile { it.copy(fuelExact = false, fuelExactSince = null) }
-        val vm = FuelViewModel(service).tracked()
-        vm.setExact(true)
-        compose.waitUntil(WAIT_MS) { repo.profile().fuelExactSince == today.toString() }
-        val switched = service.energyReport(repo.profile(), service.activities(7))
-        assertTrue("${switched.signals}", switched.signals.none { it.name == "HIGH_DEFICIT" })
-    }
-
     @Test
     fun `two snacks are no whole day, two main meals are`() {
         val today = service.today()
-        repo.updateProfile { it.copy(fuelExact = true) }
         repo.saveMeasurement(BodyMeasurement(today.toString(), BodyMetric.WEIGHT.key, 70.0, "kg", 1))
         repo.saveMeasurement(BodyMeasurement(today.toString(), BodyMetric.HEIGHT.key, 178.0, "cm", 1))
         fun log(meals: List<Meal>) = (1..4).forEach { back ->

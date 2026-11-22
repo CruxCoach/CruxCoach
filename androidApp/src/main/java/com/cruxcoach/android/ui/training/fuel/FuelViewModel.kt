@@ -69,8 +69,6 @@ data class FuelState(
     val lastByFood: Map<String, FoodLogEntry> = emptyMap(),
     /** When the last training or board session ended (epoch ms); "add" starts in "after training" shortly after it. */
     val lastTrainingEndedAt: Long? = null,
-    /** The exact view (energy, macros, water, meals, micronutrients); else the simple one: protein and what was eaten. */
-    val exact: Boolean = true,
 ) {
     val waterMl: Int get() = water.sumOf { it.ml }
     val isToday: Boolean get() = day != null && day == today
@@ -134,13 +132,8 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
         val log = runCatching {
             service.repo.foodLogBetween(today.minus(DatePeriod(days = com.cruxcoach.athlete.logic.RecentFoods.WINDOW_DAYS)).toString(), today.toString())
         }.getOrDefault(emptyList())
-        // Simple for everyone new; exact for those who logged food before the choice existed. Resolved once, then kept.
-        val exact = s.profile.fuelExact ?: (log.isNotEmpty() || s.entries.isNotEmpty()).also { resolved ->
-            runCatching { service.repo.updateProfile { p -> if (p.fuelExact == null) p.copy(fuelExact = resolved) else p } }
-        }
         _state.update {
             it.copy(
-                exact = exact,
                 loading = false,
                 profile = s.profile,
                 today = today,
@@ -297,16 +290,6 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
 
     /** Birth year, sex and everyday activity from the energy sheet. */
     fun updateProfile(transform: (AthleteProfile) -> AthleteProfile) = io { service.repo.updateProfile(transform) }
-
-    /** "Einfach" or "Genau": shown at once, kept for next time. */
-    fun setExact(exact: Boolean) {
-        _state.update { it.copy(exact = exact) }
-        io {
-            val today = service.today().toString()
-            // From "simple" to "exact": the days so far were logged for their protein only and stay out of the energy check.
-            service.repo.updateProfile { p -> p.copy(fuelExact = exact, fuelExactSince = if (exact && p.fuelExact == false) today else p.fuelExactSince) }
-        }
-    }
 
     fun deleteWater(entry: HydrationEntry) = io { service.repo.deleteHydration(entry.id) }
 

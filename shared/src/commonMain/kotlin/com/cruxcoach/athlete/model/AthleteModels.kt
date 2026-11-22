@@ -372,13 +372,8 @@ data class AthleteProfile(
     /** No longer read: nutrition is always on since 2026-10-05. Kept so older backups still parse. */
     val fuelEnabled: Boolean = false,
     val fuelIntroAccepted: Boolean = false,
-    /**
-     * Which nutrition view the athlete uses (owner 2026-11-21: simple by default, depth one tap away): false =
-     * "simple" (today's protein and what was eaten), true = "exact" (energy, macros, water, meals, micronutrients).
-     * Null until first resolved: exact for those who logged food before the choice existed, simple for everyone new.
-     */
+    /** No longer read: nutrition has one view again (owner 2026-11-22). Kept so profiles saved with them still parse. */
     val fuelExact: Boolean? = null,
-    /** The day the athlete switched to the exact view (ISO); null = always was. Days before it were not logged as a whole. */
     val fuelExactSince: String? = null,
     val hideBodyNumbers: Boolean = false,
     /** On by default since 2026-10-05 (owner); the settings switch hides them. */
