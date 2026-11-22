@@ -87,7 +87,9 @@ class TodayCoach(
     /**
      * The training cycle: starts on the first day the coach runs (so every
      * athlete gets intro → build → deload), a trip or competition date adds the
-     * taper; tired check-ins and a finger-load spike can bring the deload forward.
+     * taper; tired check-ins can bring the lighter week forward. A rising finger load no longer does (owner
+     * 2026-11-22): the ratio of the last week to the weeks before is a hint, not a threshold – the load card offers
+     * the lighter week and the athlete decides.
      */
     fun blockState(profile: AthleteProfile, loadStatus: LoadStatus?, today: LocalDate): BlockState? =
         runCatching {
@@ -98,12 +100,7 @@ class TodayCoach(
             }
             val target = coach.targetDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
             val checkins = repo.checkinsBetween(today.minus(DatePeriod(days = 6)).toString(), today.toString())
-            var fatigue = checkins.count { c -> (c.sleep ?: 5) <= 2 || (c.energy ?: 5) <= 2 || (c.fingers ?: 5) <= 2 }
-            fatigue += when (loadStatus?.structures?.get(LoadStructure.FINGER)?.trend) {
-                LoadTrend.SPIKE -> 2
-                LoadTrend.RISING -> 1
-                else -> 0
-            }
+            val fatigue = checkins.count { c -> (c.sleep ?: 5) <= 2 || (c.energy ?: 5) <= 2 || (c.fingers ?: 5) <= 2 }
             TrainingBlocks.state(start, target, today, fatigue)
         }.getOrNull()
 

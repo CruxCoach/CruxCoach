@@ -225,7 +225,12 @@ object WeeklyVolume {
 
             if (phaseFactor == 0.0) return@map AreaTarget(area, 0, 0, 0)
             var minSets = (base.min * f).roundToInt()
-            var maxSets = max(minSets, (base.max * f).roundToInt())
+            // More than five years of climbing, adult and under 40: the upper end opens by a quarter (16 hard sets of
+            // pulling become 20). Trained athletes gain from moderate to high volume, with small returns at the top –
+            // so only the room grows, not what the coach asks for (owner 2026-11-22, after the meta-analyses on
+            // weekly set volume: about 12–20 sets per muscle group for trained people). Finger sessions stay at two.
+            val seasoned = coach.experience == ExperienceBand.OVER_5 && ageFactor == 1.0 && area != VolumeArea.FINGER
+            var maxSets = max(minSets, (base.max * f * (if (seasoned) SEASONED_ROOM else 1.0)).roundToInt())
             var sessions = base.sessions
             if (area == VolumeArea.FINGER) {
                 val youth = coach.ageBand == AgeBand.UNDER_16 || coach.ageBand == AgeBand.Y16_17
@@ -253,6 +258,9 @@ object WeeklyVolume {
             AreaTarget(area, minSets, maxSets, sessions)
         }.map { withOwn(it, profile) }
     }
+
+    /** How much higher the upper end of an area lies for a seasoned climber ([targets]). */
+    const val SEASONED_ROOM = 1.25
 
     /** Sessions a week an own finger target may ask for, and hard sets a week for the other areas. */
     val OWN_FINGER_SESSIONS = 0..5
