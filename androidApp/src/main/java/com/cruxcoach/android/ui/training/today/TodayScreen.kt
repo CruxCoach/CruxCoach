@@ -1519,13 +1519,6 @@ private fun DailySuggestionCard(
                     Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp))
                     Text(stringResource(if (climbDay) R.string.trt_warmup_start else R.string.trsg_start))
                 }
-                // The coach held the chosen kind back because of the fingers: advice, and one tap decides otherwise.
-                s.heldBack?.let { kind ->
-                    OutlinedButton(onClick = onInsist, colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_insist")) {
-                        Text(stringResource(R.string.trt_insist, kindLabel(kind)))
-                    }
-                }
                 // Only when the week's training days are done, not when an area's volume is: one tap trains anyway.
                 if (s.reasons.firstOrNull() == SuggestionReason.WEEK_DAYS_DONE) {
                     OutlinedButton(onClick = onTrainAnyway, colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
@@ -1533,6 +1526,14 @@ private fun DailySuggestionCard(
                         Icon(Icons.Default.FitnessCenter, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.trv_train_anyway))
                     }
+                }
+            }
+            // The coach held the chosen or planned kind back because of the fingers: advice, and one tap decides
+            // otherwise. Below both layouts: a board day held back to a light session is a board card too.
+            s.heldBack?.let { kind ->
+                OutlinedButton(onClick = onInsist, colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_insist")) {
+                    Text(stringResource(R.string.trt_insist, kindLabel(kind)))
                 }
             }
             // One quiet link: everything else about today's training lives in one sheet ("Training anpassen").

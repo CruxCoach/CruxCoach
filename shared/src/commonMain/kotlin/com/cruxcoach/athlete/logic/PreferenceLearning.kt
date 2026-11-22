@@ -82,6 +82,13 @@ object PreferenceLearning {
             .mapNotNull { runCatching { LocalDate.parse(it.day) }.getOrNull() }
             .map { d -> d.minus(DatePeriod(days = d.dayOfWeek.isoDayNumber - 1)) }.distinct().size >= TRAIN_ANYWAY_WEEKS
     }
+
+    /**
+     * Ledger [SuggestionEventKind.FEEDBACK] focus for "anyway" on the card, for the kind the coach held back
+     * ([SessionSuggestion.heldBack]): recorded for a restart only, it teaches nothing. Value 0 takes it back (the day
+     * it was for is no longer planned).
+     */
+    const val INSIST = "insist"
     /** A DISLIKE_EXERCISE with this value is "leave it out today" (no replacement), not "not today, something else". */
     const val LEFT_OUT = 1.0
     /**
