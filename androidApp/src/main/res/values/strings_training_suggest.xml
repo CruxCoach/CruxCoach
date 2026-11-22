@@ -8,7 +8,7 @@
         <item quantity="one">%d exercise</item>
         <item quantity="other">%d exercises</item>
     </plurals>
-    <string name="trsg_start">Start</string>
+    <string name="trsg_start">Start training</string>
     <string name="trsg_next">Another suggestion</string>
     <string name="trsg_edit">Adjust</string>
     <string name="trsg_save">Save as workout</string>

@@ -66,10 +66,8 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
     fun `today shows readiness and injury mode`() {
         val loadedVm1 = loaded(TodayViewModel(service))
         render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = loadedVm1) }
-        // The two questions come first; afterwards the day's readiness sits in the suggestion.
-        scrollTo("today_list", hasTestTag("today_quick_checkin"))
-        click("today_quick_show")
-        scrollTo("today_list", hasTestTag("today_readiness"))
+        // The training shows at once; the day's form is one optional row on the card.
+        scrollTo("today_list", hasTestTag("today_form"))
         scrollTo("today_list", hasTestTag("today_injury"))
         scrollTo("today_list", hasTestTag("today_fuel"))
     }
@@ -148,6 +146,9 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         // Audit P2-15: training, recovery and nutrition in one place.
         repo.saveMeasurement(com.cruxcoach.athlete.model.BodyMeasurement(service.today().toString(),
             com.cruxcoach.athlete.model.BodyMetric.WEIGHT.key, 70.0, "kg", 1))
+        // Something was eaten today: without a food entry the summary says nothing about nutrition.
+        repo.saveFoodLog(com.cruxcoach.athlete.model.FoodLogEntry("eaten", service.today().toString(), 1, com.cruxcoach.athlete.model.Meal.LUNCH,
+            name = "Pasta", amountG = 250.0, proteinG = 12.0, carbsG = 70.0, fatG = 2.0))
         // This class sets up a finger injury that rules finger work out: healed for this test.
         repo.deleteInjury("i1")
         // The same finger block lift the start-load tests use (it plans sets without a value of its own).
@@ -164,8 +165,9 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
             "sets ${repo.setsFor(id).map { "${it.exerciseSlug} ${it.setType} ${it.completedAt}" }}")
         assert(vm.state.value.fuelLeft != null)
         render { WorkoutSummaryScreen(id, {}, {}, viewModel = vm) }
-        waitForTag("summary_after_fingers")
-        waitForTag("summary_after_fuel")
+        // Below "next time": a lazy list composes only what is on screen.
+        scrollTo("summary_list", "summary_after_fingers")
+        scrollTo("summary_list", "summary_after_fuel")
     }
 
     @Test
@@ -241,20 +243,6 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         val loadedVm8 = loaded(InjuriesViewModel(service))
         render { InjuriesScreen({}, {}, viewModel = loadedVm8) }
         waitForTag("injury_i1")
-    }
-
-    @Test
-    fun `finishing the last setup step is celebrated once, a returning athlete is not`() {
-        // Equipment and weight are set (setUp); only the coach is open.
-        val vm = loaded(TodayViewModel(service))
-        assertEquals(false, vm.state.value.setupJustDone)
-        repo.updateProfile { it.copy(coach = it.coach.copy(setupState = SetupState.DONE)) }
-        compose.waitUntil(WAIT_MS) { vm.state.value.setupJustDone }
-        vm.dismissSetupDone()
-        assertEquals(false, vm.state.value.setupJustDone)
-        // Opening Today again with everything done shows no celebration.
-        val again = loaded(TodayViewModel(service))
-        assertEquals(false, again.state.value.setupJustDone)
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.model.Benchmark
+import com.cruxcoach.athlete.model.BenchmarkSource
 import com.cruxcoach.athlete.model.ExerciseSet
 import com.cruxcoach.athlete.model.Grip
 import com.cruxcoach.athlete.model.RoutineItem
@@ -31,6 +32,12 @@ data class Capacity(
     val fromOtherSide: Boolean = false,
     /** A careful start guess ([StartEstimate]), not a logged or entered value. */
     val estimated: Boolean = false,
+    /**
+     * When the athlete said so (epoch ms): a value they entered, estimated or tested, or a load they lowered by hand
+     * ([OwnLoads]). Null for what the coach learned from trainings. A newer word of the athlete wins over the last
+     * training ([NextTargets]).
+     */
+    val statedAt: Long? = null,
 )
 
 /**
@@ -69,6 +76,9 @@ object StartEstimate {
      * planned at 0 kg. Deliberately on the light side –
      * the reserve answer after each set moves the next sets, and the first logged sets become the value.
      */
+    /** The body weight lift starts are worked out from while none is logged. */
+    const val ASSUMED_BODYWEIGHT_KG = 55.0
+
     private val LIFT_SHARE = mapOf(
         "antagonist.wrist_curl" to 0.06, "antagonist.reverse_wrist_curl" to 0.04,
         "antagonist.eccentric_wrist_extension" to 0.04, "antagonist.forearm_rotation" to 0.04,
@@ -81,6 +91,11 @@ object StartEstimate {
         "legs.goblet_squat" to 0.22, "legs.hip_thrust" to 0.6, "legs.romanian_deadlift" to 0.55,
         "legs.back_squat" to 0.55, "legs.conventional_deadlift" to 0.7, "legs.single_leg_rdl" to 0.12,
         "legs.front_squat" to 0.45,
+        // Every loaded lift has a start (owner 2026-11-21: nobody stands before an empty weight field; the training
+        // simulation left a reverse fly at "– × 15" for sixteen weeks).
+        "antagonist.reverse_fly" to 0.03, "finger.finger_rolls" to 0.05,
+        "pull.single_arm_lat_pulldown" to 0.25, "pull.seated_cable_row" to 0.45, "pull.hammer_curl" to 0.08,
+        "push.dumbbell_incline_press" to 0.15, "push.triceps_pushdown" to 0.2,
     )
 
     /**
@@ -90,10 +105,12 @@ object StartEstimate {
     fun liftCapacity(def: ExerciseDefinition, bodyweightKg: Double?): Capacity? {
         val share = LIFT_SHARE[def.slug] ?: return null
         if (def.load != LoadMode.EXTERNAL || def.kind != com.cruxcoach.athlete.catalog.ExerciseKind.LOAD_REPS) return null
-        val bw = bodyweightKg?.takeIf { it > 0 } ?: return null
+        // Without a body weight yet (the start page does not ask for it) a light athlete is assumed: a careful
+        // weight to begin with beats "0 kg" on the first set (device check 2026-11-22).
+        val bw = bodyweightKg?.takeIf { it > 0 } ?: ASSUMED_BODYWEIGHT_KG
         val reps = def.defaults.repsMax ?: def.defaults.repsMin ?: 10
         val lifted = LoadRules.lifted(def, bw * share)
-        return Capacity(CapacityKind.E1RM_TOTAL, lifted * (1.0 + (reps + BenchmarkMath.TARGET_RIR) / 30.0), bw, estimated = true)
+        return Capacity(CapacityKind.E1RM_TOTAL, lifted * (1.0 + (reps + BenchmarkMath.TARGET_RIR) / 30.0), bodyweightKg?.takeIf { it > 0 }, estimated = true)
     }
 
     /** Two-hand 10-second pick-up total from body weight and grade alone. */
@@ -161,7 +178,10 @@ object BenchmarkMath {
      * which today's plan would be 5 reps at +20 kg (RIR 2), a hang the
      * capacity it would be planned at, reps and holds the maximum they are 70 % of.
      */
-    fun capacity(def: ExerciseDefinition, b: Benchmark, bodyweightKg: Double?): Capacity? {
+    fun capacity(def: ExerciseDefinition, b: Benchmark, bodyweightKg: Double?): Capacity? =
+        measured(def, b, bodyweightKg)?.copy(statedAt = b.measuredAt.takeIf { b.source != BenchmarkSource.AUTO || b.sets != null })
+
+    private fun measured(def: ExerciseDefinition, b: Benchmark, bodyweightKg: Double?): Capacity? {
         val bw = b.bodyweightKg ?: bodyweightKg
         if (b.sets != null) return fromWorkingSets(def, b, bw)
         return when (capacityKind(def)) {
@@ -279,6 +299,22 @@ object LoadPrescriber {
     /** Weighted holds: share of what the athlete can hold for [durationS]; long density hangs go easier. */
     fun holdShare(durationS: Int): Double = if (durationS >= 20) 0.85 else 0.90
 
+    /**
+     * The repetitions [capacity] (a one-rep max) allows at [loadKg] (the logged number) with the planned reserve,
+     * rounded to whole repetitions. It may lie outside the exercise's range; callers clamp it. Without a total to
+     * compare it reads as "plenty".
+     */
+    fun repsAt(def: ExerciseDefinition, capacity: Capacity, loadKg: Double, bodyweightKg: Double?): Int {
+        val total = StrengthMath.effectiveLoad(def, loadKg, bodyweightKg ?: capacity.bodyweightKg)?.takeIf { it > 0 } ?: return PLENTY_OF_REPS
+        return (30.0 * (capacity.value / total - 1.0) - BenchmarkMath.TARGET_RIR).roundToInt().coerceAtMost(PLENTY_OF_REPS)
+    }
+
+    private const val PLENTY_OF_REPS = 999
+
+    /** Pulling, hanging and dipping can be assisted (a band, a pulley, a foot on a chair); leg and core work cannot. */
+    fun assistable(def: ExerciseDefinition): Boolean = def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.PULL ||
+        def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.FINGER || def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.PUSH
+
     fun prescribe(
         def: ExerciseDefinition,
         item: RoutineItem,
@@ -296,9 +332,28 @@ object LoadPrescriber {
         }
         return when (capacity.kind) {
             CapacityKind.E1RM_TOTAL -> {
-                val reps = item.repsMax ?: item.repsMin ?: def.defaults.repsMax ?: 5
-                val total = capacity.value / (1.0 + (reps + BenchmarkMath.TARGET_RIR) / 30.0)
-                toLoad(total)?.let { LoadTarget(it, reps, null, capacity) }
+                val top = item.repsMax ?: item.repsMin ?: def.defaults.repsMax ?: 5
+                val bottom = (item.repsMin ?: def.defaults.repsMin ?: top).coerceAtMost(top)
+                val total = capacity.value / (1.0 + (top + BenchmarkMath.TARGET_RIR) / 30.0)
+                toLoad(total)?.let { rounded ->
+                    // Body-weight work that cannot be made lighter with a band or a pulley (lunges, squats) is never
+                    // planned "assisted": at body weight, with the repetitions the value allows (training simulation
+                    // 2026-11-21: walking lunges at "-12 kg × 20" for weeks).
+                    val snapped = if (rounded < 0 && def.load == LoadMode.BODYWEIGHT_PLUS && !assistable(def)) 0.0 else rounded
+                    if (snapped != rounded) return@let LoadTarget(0.0, repsAt(def, capacity, 0.0, bw).coerceIn(1, top), null, capacity)
+                    // A coarse weight step (4 kg after 3 kg) can land well above what the value plans for the top of
+                    // the range. Then the repetitions come down inside the range; under its bottom the lighter step
+                    // is planned with the top of the range.
+                    val reps = repsAt(def, capacity, snapped, bw)
+                    val lower = snapped - incrementKg
+                    when {
+                        reps >= bottom -> LoadTarget(snapped, reps.coerceAtMost(top), null, capacity)
+                        // The lighter step, where there is one: no dumbbell under its smallest step, no "assisted" leg work.
+                        incrementKg > 0 && (if (def.load == LoadMode.BODYWEIGHT_PLUS) lower >= -1e-9 || assistable(def) else lower > 1e-9) ->
+                            LoadTarget(lower, top, null, capacity)
+                        else -> LoadTarget(snapped, reps.coerceAtLeast(1), null, capacity)
+                    }
+                }
             }
             CapacityKind.TEN_SECOND_MAX -> {
                 if (def.kind == ExerciseKind.INTERVAL) {

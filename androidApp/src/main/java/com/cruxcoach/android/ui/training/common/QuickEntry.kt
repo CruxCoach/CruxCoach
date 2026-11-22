@@ -133,7 +133,9 @@ internal val ALWAYS_THERE = setOf(EquipmentV2.NONE, EquipmentV2.MAT)
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun EquipmentEditor(selected: Set<EquipmentV2>, presets: Boolean = true, onChange: (Set<EquipmentV2>) -> Unit) {
+fun EquipmentEditor(selected: Set<EquipmentV2>, presets: Boolean = true, compact: Boolean = false, onChange: (Set<EquipmentV2>) -> Unit) {
+    // Compact (the start): the common pieces and what is chosen; one chip opens the rest.
+    var all by rememberSaveable { mutableStateOf(!compact) }
     if (presets) {
         Text(stringResource(R.string.tru_equipment_where), style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
@@ -149,14 +151,23 @@ fun EquipmentEditor(selected: Set<EquipmentV2>, presets: Boolean = true, onChang
     Text(stringResource(R.string.tru_equipment_what), style = MaterialTheme.typography.labelLarge,
         modifier = Modifier.padding(top = if (presets) 12.dp else 0.dp))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
-        EquipmentV2.entries.filter { it !in ALWAYS_THERE }.forEach { e ->
+        val pieces = EquipmentV2.entries.filter { it !in ALWAYS_THERE }
+        val shown = if (all) pieces else pieces.filter { it in COMMON_EQUIPMENT || it in selected }
+        shown.forEach { e ->
             val on = e in selected
             FilterChip(selected = on, onClick = { onChange(toggleEquipment(selected, e)) },
                 leadingIcon = chipCheck(on),
                 label = { Text(equipmentLabel(e)) }, modifier = Modifier.testTag("equipment_${e.name.lowercase()}"))
         }
+        if (!all && shown.size < pieces.size) {
+            AssistChip(onClick = { all = true }, label = { Text(stringResource(R.string.tru_equipment_more, pieces.size - shown.size)) },
+                modifier = Modifier.testTag("equipment_more"))
+        }
     }
 }
+
+/** What most climbers have where they train: shown first at the start. */
+internal val COMMON_EQUIPMENT = setOf(EquipmentV2.PULL_UP_BAR, EquipmentV2.HANGBOARD, EquipmentV2.DUMBBELL, EquipmentV2.BANDS, EquipmentV2.WALL)
 
 /** Toggles [e]; the second pick-up block comes with the first, and dropping the first drops both. */
 internal fun toggleEquipment(selected: Set<EquipmentV2>, e: EquipmentV2): Set<EquipmentV2> = when {

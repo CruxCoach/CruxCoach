@@ -47,8 +47,12 @@ object WorkoutPlanner {
         /** Performance value per side (null = two-handed / not one-sided); null when none is known. */
         capacityFor: (Side?) -> Capacity? = { null },
         incrementKg: Double = 1.0,
-        /** Loads may take the bigger step after an easy training ([LoadSteps]); false while anything keeps them careful. */
-        stepUp: Boolean = false,
+        /** How far the plan may move from the last training ([LoadSteps.steps]); the weight steps need [NextTargets.Steps.FULL]. */
+        steps: NextTargets.Steps = NextTargets.Steps.GENTLE,
+        /** The clock (epoch ms): a last training long ago says nothing about today. */
+        now: Long? = null,
+        /** What the step stands on, when it is not all of [history]: without trainings that today's form trimmed. */
+        stepHistory: List<ExerciseSet> = history,
         newId: () -> String,
     ): PlannedBlock {
         val def = catalog.fallbackFor(item.slug)
@@ -71,14 +75,11 @@ object WorkoutPlanner {
         // numbers: that is what makes loads progress instead of repeating.
         // A load the athlete wrote into the workout wins over both (owner
         // 2026-10-15: recommendations must be overridable).
-        val targets = sides.associateWith { side -> LoadPrescriber.prescribe(def, item, capacityFor(side), bodyweightKg, incrementKg) }
-        // Between trainings: bigger steps after an easy one, small loads one step at a time ([LoadSteps]).
-        // Only where the load was planned, never over a load the athlete chose.
-        val stepped = sides.associateWith { side ->
-            if (item.loadKg != null || item.warmup || item.test) return@associateWith null
-            val last = LoadSteps.lastSession(history, side)
-            val base = targets[side]?.loadKg
-            LoadSteps.adjust(def, base, last, incrementKg, stepUp)?.takeIf { it != (base ?: last.mapNotNull { s -> s.loadKg }.maxOrNull()) }
+        // Between trainings the plan follows the last one ([NextTargets]): a repetition or a weight step more after a
+        // training with reserve, a step back after one that was too hard, bigger steps after an easy one and small
+        // loads one step at a time ([LoadSteps]). Only where the load was planned, never over a load the athlete chose.
+        val targets = sides.associateWith { side ->
+            NextTargets.plan(def, item, capacityFor(side), stepHistory, side, bodyweightKg, incrementKg, steps, exceptWorkout = workoutId, now = now)
         }
         // A circuit member's sets know their circuit; their rest is the short one to the next exercise.
         val circuit = item.circuit?.takeIf { Circuits.eligible(def, item) }
@@ -87,9 +88,9 @@ object WorkoutPlanner {
         val rows = (0 until item.sets.coerceIn(1, 20)).flatMap { setIndex ->
             sides.map { side ->
                 val ghost = GhostValues.forSet(ghosts, setIndex, side)
-                val target = targets[side]
-                val targetReps = target?.reps ?: itemReps
-                val targetDuration = target?.durationS ?: item.durationS
+                val target = targets.getValue(side)
+                val targetReps = target.reps ?: itemReps
+                val targetDuration = target.durationS ?: item.durationS
                 ExerciseSet(
                     id = newId(),
                     workoutId = workoutId,
@@ -100,18 +101,18 @@ object WorkoutPlanner {
                     side = side,
                     targetReps = targetReps.takeIf { def.kind == ExerciseKind.REPS || def.kind == ExerciseKind.LOAD_REPS },
                     targetDurationS = targetDuration?.toDouble()?.takeIf { def.kind == ExerciseKind.TIME || def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.CLIMB },
-                    targetLoadKg = item.loadKg ?: stepped[side] ?: target?.loadKg,
+                    targetLoadKg = item.loadKg ?: target.loadKg,
                     reps = when (def.kind) {
-                        ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> target?.reps ?: ghost?.reps ?: targetReps
+                        ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> target.reps ?: ghost?.reps ?: targetReps
                         ExerciseKind.CLIMB -> ghost?.reps ?: item.repsPerSet
                         else -> null
                     },
                     durationS = when (def.kind) {
-                        ExerciseKind.TIME, ExerciseKind.HANG -> target?.durationS?.toDouble() ?: ghost?.durationS ?: item.durationS?.toDouble()
+                        ExerciseKind.TIME, ExerciseKind.HANG -> target.durationS?.toDouble() ?: ghost?.durationS ?: item.durationS?.toDouble()
                         else -> null
                     },
                     loadKg = if (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL)
-                        item.loadKg ?: stepped[side] ?: target?.loadKg ?: ghost?.loadKg else null,
+                        item.loadKg ?: target.loadKg ?: ghost?.loadKg else null,
                     edgeMm = (ghost?.edgeMm ?: item.edgeMm?.toDouble())
                         .takeIf { def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL },
                     grip = ghost?.grip ?: item.grip,

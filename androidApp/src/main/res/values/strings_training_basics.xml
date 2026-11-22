@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The basics on the first visit to Training or Nutrition (owner 2026-10-09). -->
 <resources>
-    <string name="trq_title">Quick start</string>
+    <string name="trq_title">Your start</string>
     <string name="trq_later">Later</string>
     <string name="trq_back">Back</string>
     <string name="trq_next">Next</string>
@@ -16,6 +16,10 @@
     <string name="trq_private">Everything you enter here stays encrypted on your phone.</string>
     <string name="trq_climb_title">Your climbing</string>
     <string name="trq_climb_why">Sets the start loads and keeps finger loads careful: no max hangs or campus in your first climbing years.</string>
-    <string name="trq_grade">How hard do you boulder (usual hard sends)?</string>
+    <string name="trq_grade">How hard do you boulder?</string>
     <string name="trq_grade_from_logbook">Suggested from your board logbook.</string>
+    <string name="trq_intro">Four answers and your first training is ready.</string>
+    <string name="trq_age">How old are you?</string>
+    <string name="trq_age_why">The coach plans more carefully for young climbers and from 40 on.</string>
+    <string name="trq_first_training">My first training</string>
 </resources>

@@ -97,5 +97,12 @@ class TrainingSimulationTest {
             r to flags
         }
         write("overview.md", SimReport.overview(runs))
+        // The yardstick (owner 2026-11-21): the same athletes with a plain reference progression on the app's schedule.
+        // No quality of any persona may end behind it.
+        val rows = runs.flatMap { (r, _) -> ReferenceComparison.compare(r) }
+        write("reference.md", ReferenceComparison.report(rows))
+        val weaker = ReferenceComparison.weaker(rows)
+        assertTrue("weaker than the reference progression: " + weaker.joinToString { "${it.persona}/${it.quality.name.lowercase()} " +
+            "${"%.1f".format(it.appGain)} against ${"%.1f".format(it.referenceGain)}" }, weaker.isEmpty())
     }
 }

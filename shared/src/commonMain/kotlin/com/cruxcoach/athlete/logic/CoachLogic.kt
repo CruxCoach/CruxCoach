@@ -5,6 +5,9 @@ import com.cruxcoach.athlete.model.AgeBand
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.Benchmark
 import com.cruxcoach.athlete.model.BenchmarkSource
+import com.cruxcoach.athlete.model.ClimbIntensity
+import com.cruxcoach.athlete.model.ClimbingContext
+import com.cruxcoach.athlete.model.ClimbingDayKind
 import com.cruxcoach.athlete.model.CoachGoal
 import com.cruxcoach.athlete.model.CoachProfile
 import com.cruxcoach.athlete.model.ExperienceBand
@@ -128,16 +131,27 @@ object WeekPlanSuggester {
 
         val rotation = rotation(coach, routines, equipment, active, climbingPaused)
         val plan = mutableMapOf<Int, String>()
-        climbing.forEach { plan[it] = PLAN_BOARD }
+        val climbingEntry = climbingEntry(coach, logbook, equipment)
+        climbing.forEach { plan[it] = climbingEntry }
+        val other = rotation.firstOrNull { it != FINGER } ?: PULL
         var finger = 0
-        chosen.forEachIndexed { index, day ->
-            // No max finger work the day after a climbing day.
-            val afterClimbing = ((day + 5) % 7 + 1) in climbing
+        val entries = chosen.indices.map { index ->
             var entry = rotation[index % rotation.size]
-            if (entry == FINGER && (afterClimbing || finger > 0)) entry = rotation.firstOrNull { it != FINGER } ?: PULL
+            if (entry == FINGER && finger > 0) entry = other
             if (entry == FINGER) finger++
-            plan[day] = entry
+            entry
+        }.toMutableList()
+        // No max finger work the day after a climbing day, and none the day before one: the day planner warns about
+        // exactly that, so the coach's own week must not start with it (phone check 2026-11-21). The finger day moves
+        // to an off-wall day that fits; only without one it gives way (review 2026-11-21: it was dropped although
+        // Saturday was free).
+        fun fingerFits(day: Int) = ((day + 5) % 7 + 1) !in climbing && (day % 7 + 1) !in climbing
+        val at = entries.indexOf(FINGER)
+        if (at >= 0 && !fingerFits(chosen[at])) {
+            val to = chosen.indices.firstOrNull { it != at && fingerFits(chosen[it]) }
+            if (to == null) entries[at] = other else { entries[at] = entries[to]; entries[to] = FINGER }
         }
+        chosen.forEachIndexed { index, day -> plan[day] = entries[index] }
         val free = (1..7).filter { it !in plan }
         val mobility = free.size >= 2 && (FocusArea.MOBILITY in coach.focus || CoachLogic.needsLongerRecovery(coach) || free.size >= 3)
         if (mobility) {
@@ -148,6 +162,24 @@ object WeekPlanSuggester {
         }
         (1..7).filter { it !in plan }.forEach { plan[it] = PLAN_REST }
         return plan.toSortedMap()
+    }
+
+    /**
+     * What a usual climbing day is planned as: a board session for those who climb on boards (a board at the place, a
+     * board named in the setup, or board sessions in the logbook), else the kind of climbing they named – a day in the
+     * gym is not a "board session" (phone check 2026-11-21).
+     */
+    internal fun climbingEntry(coach: CoachProfile, logbook: LogbookSummary, equipment: Set<EquipmentV2>): String {
+        val contexts = coach.contexts
+        val board = EquipmentV2.BOARD in equipment || ClimbingContext.HOME_BOARD in contexts || ClimbingContext.GYM_BOARD in contexts ||
+            logbook.hasGrades || logbook.usualClimbingDays.isNotEmpty()
+        if (board) return PLAN_BOARD
+        val kind = when {
+            contexts.isEmpty() || ClimbingContext.GYM_BOULDER in contexts -> ClimbingDayKind.GYM_BOULDER
+            ClimbingContext.ROPE in contexts -> ClimbingDayKind.GYM_ROPE
+            else -> ClimbingDayKind.OUTDOOR
+        }
+        return DayPlans.Climb(kind, ClimbIntensity.HARD).entry
     }
 
     private const val FINGER = "builtin:" + BuiltinRoutines.FINGER_BASICS

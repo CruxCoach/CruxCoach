@@ -336,7 +336,8 @@ object Checks {
     /**
      * Well-known exercises first (issue #68), from the catalogue's levels and what the athlete logged: an exercise is
      * known after [KNOWN_AFTER_TRAININGS] trainings with it, Basic ones are known to everyone. The coach's own picks are
-     * judged, before the athlete's "Don't know it" swaps.
+     * judged, before the athlete's "Don't know it" swaps. An exercise the athlete stepped to in the summary (the next
+     * one of a chain, after the top of the range went with reserve) is their own choice from the next day on.
      */
     private fun familiarity(r: SimRun, flags: MutableList<Flag>) {
         val catalog = r.catalog
@@ -346,9 +347,11 @@ object Checks {
         // Trainings per exercise before each day.
         val trainings = mutableMapOf<String, Int>()
         val knownOn = mutableMapOf<Int, Set<String>>()
+        val chosen = mutableSetOf<String>()
         r.days.forEach { d ->
-            knownOn[d.day] = trainings.filterValues { it >= KNOWN_AFTER_TRAININGS }.keys.toSet()
+            knownOn[d.day] = trainings.filterValues { it >= KNOWN_AFTER_TRAININGS }.keys + chosen
             if (d.trained) d.sets.map { it.slug }.distinct().forEach { trainings.merge(it, 1, Int::plus) }
+            chosen += d.steppedTo
         }
         fun known(day: Int, def: ExerciseDefinition) = def.familiarity == Familiarity.BASIC || def.slug in knownOn[day].orEmpty() || def.custom
         fun coachItems(d: DayTrace) = d.suggestion?.items.orEmpty().map { item -> d.dontKnow.firstOrNull { it.to == item.slug }?.let { item.copy(slug = it.from) } ?: item }
@@ -399,7 +402,11 @@ object Checks {
                 "${new.size} new (${new.joinToString { "${it.slug} ${it.familiarity.name.lowercase()}" }}), allowed $limit")
         }
 
-        if (p.level == Level.ADVANCED && choice != com.cruxcoach.athlete.model.ExerciseChoice.CLASSICS) {
+        // Only for an advanced athlete who asked for variety: by default the coach stays with the athlete's exercises
+        // (owner 2026-11-21), and those are the well-known ones the first weeks picked.
+        val wantsVariety = (p.coach.variety ?: com.cruxcoach.athlete.logic.ExerciseFamiliarity.SETTLED_VARIETY) >=
+            com.cruxcoach.athlete.logic.SessionSuggester.SETTLED_BELOW_VARIETY
+        if (p.level == Level.ADVANCED && choice != com.cruxcoach.athlete.model.ExerciseChoice.CLASSICS && wantsVariety) {
             val all = days.flatMap { main(it) }
             if (all.isNotEmpty()) {
                 val unusual = all.count { it.familiarity != Familiarity.BASIC }.toDouble() / all.size

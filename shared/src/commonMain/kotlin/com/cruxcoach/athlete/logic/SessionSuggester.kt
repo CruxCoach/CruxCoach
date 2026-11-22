@@ -281,6 +281,14 @@ data class SuggestionInput(
     val known: Set<String> = emptySet(),
     /** "Don't know it" lately ([PreferenceLearning.unfamiliar]): not the coach's new pick again for now. */
     val unfamiliar: Set<String> = emptySet(),
+    /** New to training here ([ExerciseFamiliarity.starter]): the classics first, whatever the grade and the years. */
+    val starter: Boolean = false,
+    /**
+     * How much the coach rotates exercises for an athlete who set no preference (0 = the same exercises, 100 = lots of
+     * variety). The app passes [ExerciseFamiliarity.varietyDefault]: getting better at an exercise needs the same
+     * exercise for weeks (owner 2026-11-21), so the default stays with what was trained lately.
+     */
+    val varietyDefault: Int = 50,
 )
 
 data class SessionSuggestion(
@@ -1046,7 +1054,7 @@ object SessionSuggester {
         var fingerRemoved = 0
         var guardRemoved = 0
         val youth = guard.kind == GuardrailKind.YOUTH
-        val kept = routine.items.filter { item ->
+        val safe = routine.items.filter { item ->
             val def = input.catalog.fallbackFor(item.slug)
             val verdict = InjuryAdvisor.assess(def, input.injuries).verdict
             val injuryOk = if (climbingPaused) verdict == InjuryVerdict.OK || verdict == InjuryVerdict.ONE_SIDE_ONLY
@@ -1059,7 +1067,10 @@ object SessionSuggester {
                 else -> true
             }
         }
-        val removed = injuryRemoved + fingerRemoved + guardRemoved
+        // A starter workout is a template, not the athlete's own plan: it is fitted to the place and to what the
+        // athlete knows ([fitTemplate]); what finds no replacement counts as removed. Own workouts stay as built.
+        val kept = if (planned.startsWith("builtin:")) fitTemplate(input, safe, SuggestionFocus.PLANNED) else safe
+        val removed = injuryRemoved + fingerRemoved + guardRemoved + (safe.size - kept.size)
         if (kept.any { !it.warmup } && removed * 2 <= routine.items.size) {
             reasons.add(0, why)
             if (injuryRemoved > 0) reasons += SuggestionReason.PLAN_FILTERED_FOR_INJURY
@@ -1089,7 +1100,8 @@ object SessionSuggester {
             val r = routine.copy(id = "suggestion", items = items, builtinKey = "suggestion")
             return finish(ctx, SuggestionFocus.PLANNED, r, planned)
         }
-        reasons += when {
+        // A starter workout that does not fit the place or the athlete's exercises says nothing about an injury.
+        if (injuryRemoved + fingerRemoved + guardRemoved > 0) reasons += when {
             injuryRemoved >= fingerRemoved && injuryRemoved >= guardRemoved -> SuggestionReason.PLAN_REPLACED_FOR_INJURY
             fingerRemoved >= guardRemoved -> fingerBlock ?: SuggestionReason.PLAN_REPLACED_FOR_INJURY
             else -> guard.reason ?: SuggestionReason.PLAN_REPLACED_FOR_INJURY
@@ -1097,10 +1109,70 @@ object SessionSuggester {
         return null
     }
 
+    /** The fixed warm-up before climbing, fitted to the athlete ([fitTemplate]); the wall is there on a climbing day. */
+    private fun climbingWarmup(input: SuggestionInput): List<RoutineItem> =
+        fitTemplate(input, BuiltinRoutines.byKey(BuiltinRoutines.WARMUP_BOARD)?.items.orEmpty().filter { it.slug !in input.excluded },
+            SuggestionFocus.BOARD_DAY, alsoThere = setOf(EquipmentV2.WALL))
+
+    /**
+     * A starter workout or the fixed climbing warm-up fitted to the athlete (owner 2026-11-21): a template is not the
+     * athlete's own plan. An exercise gives way when
+     *
+     * - the place has no equipment for it (once the equipment is set up; [alsoThere] counts as there),
+     * - the athlete stepped from it to another exercise of its chain after a training (the next step, or a step back), or
+     * - the athlete is still with the classics and it would be new to them: in a warm-up always, in the main work
+     *   beyond the session's limit of new exercises.
+     *
+     * Its place goes to the kept exercise, else to the best Basic or known exercise for the same job ([familiarSwap]),
+     * with the template's sets and rests. Without one it is left out. The kept exercise passes the same filters as any
+     * swap (place, injuries, youth rules, one chain per session) and takes only the place of the exercise it was
+     * stepped from – never that of another member of the chain (review 2026-11-21: "dead bug" gave way and both
+     * hollow exercises stood in the session).
+     */
+    internal fun fitTemplate(
+        input: SuggestionInput, items: List<RoutineItem>, focus: SuggestionFocus, alsoThere: Set<EquipmentV2> = emptySet(),
+    ): List<RoutineItem> {
+        val catalog = input.catalog
+        val owned = if (input.profile.equipmentConfigured) CatalogFilter(ownedEquipment = input.profile.equipment + alsoThere) else null
+        val classics = familiarityGroup(input, focus) == ExerciseFamiliarity.Group.BEGINNER
+        val allowedNew = ExerciseFamiliarity.newPerSession(input.coach.exerciseChoice)
+        var current = items
+        var newSoFar = 0
+        for (item in items) {
+            if (item.test) continue
+            val def = catalog.fallbackFor(item.slug)
+            val next = if (def.slug !in input.resting) null else {
+                val chain = catalog.chainOf(def.slug).map { it.slug }.toSet()
+                val keptHere = input.kept.filter { it != def.slug && it in chain }
+                if (keptHere.isEmpty()) null else swapCandidates(input, current, item, focus).firstOrNull { c ->
+                    c.slug in keptHere && (owned == null || owned.matches(c)) &&
+                        // Nothing an open injury asks to be careful with comes in by itself.
+                        InjuryAdvisor.assess(c, input.injuries).verdict.let { v -> v == InjuryVerdict.OK || v == InjuryVerdict.ONE_SIDE_ONLY }
+                }
+            }
+            val isNew = ExerciseFamiliarity.countsAsNew(input, def)
+            val tooNew = classics && isNew && (item.warmup || newSoFar >= allowedNew)
+            val lacking = owned != null && !owned.matches(def)
+            if (next == null && !tooNew && !lacking) {
+                if (isNew && !item.warmup) newSoFar++
+                continue
+            }
+            val replacement = next ?: familiarSwap(input, current, focus, item.slug)
+            current = if (replacement == null) current.filter { it.slug != item.slug }
+                else current.map { if (it.slug != item.slug) it else swapped(it, replacement) }
+        }
+        return if (current == items) items else Circuits.normalize(current, catalog)
+    }
+
+    /** [to] in [item]'s place: the template's sets, rests, sides and warm-up role stay. */
+    private fun swapped(item: RoutineItem, to: ExerciseDefinition): RoutineItem =
+        WorkoutPlanner.itemFor(to).copy(sets = item.sets, restS = item.restS, sides = item.sides, warmup = item.warmup,
+            circuit = item.circuit, circuitRestS = item.circuitRestS, roundRestS = item.roundRestS)
+
     private fun boardDay(ctx: Ctx, planned: String?, fresh: Boolean, light: Boolean = false): SessionSuggestion {
         val input = ctx.input
         val addOn = input.coach.addOnAfterClimbing
-        val warmup = BuiltinRoutines.byKey(BuiltinRoutines.WARMUP_BOARD)?.items.orEmpty().filter { it.slug !in input.excluded }
+        val warmup = climbingWarmup(input)
         val after = when (addOn) {
             false -> emptyList()
             true -> pickSlots(ctx, listOf(Slot.ANTAGONIST, Slot.CORE), allowWall = true, focus = SuggestionFocus.BOARD_DAY,
@@ -1125,7 +1197,7 @@ object SessionSuggester {
     private fun climbDay(ctx: Ctx, planned: String?): SessionSuggestion {
         val input = ctx.input
         val addOn = input.coach.addOnAfterClimbing
-        val warmup = BuiltinRoutines.byKey(BuiltinRoutines.WARMUP_BOARD)?.items.orEmpty().filter { it.slug !in input.excluded }
+        val warmup = climbingWarmup(input)
         val after = when (addOn) {
             false -> emptyList()
             true -> pickSlots(ctx, listOf(Slot.ANTAGONIST, Slot.CORE), allowWall = true, focus = SuggestionFocus.BOARD_DAY,
@@ -1447,7 +1519,8 @@ object SessionSuggester {
     private fun familiarityGroup(input: SuggestionInput, focus: SuggestionFocus): ExerciseFamiliarity.Group =
         ExerciseFamiliarity.group(input.coach, (baseLevel(input) + keptLevel(input, focus)).coerceAtLeast(1),
             hasPerformanceValue = input.benchmarkSlugs.isNotEmpty() || input.benchmarks.isNotEmpty(),
-            grade = input.coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) } ?: input.logbookDifficulty)
+            grade = input.coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) } ?: input.logbookDifficulty,
+            starter = input.starter)
 
     /**
      * New to the athlete and counted as the session's new exercise (issue #68): the card marks it "new to you" with
@@ -1542,7 +1615,16 @@ object SessionSuggester {
             if (onlyNew && kept == null && slot != Slot.WARMUP &&
                 taken.any { t -> input.catalog[t]?.let { fits(slot, it, fingerFocus) } == true }) continue
             if (kept != null) ctx.reasons += SuggestionReason.KEPT_CHOICE
-            val choice = kept ?: familiar.maxWithOrNull(compareBy<ExerciseDefinition> { score(input, it, slot, focus, mains, group) }.thenBy { it.slug })
+            // A settled routine (little variety wanted – the app's default, [SuggestionInput.varietyDefault]): the exercise
+            // this job had last comes again, so its next step shows. Getting better at an exercise needs the same exercise
+            // for weeks (owner 2026-11-21); the simulation showed a different mix every day. "Another suggestion" and the
+            // variety slider still bring something else, warm-ups and stretches keep their rotation.
+            val settled = (input.coach.variety ?: input.varietyDefault) < SETTLED_BELOW_VARIETY && input.variant == 0 &&
+                input.coach.exerciseChoice != ExerciseChoice.OPEN && slot != Slot.WARMUP && slot != Slot.MOBILITY
+            val again = if (!settled) null else familiar
+                .filter { d -> input.lastTrained[d.slug]?.let { (input.today.toEpochDays() - it.toEpochDays()) in 0..SETTLED_DAYS } == true }
+                .maxWithOrNull(compareBy<ExerciseDefinition> { input.lastTrained.getValue(it.slug) }.thenByDescending { it.slug })
+            val choice = kept ?: again ?: familiar.maxWithOrNull(compareBy<ExerciseDefinition> { score(input, it, slot, focus, mains, group) }.thenBy { it.slug })
                 ?: continue
             taken += choice.slug
             if (slot == Slot.WARMUP) result.add(0, WorkoutPlanner.itemFor(choice).copy(warmup = true, sets = min(WorkoutPlanner.itemFor(choice).sets, 4)))
@@ -1577,8 +1659,11 @@ object SessionSuggester {
         return when (slot) {
             Slot.WARMUP -> def.category == ExerciseCategoryV2.WARMUP && def.kind != ExerciseKind.CLIMB &&
                 (fingerFocus || !loadsFingers)
+            // The plain hang at body weight belongs here too: it is the step between the assisted and the weighted
+            // hang, and it progresses by seconds ([NextTargets]).
             Slot.FINGER_MAIN -> def.category == ExerciseCategoryV2.FINGER && def.kind == ExerciseKind.HANG &&
-                (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL) && "strength" in def.tags
+                (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL || def.load == LoadMode.BODYWEIGHT) &&
+                "strength" in def.tags
             Slot.PULL -> def.category == ExerciseCategoryV2.PULL && !loadsFingers
             Slot.PUSH -> def.category == ExerciseCategoryV2.PUSH && !loadsFingers
             Slot.POWER -> "power" in def.tags && def.kind != ExerciseKind.CLIMB && !loadsFingers
@@ -1612,7 +1697,7 @@ object SessionSuggester {
         group: ExerciseFamiliarity.Group = familiarityGroup(input, focus),
     ): Double {
         val coach = input.coach
-        val variety = (coach.variety ?: 50).coerceIn(0, 100)
+        val variety = (coach.variety ?: input.varietyDefault).coerceIn(0, 100)
         var s = 0.0
         // Favourites (owner 2026-10-16): almost always with a routine, regularly with variety.
         if (def.slug in input.favorites) s += 3.0 + 5.0 * (100 - variety) / 100.0
@@ -1656,6 +1741,11 @@ object SessionSuggester {
         }
         return s + jitter(def.slug, input.today, input.variant) * (0.4 + 1.2 * variety / 100.0)
     }
+
+    /** Below this variety the coach keeps a job's last exercise ([pickSlots]). */
+    const val SETTLED_BELOW_VARIETY = 25
+    /** An exercise trained within this many days counts as the job's current one. */
+    const val SETTLED_DAYS = 21
 
     /** Deterministic noise in [0, 2.5) so "another suggestion" reshuffles close calls only. */
     private fun jitter(slug: String, day: LocalDate, variant: Int): Double {

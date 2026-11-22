@@ -49,8 +49,8 @@
     <string name="trp_rir_question_reps">Wie viele Wiederholungen wären noch gegangen?</string>
     <string name="trp_rir_question_seconds">Wie viele Sekunden wären noch gegangen?</string>
     <string name="trp_record">Neuer Bestwert: %1$s</string>
-    <string name="trp_benchmark_raised">Leistungswert angehoben: %1$s</string>
-    <string name="trp_benchmark_first">Startwert gelernt: %1$s</string>
+    <string name="trp_benchmark_raised">Kraftwert angehoben: %1$s</string>
+    <string name="trp_benchmark_first">Dein Startwert: %1$s</string>
     <string name="trp_capacity_e1rm">max. 1\u00A0Wdh. mit %1$s</string>
     <string name="trp_capacity_ten">10\u00A0s mit %1$s</string>
     <string name="trp_capacity_ten_pct">10\u00A0s mit %1$s (%2$s)</string>

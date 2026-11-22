@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ernährung, die einfache Ansicht: Protein heute und was gegessen wurde (Owner 2026-11-21). -->
+<resources>
+    <string name="trfs_view_simple">Einfach</string>
+    <string name="trfs_view_exact">Genau</string>
+    <string name="trfs_protein_title">Protein heute</string>
+    <string name="trfs_grams">%1$d g</string>
+    <string name="trfs_protein_left">von %1$d g · noch %2$d g</string>
+    <string name="trfs_protein_reached">von %1$d g · Ziel erreicht</string>
+    <string name="trfs_needs_weight">Mit deinem Körpergewicht weiß die App, wie viel Protein am Tag dein Training unterstützt.</string>
+    <string name="trfs_eaten_title">Heute gegessen</string>
+    <string name="trfs_eaten_empty">Noch nichts eingetragen.</string>
+</resources>

@@ -58,7 +58,7 @@
     <string name="trs_tile_percent_bw">% body weight</string>
     <string name="trs_capacity_chart">%1$s over time</string>
     <string name="trs_capacity_cd">Progress of %1$s across %2$d sessions.</string>
-    <string name="trs_current_value">Current performance value: %1$s</string>
+    <string name="trs_current_value">Current strength value: %1$s</string>
     <string name="trs_volume_chart">Volume per session</string>
     <string name="trs_volume_cd">Volume across %1$d sessions.</string>
     <string name="trs_volume_hint_load">Weight lifted × reps of all work sets: both dumbbells of a pair, body weight included on body-weight exercises.</string>

@@ -48,6 +48,7 @@
     <string name="trc_session_minutes">Length of a training without the wall</string>
     <string name="trc_minutes">%1$d\u00A0min</string>
     <string name="trc_add_on">10–15\u00A0min antagonists or core after climbing?</string>
+    <string name="trc_from_start">From your start</string>
     <string name="trc_experience_title">Climbing and experience</string>
     <string name="trc_experience_why">Lets the coach dose finger load: max hangs and campus only when your fingers are ready, more recovery where it helps.</string>
     <string name="trc_contexts">Where do you climb?</string>
@@ -126,7 +127,7 @@
     <string name="trc_preview_varied">Exercises change more often.</string>
     <string name="trc_preview_some_variety">Some variety around your core exercises.</string>
     <string name="trc_preview_no_finger">No finger sessions off the board.</string>
-    <string name="trc_values_title">Performance values</string>
+    <string name="trc_values_title">Strength values</string>
     <string name="trc_values_why">Loads are planned from what you can do. Pick a way – none is required.</string>
     <string name="trc_path_learn">Learn while training (recommended)</string>
     <string name="trc_path_learn_text">The first sessions start careful; after each set you say how many more would have gone. After two sessions the values are learned.</string>
@@ -178,19 +179,19 @@
     <string name="trc_next_goal">Next: set a goal – it decides what comes first.</string>
     <string name="trc_next_week">Next: your week – for a proposed standard week.</string>
     <string name="trc_next_equipment">Next: equipment – so every suggestion fits what you have.</string>
-    <string name="trc_next_value_pull">Next: performance value for pull-ups – loads fit from the first set.</string>
-    <string name="trc_next_value_finger">Next: performance value for your fingers – for planned hangs.</string>
+    <string name="trc_next_value_pull">Next: strength value for pull-ups – loads fit from the first set.</string>
+    <string name="trc_next_value_finger">Next: strength value for your fingers – for planned hangs.</string>
     <string name="trc_next_experience">Next: experience and age group – for fitting finger loads.</string>
     <string name="trc_next_preferences">Next: what suits you – focus and style.</string>
     <string name="trc_next_grade">Next: your grade – to place your strength.</string>
-    <string name="trc_learning_none">First time: the coach starts careful. After the set, say how many more would have gone.</string>
+    <string name="trc_learning_none">First time: the coach starts careful. Your answer after each set tunes the next ones.</string>
     <string name="trc_learning_guess">Starting load estimated carefully from your body weight and level – change it if it does not fit. After each set, say how much more would have gone: today the next sets move in bigger steps until the load fits.</string>
-    <string name="trc_learning_estimated">Performance value estimated – after the set, say how many more would have gone.</string>
-    <string name="trc_learning_progress">Performance value is being learned (%1$d/%2$d) – after the set, say how many more would have gone.</string>
+    <string name="trc_learning_estimated">Strength value estimated – after the set, say how many more would have gone.</string>
+    <string name="trc_learning_progress">Strength value is being learned (%1$d/%2$d) – after the set, say how many more would have gone.</string>
     <string name="trc_learning_guess_short">Start load estimated – say the reserve after each set</string>
-    <string name="trc_learning_none_short">First time – say the reserve after the set</string>
-    <string name="trc_learning_estimated_short">Performance value estimated</string>
-    <string name="trc_learning_progress_short">Performance value being learned (%1$d/%2$d)</string>
+    <string name="trc_learning_none_short">First time – the coach starts careful</string>
+    <string name="trc_learning_estimated_short">Strength value estimated</string>
+    <string name="trc_learning_progress_short">Strength value being learned (%1$d/%2$d)</string>
     <string name="trc_badge_estimated">estimated</string>
     <string name="trc_badge_learning">learning %1$d/%2$d</string>
     <string name="trc_badge_known">known</string>
@@ -222,7 +223,7 @@
     <string name="trlr_own_loads">Your own loads</string>
     <string name="trlr_forget">Forget</string>
     <string name="trlr_forget_all">Forget everything</string>
-    <string name="trlr_forget_all_text">The coach forgets the exercises, weekdays and swaps it learned so far, what you kept after a training and the level steps you kept. Favourites, “never suggest”, your own loads and performance values stay.</string>
+    <string name="trlr_forget_all_text">The coach forgets the exercises, weekdays and swaps it learned so far, what you kept after a training and the level steps you kept. Favourites, “never suggest”, your own loads and strength values stay.</string>
     <string name="trlr_summary_nothing">Nothing yet</string>
     <plurals name="trlr_summary_learned">
         <item quantity="one">%1$d learned</item>
@@ -235,7 +236,7 @@
     <string name="trc_learning_hold_short">First rounds – hold as long as it stays clean</string>
     <string name="trc_learning_hold">The coach learns this value from the time you hold: hold as long as it stays clean – letting go is an answer too.</string>
     <string name="trc_learning_own_short">Your load from last time</string>
-    <string name="trc_learning_own">Last time you trained lighter than planned, so this load is planned now – until a set shows more. You can change or delete it under performance values.</string>
+    <string name="trc_learning_own">Last time you trained lighter than planned, so this load is planned now – until a set shows more. You can change or delete it under strength values.</string>
     <string name="trlr_minutes">Your training length</string>
     <string name="trlr_minutes_text">Usually about %1$d\u00A0min (set: %2$d\u00A0min)</string>
 </resources>

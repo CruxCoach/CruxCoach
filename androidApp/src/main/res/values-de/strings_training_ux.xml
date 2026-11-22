@@ -131,4 +131,5 @@
         <item quantity="other">%d Bestwerte</item>
     </plurals>
     <string name="tru_set_weight_goal">Gewichtsziel</string>
+    <string name="tru_equipment_more">+ %1$d weitere</string>
 </resources>

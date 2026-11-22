@@ -35,7 +35,7 @@
     <string name="trc_preview_goal_none">Ohne Ziel verteilt der Coach alles gleichmäßig.</string>
     <string name="trc_preview_goal_perform">Kletterspezifische Kraft hat Vorrang: Finger, Zug, Power.</string>
     <string name="trc_preview_goal_strength">Kraftübungen haben Vorrang, mit kleinen, stetigen Steigerungen.</string>
-    <string name="trc_preview_goal_healthy">Mehr Antagonisten, Rumpf und Mobilität; die Fingerlast bleibt moderat.</string>
+    <string name="trc_preview_goal_healthy">Mehr Ausgleichsübungen, Rumpf und Mobilität; die Fingerlast bleibt moderat.</string>
     <string name="trc_preview_goal_comeback">Vorsichtiger Wiedereinstieg: erst leichtere Lasten, Fingerarbeit baut sich langsam auf.</string>
     <string name="trc_preview_goal_event">Das Training baut auf und wird in den letzten Tagen vor deinem Termin leichter.</string>
     <string name="trc_preview_project">Board-Sessions orientieren sich an deinem Projekt (%1$s, %2$d°).</string>
@@ -47,7 +47,8 @@
     <string name="trc_climbing_days">An diesen Tagen kletterst du meistens</string>
     <string name="trc_session_minutes">Länge eines Trainings ohne Wand</string>
     <string name="trc_minutes">%1$d\u00A0min</string>
-    <string name="trc_add_on">Nach dem Klettern noch 10–15\u00A0min Antagonisten oder Rumpf?</string>
+    <string name="trc_add_on">Nach dem Klettern noch 10–15\u00A0min Ausgleich oder Rumpf?</string>
+    <string name="trc_from_start">Aus deinem Start</string>
     <string name="trc_experience_title">Klettern und Erfahrung</string>
     <string name="trc_experience_why">Damit der Coach die Fingerlast passend dosiert: Max-Hangs und Campus erst, wenn die Finger so weit sind, mehr Erholung, wo es hilft.</string>
     <string name="trc_contexts">Wo kletterst du?</string>
@@ -126,7 +127,7 @@
     <string name="trc_preview_varied">Übungen wechseln öfter.</string>
     <string name="trc_preview_some_variety">Etwas Abwechslung rund um deine Kernübungen.</string>
     <string name="trc_preview_no_finger">Keine Fingereinheiten abseits vom Board.</string>
-    <string name="trc_values_title">Leistungswerte</string>
+    <string name="trc_values_title">Kraftwerte</string>
     <string name="trc_values_why">Lasten werden aus dem geplant, was du kannst. Wähl einen Weg – keiner ist Pflicht.</string>
     <string name="trc_path_learn">Lernen beim Training (empfohlen)</string>
     <string name="trc_path_learn_text">Die ersten Einheiten starten vorsichtig; nach jedem Satz sagst du, wie viele noch gegangen wären. Nach zwei Einheiten sind die Werte gelernt.</string>
@@ -178,19 +179,19 @@
     <string name="trc_next_goal">Als Nächstes: Ziel festlegen – es entscheidet, was Vorrang hat.</string>
     <string name="trc_next_week">Als Nächstes: deine Woche – für einen Wochenplan-Vorschlag.</string>
     <string name="trc_next_equipment">Als Nächstes: Ausrüstung – damit jeder Vorschlag zu dem passt, was du hast.</string>
-    <string name="trc_next_value_pull">Als Nächstes: Leistungswert Klimmzug – dann passen die Lasten ab dem ersten Satz.</string>
-    <string name="trc_next_value_finger">Als Nächstes: Leistungswert Finger – für geplante Hangs.</string>
+    <string name="trc_next_value_pull">Als Nächstes: Kraftwert Klimmzug – dann passen die Lasten ab dem ersten Satz.</string>
+    <string name="trc_next_value_finger">Als Nächstes: Kraftwert Finger – für geplante Hangs.</string>
     <string name="trc_next_experience">Als Nächstes: Erfahrung und Altersgruppe – für passende Fingerlasten.</string>
     <string name="trc_next_preferences">Als Nächstes: was dir liegt – Fokus und Stil.</string>
     <string name="trc_next_grade">Als Nächstes: dein Grad – um deine Kraft einzuordnen.</string>
-    <string name="trc_learning_none">Erster Durchgang: Der Coach startet vorsichtig. Sag nach dem Satz, wie viele noch gegangen wären.</string>
+    <string name="trc_learning_none">Erster Durchgang: Der Coach startet vorsichtig. Deine Antwort nach jedem Satz stellt die nächsten ein.</string>
     <string name="trc_learning_guess">Startlast vorsichtig geschätzt aus Körpergewicht und Kletterniveau – ändere sie, wenn sie nicht passt. Sag nach jedem Satz, wie viel noch gegangen wäre: Heute passen sich die nächsten Sätze in größeren Schritten an, bis die Last stimmt.</string>
-    <string name="trc_learning_estimated">Leistungswert geschätzt – sag nach dem Satz, wie viele noch gegangen wären.</string>
-    <string name="trc_learning_progress">Leistungswert wird gelernt (%1$d/%2$d) – sag nach dem Satz, wie viele noch gegangen wären.</string>
+    <string name="trc_learning_estimated">Kraftwert geschätzt – sag nach dem Satz, wie viele noch gegangen wären.</string>
+    <string name="trc_learning_progress">Kraftwert wird gelernt (%1$d/%2$d) – sag nach dem Satz, wie viele noch gegangen wären.</string>
     <string name="trc_learning_guess_short">Startlast geschätzt – nach jedem Satz Reserve angeben</string>
-    <string name="trc_learning_none_short">Erster Durchgang – nach dem Satz Reserve angeben</string>
-    <string name="trc_learning_estimated_short">Leistungswert geschätzt</string>
-    <string name="trc_learning_progress_short">Leistungswert wird gelernt (%1$d/%2$d)</string>
+    <string name="trc_learning_none_short">Erster Durchgang – der Coach startet vorsichtig</string>
+    <string name="trc_learning_estimated_short">Kraftwert geschätzt</string>
+    <string name="trc_learning_progress_short">Kraftwert wird gelernt (%1$d/%2$d)</string>
     <string name="trc_badge_estimated">geschätzt</string>
     <string name="trc_badge_learning">wird gelernt %1$d/%2$d</string>
     <string name="trc_badge_known">bekannt</string>
@@ -222,7 +223,7 @@
     <string name="trlr_own_loads">Deine eigenen Lasten</string>
     <string name="trlr_forget">Vergessen</string>
     <string name="trlr_forget_all">Alles vergessen</string>
-    <string name="trlr_forget_all_text">Der Coach vergisst die bisher gelernten Übungen, Wochentage und Tausche, was du nach einem Training übernommen hast und die übernommenen Stufen. Lieblingsübungen, „Nie vorschlagen“, deine eigenen Lasten und Leistungswerte bleiben.</string>
+    <string name="trlr_forget_all_text">Der Coach vergisst die bisher gelernten Übungen, Wochentage und Tausche, was du nach einem Training übernommen hast und die übernommenen Stufen. Lieblingsübungen, „Nie vorschlagen“, deine eigenen Lasten und Kraftwerte bleiben.</string>
     <string name="trlr_summary_nothing">Noch nichts</string>
     <plurals name="trlr_summary_learned">
         <item quantity="one">%1$d gelernt</item>
@@ -235,7 +236,7 @@
     <string name="trc_learning_hold_short">Erste Durchgänge – halte, solange es sauber geht</string>
     <string name="trc_learning_hold">Der Coach lernt diesen Wert aus deiner Haltezeit: Halte, solange es sauber geht – loslassen ist auch eine Antwort.</string>
     <string name="trc_learning_own_short">Deine Last vom letzten Mal</string>
-    <string name="trc_learning_own">Beim letzten Mal hast du leichter trainiert als geplant, deshalb ist jetzt diese Last geplant – bis ein Satz mehr zeigt. Ändern oder löschen kannst du sie unter Leistungswerte.</string>
+    <string name="trc_learning_own">Beim letzten Mal hast du leichter trainiert als geplant, deshalb ist jetzt diese Last geplant – bis ein Satz mehr zeigt. Ändern oder löschen kannst du sie unter Kraftwerte.</string>
     <string name="trlr_minutes">Deine Trainingsdauer</string>
     <string name="trlr_minutes_text">Meist etwa %1$d\u00A0min (eingestellt: %2$d\u00A0min)</string>
 </resources>

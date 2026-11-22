@@ -1,5 +1,7 @@
 package com.cruxcoach.athlete.data
 
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.toLocalDateTime
 import com.cruxcoach.athlete.logic.Recipe
 import com.cruxcoach.athlete.logic.Units
 import app.cash.sqldelight.coroutines.asFlow
@@ -87,7 +89,20 @@ class AthleteRepository(
         body.putSetting(KEY_PROFILE, json.encodeToString(AthleteProfile.serializer(), profile), clock())
     }
 
-    fun updateProfile(transform: (AthleteProfile) -> AthleteProfile) = transaction { saveProfile(transform(profile())) }
+    fun updateProfile(transform: (AthleteProfile) -> AthleteProfile) = transaction {
+        val before = profile()
+        val after = transform(before)
+        // The standard week counts from the day it was set: earlier days were never planned that way. A change to
+        // days still ahead keeps the day (review 2026-11-21: editing Friday on a Wednesday freed a missed Monday).
+        val today = today()
+        val changed = (before.weekPlan.keys + after.weekPlan.keys).filter { before.weekPlan[it] != after.weekPlan[it] }
+        val setNow = changed.isNotEmpty() && after.weekPlanSince == before.weekPlanSince &&
+            (before.weekPlan.isEmpty() || changed.any { it < today.dayOfWeek.isoDayNumber })
+        saveProfile(if (setNow) after.copy(weekPlanSince = today.toString()) else after)
+    }
+
+    private fun today(): kotlinx.datetime.LocalDate =
+        kotlin.time.Instant.fromEpochMilliseconds(clock()).toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date
 
     private fun decodeProfile(text: String): AthleteProfile =
         runCatching { json.decodeFromString(AthleteProfile.serializer(), text) }.getOrDefault(AthleteProfile())

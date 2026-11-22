@@ -123,7 +123,7 @@ class WorkoutsViewModel @Inject constructor(private val service: AthleteService)
         val monday = today.minus(kotlinx.datetime.DatePeriod(days = today.dayOfWeek.isoDayNumber - 1))
         val sunday = monday.plus(kotlinx.datetime.DatePeriod(days = 6))
         val week = buildWeek(today, profile.weekPlan, activities, repo.workoutsBetween(monday.toString(), sunday.toString()), pauses,
-            datePlan = profile.datePlan)
+            datePlan = profile.datePlan, planSince = profile.weekPlanSince?.let { runCatching { kotlinx.datetime.LocalDate.parse(it) }.getOrNull() })
         // The week shows even if the re-entry check below fails.
         _state.update { it.copy(today = today, week = week) }
         // Max-finger work before the break decides whether a long ramp's second week allows it again.

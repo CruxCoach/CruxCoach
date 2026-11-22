@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nutrition, the simple view: today's protein and what was eaten (owner 2026-11-21). -->
+<resources>
+    <string name="trfs_view_simple">Simple</string>
+    <string name="trfs_view_exact">Exact</string>
+    <string name="trfs_protein_title">Protein today</string>
+    <string name="trfs_grams">%1$d g</string>
+    <string name="trfs_protein_left">of %1$d g · %2$d g to go</string>
+    <string name="trfs_protein_reached">of %1$d g · target reached</string>
+    <string name="trfs_needs_weight">With your body weight the app knows how much protein a day supports your training.</string>
+    <string name="trfs_eaten_title">Eaten today</string>
+    <string name="trfs_eaten_empty">Nothing logged yet.</string>
+</resources>

@@ -51,8 +51,8 @@ Circuit 3 rounds: dips 10, sit-ups 20, plank 30\u00A0s</string>
     <string name="trwo_text_name_join">" &amp; "</string>
     <string name="trwo_load_auto">Automatic</string>
     <string name="trwo_load_auto_short">auto</string>
-    <string name="trwo_load_hint">Automatic: CruxCoach plans the weight from your performance value and last time. A value here always wins.</string>
-    <string name="trwo_load_hint_added">Added weight: 0 = body weight, negative = assisted. Automatic: CruxCoach plans it from your performance value and last time. A value here always wins.</string>
+    <string name="trwo_load_hint">Automatic: CruxCoach plans the weight from your strength value and last time. A value here always wins.</string>
+    <string name="trwo_load_hint_added">Added weight: 0 = body weight, negative = assisted. Automatic: CruxCoach plans it from your strength value and last time. A value here always wins.</string>
     <string name="trwo_editor_unsaved_title">Discard changes?</string>
     <string name="trwo_editor_unsaved_text">Your changes to this workout are not saved yet.</string>
     <string name="trwo_editor_discard">Discard</string>

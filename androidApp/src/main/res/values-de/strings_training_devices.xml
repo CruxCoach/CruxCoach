@@ -67,10 +67,10 @@
     <string name="trd_force_result_mean">Beste 5\u00A0s: %1$s</string>
     <string name="trd_force_result_too_short">Der Zug war kürzer als 5\u00A0s – kein Wert zum Speichern.</string>
     <string name="trd_force_result_pct">%1$d\u00A0%% des Körpergewichts</string>
-    <string name="trd_force_save">Als Leistungswert speichern</string>
+    <string name="trd_force_save">Als Kraftwert speichern</string>
     <string name="trd_force_saved">Gespeichert – die nächsten geplanten Blockheben-Sätze nutzen ihn.</string>
     <string name="trd_force_again">Noch einmal messen</string>
     <string name="trd_force_card_title">Kraftmesser (experimentell)</string>
-    <string name="trd_force_card_summary">Fingerkraft mit einem Tindeq Progressor messen und als Leistungswert speichern.</string>
+    <string name="trd_force_card_summary">Fingerkraft mit einem Tindeq Progressor messen und als Kraftwert speichern.</string>
     <string name="trd_force_card_open">Kraftmesser öffnen</string>
 </resources>

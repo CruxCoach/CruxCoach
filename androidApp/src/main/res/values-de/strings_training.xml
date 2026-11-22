@@ -9,7 +9,7 @@
     <string name="tr_cat_finger">Finger</string>
     <string name="tr_cat_pull">Zug</string>
     <string name="tr_cat_push">Druck</string>
-    <string name="tr_cat_antagonist">Antagonist &amp; Prävention</string>
+    <string name="tr_cat_antagonist">Ausgleich &amp; Vorbeugung</string>
     <string name="tr_cat_core">Rumpf</string>
     <string name="tr_cat_legs">Beine &amp; Hüfte</string>
     <string name="tr_cat_mobility">Mobilität</string>
@@ -106,12 +106,12 @@
     <string name="tr_routine_warmup_board">Board-Aufwärmen</string>
     <string name="tr_routine_warmup_board_desc">Vom Puls bis zu den Fingern – vor jeder Board-Session.</string>
     <string name="tr_routine_finger_basics">Fingerkraft-Basis</string>
-    <string name="tr_routine_finger_basics_desc">Aufwärmrampe, Max Hangs, Klimmzüge und etwas Antagonist.</string>
+    <string name="tr_routine_finger_basics_desc">Aufwärmrampe, Max Hangs, Klimmzüge und etwas Ausgleich.</string>
     <string name="tr_routine_injury_one_arm">Verletzungsmodus: einarmig + Zug</string>
     <string name="tr_routine_injury_one_arm_desc">Ohne Wand: einarmiges Blockheben mit der gesunden Hand, Klimmzüge, Rudern, Schulter und Rumpf.</string>
-    <string name="tr_routine_pull_antagonist">Zug &amp; Antagonist (ohne Klettern)</string>
+    <string name="tr_routine_pull_antagonist">Zug &amp; Ausgleich</string>
     <string name="tr_routine_pull_antagonist_desc">Ausgewogen ziehen und drücken für Tage ohne Wand.</string>
-    <string name="tr_routine_antagonist_15">Antagonist 15\u00A0min</string>
+    <string name="tr_routine_antagonist_15">Ausgleich 15\u00A0min</string>
     <string name="tr_routine_antagonist_15_desc">Die kurze Ergänzung nach dem Board: Schultern, Handgelenke, Fingerstrecker.</string>
     <string name="tr_routine_legs_basics">Bein-Basis</string>
     <string name="tr_routine_legs_basics_desc">Kniebeuge, Hüftbeuge, einbeinig, hintere Kette und Adduktoren.</string>
@@ -119,7 +119,7 @@
     <string name="tr_routine_core_climber_desc">Körperspannung vom Dead Bug bis zum L-Sit.</string>
     <string name="tr_routine_mobility_10">Mobilität 10\u00A0min</string>
     <string name="tr_routine_mobility_10_desc">Hüfte für hohe Tritte und Eindrehen, Schultern und Handgelenke.</string>
-    <string name="tr_routine_baseline_tests">Leistungstest</string>
+    <string name="tr_routine_baseline_tests">Krafttest</string>
     <string name="tr_routine_baseline_tests_desc">Max Hang an 20\u00A0mm, maximale Klimmzüge, Hollow Hold – alle 6–8\u00A0Wochen wiederholen.</string>
 
     <string name="tr_format_kg">%1$s\u00A0kg</string>
@@ -128,7 +128,7 @@
     <string name="tr_format_in">%1$s\u00A0in</string>
     <string name="tr_format_seconds">%1$d\u00A0s</string>
     <string name="tr_format_mm">%1$s\u00A0mm</string>
-    <string name="tr_format_percent_bw">%1$d\u00A0%% KG</string>
+    <string name="tr_format_percent_bw">%1$d\u00A0%% Körpergewicht</string>
     <string name="tr_bodyweight">Körpergewicht</string>
     <string name="tr_assisted">entlastet</string>
     <string name="tr_weight">Gewicht</string>

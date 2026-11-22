@@ -55,6 +55,9 @@ import kotlinx.datetime.minus
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
+/** Exercises shown at the top of Progress before "all". */
+private const val EXERCISES_AT_FIRST = 6
+
 /** One trained exercise in the stats list. */
 data class ExerciseRow(
     val def: ExerciseDefinition,
@@ -63,6 +66,9 @@ data class ExerciseRow(
     val change: Double?,
     val spark: List<Double>,
     val lastAt: Long?,
+    /** The value of the first training with it, to say "start → now" from the second training on. */
+    val first: Double? = null,
+    val trainings: Int = 0,
 )
 
 data class StatsHubState(
@@ -162,6 +168,8 @@ class StatsHubViewModel @Inject constructor(private val service: AthleteService)
                     change = progress.change28,
                     spark = progress.sessions.mapNotNull { it.bestDisplay }.takeLast(12),
                     lastAt = t.lastAt,
+                    first = progress.sessions.firstOrNull()?.bestDisplay,
+                    trainings = progress.sessions.size,
                 )
             }
             val strength = STRENGTH_TO_WEIGHT_SLUGS.mapNotNull { slug ->
@@ -226,6 +234,7 @@ fun StatsHubScreen(
 ) {
     val s by viewModel.state.collectAsStateWithLifecycle()
     var weightOpen by rememberSaveable { mutableStateOf(false) }
+    var allExercises by rememberSaveable { mutableStateOf(false) }
     var entered by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) { if (entered) viewModel.reload() else entered = true }
     val lang = catalogLanguage()
@@ -242,6 +251,25 @@ fun StatsHubScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // Progress opens with the athlete's own exercises (owner 2026-11-21: getting better at them is the point):
+            // where each started, how it went, where it stands. The most recent ones first; the rest one tap away.
+            item { SectionTitle(stringResource(R.string.trpr_my_exercises)) }
+            if (s.exercises.isEmpty()) {
+                item { Text(stringResource(R.string.trs_exercises_empty), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            val shown = if (allExercises) s.exercises else s.exercises.take(EXERCISES_AT_FIRST)
+            items(shown, key = { "ex-" + it.def.slug }) { row ->
+                ExerciseStatsRow(row, lang, s.profile, climbColor) { onOpenExerciseStats(row.def.slug) }
+            }
+            if (s.exercises.size > EXERCISES_AT_FIRST) {
+                item(key = "ex-more") {
+                    TextButton(onClick = { allExercises = !allExercises }, modifier = Modifier.testTag("stats_exercises_more")) {
+                        Text(if (allExercises) stringResource(R.string.trt_show_less)
+                            else stringResource(R.string.trpr_all_exercises, s.exercises.size))
+                    }
+                }
+            }
             // Where to go from here: body, the week, start values, the log – each with its value.
             item(key = "hub") { ProgressHub(s, onOpenBody, onLogWeight = { weightOpen = true }, onOpenWeeklyReview, onOpenBenchmarks, onOpenHistory) }
             item(key = "volume") { volumeCard() }
@@ -357,16 +385,6 @@ fun StatsHubScreen(
                 }
             }
 
-            // ── Exercises ───────────────────────────────────────────
-            item { SectionTitle(stringResource(R.string.tr_tab_exercises)) }
-            if (s.exercises.isEmpty()) {
-                item { Text(stringResource(R.string.trs_exercises_empty), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
-            items(s.exercises, key = { "ex-" + it.def.slug }) { row ->
-                ExerciseStatsRow(row, lang, s.profile, climbColor) { onOpenExerciseStats(row.def.slug) }
-            }
-
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
@@ -452,7 +470,10 @@ private fun ProgressHub(
 @Composable
 private fun ExerciseStatsRow(row: ExerciseRow, lang: String, profile: AthleteProfile, color: Color, onClick: () -> Unit) {
     val units = profile.units
-    val supporting = listOfNotNull(
+    // From the second training on: where it started and where it stands. The first training has only its value.
+    val startNow = if (row.trainings >= 2 && row.first != null && row.last != null) stringResource(R.string.trpr_start_now,
+        capacityText(row.def, row.kind, row.first, units), capacityText(row.def, row.kind, row.last, units)) else null
+    val supporting = startNow ?: listOfNotNull(
         row.last?.let { capacityLabel(row.kind) + ": " + capacityText(row.def, row.kind, it, units) },
         row.change?.let { stringResource(R.string.trs_change_28, changeText(row.def, row.kind, it, units)) },
     ).joinToString(" · ").ifBlank { stringResource(R.string.trs_no_value) }

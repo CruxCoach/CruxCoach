@@ -3,14 +3,14 @@
     <!-- Wochenvolumen -->
     <string name="trv_title">Wochenziele</string>
     <string name="trv_info_text">Jeder Bereich hat eine Spanne harter Sätze pro Woche (Finger: Einheiten mit mindestens 48\u00A0h Abstand). Ziel, Fokus, Erfahrung, Trainingstage und der aktuelle Block bestimmen die Spanne. Harte Board-Tage zählen für Finger, Zug und Rumpf. Der Vorschlag für heute füllt, was noch fehlt – nie auf Kosten der Erholung oder einer Verletzung. Tippe auf einen Bereich, um ein eigenes Ziel zu setzen.</string>
-    <string name="trv_empty">Gerade keine Wochenziele – Entlastung, Taper oder Wettkampftag halten die Woche frei.</string>
+    <string name="trv_empty">Gerade keine Wochenziele – eine leichte Woche, ein Taper oder ein Wettkampftag halten die Woche frei.</string>
     <string name="trv_legend">Volle Farbe: geloggt · hell: aus dem Klettern · Striche: Wochenspanne</string>
     <string name="trv_area_finger">Finger</string>
     <string name="trv_area_pull">Zug</string>
     <string name="trv_area_push">Druck</string>
     <string name="trv_area_legs">Beine</string>
     <string name="trv_area_core">Rumpf</string>
-    <string name="trv_area_antagonist">Antagonisten</string>
+    <string name="trv_area_antagonist">Ausgleich</string>
     <string name="trv_area_mobility">Mobilität</string>
     <string name="trv_value_sets">%1$s / %2$d–%3$d\u00A0Sätze</string>
     <string name="trv_value_sessions">%1$s / %2$d Einheiten</string>

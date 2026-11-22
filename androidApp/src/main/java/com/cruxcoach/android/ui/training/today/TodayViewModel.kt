@@ -46,7 +46,9 @@ data class WeekDay(
  * Gentle nudges on the hub, each with one action. What to train today is the
  * daily suggestion's job ([SessionSuggester]); these only cover setup.
  */
-enum class TodaySuggestion { CONFIGURE_EQUIPMENT, SET_BENCHMARKS, BASELINE_TEST, LOG_WEIGHT }
+enum class TodaySuggestion { CONFIGURE_EQUIPMENT, SET_BENCHMARKS, BASELINE_TEST, LOG_WEIGHT,
+    /** After the first training, while no week is planned: the coach asks for the climbing days (owner 2026-11-21). */
+    PLAN_WEEK }
 
 /** A running comeback plan on today's card. */
 data class ComebackToday(
@@ -111,8 +113,6 @@ data class TodayState(
     val bodyweightKg: Double? = null,
     /** This week's volume per area (weekly plan), empty when it could not be computed. */
     val weekly: List<AreaProgress> = emptyList(),
-    /** The checklist's last step was just done (seen open earlier in this view model's life). */
-    val setupJustDone: Boolean = false,
     /** What the athlete chose to train today ("another suggestion"); null = the coach decides. */
     val wish: com.cruxcoach.athlete.logic.SuggestionFocus? = null,
     /** Minutes chosen for today on the card; null = the preferred duration. */
@@ -143,14 +143,22 @@ data class TodayState(
     val climbDeleted: AthleteService.DeletedClimb? = null,
     /** The date plans before "Heute Ruhetag", for the snackbar and "Rückgängig" (owner 2026-10-19). */
     val restTodayUndo: Map<String, String>? = null,
+    /** Per exercise of today's suggestion: last time and the plan, for "last time 3 × 5" and "+1 rep" on its row. */
+    val rows: Map<String, TodayRow> = emptyMap(),
     /** "Montags machst du meist …": take the usual workout into the standard week (owner 2026-10-19). */
     val habitOffer: HabitOffer? = null,
     /** The standard week before the offer was taken, for the snackbar and "Rückgängig". */
     val habitTaken: HabitTaken? = null,
 ) {
-    /** The two questions come before today's suggestion until answered or skipped (owner 2026-10-15). */
-    val asksBeforeSuggestion: Boolean get() = profile.checkinEnabled && checkin == null && openWorkout == null
+    /**
+     * Nothing is asked before today's training any more (owner 2026-11-21: "the training shows at once"): the day's
+     * form is one optional tap on the card. Kept so callers that waited for the questions read "none".
+     */
+    val asksBeforeSuggestion: Boolean get() = false
 }
+
+/** One exercise of today's card: the last training's work sets and what the next one plans ([AthleteService.nextTarget]). */
+data class TodayRow(val last: List<com.cruxcoach.athlete.model.ExerciseSet>, val next: com.cruxcoach.athlete.logic.NextTargets.Next, val sets: Int)
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -203,8 +211,6 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     )
 
     private var lastInputs: Inputs? = null
-    /** Open checklist steps at the previous refresh; null before the first. */
-    private var lastOpenSteps: Int? = null
     /** "Another suggestion" counter; resets with the day. */
     private var variant = 0
     private var variantDay: LocalDate? = null
@@ -305,6 +311,9 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             val eightWeeks = 56L * 24 * 3600 * 1000
             if (benchmarks.isNotEmpty() && i.injuries.isEmpty() && System.currentTimeMillis() - lastTest > eightWeeks) add(TodaySuggestion.BASELINE_TEST)
             if (i.profile.bodyEnabled && trend.isEmpty()) add(TodaySuggestion.LOG_WEIGHT)
+            // Asked when the answer changes something: once there is a first training and still no week.
+            if (i.profile.weekPlan.isEmpty() && i.profile.datePlan.isEmpty() && i.profile.coach.climbingDays.isEmpty() &&
+                runCatching { repo.trainedExercises().isNotEmpty() }.getOrDefault(false)) add(TodaySuggestion.PLAN_WEEK)
         }
 
         val loadStatus = runCatching { service.loadStatus() }.getOrNull()
@@ -324,12 +333,6 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 i.profile.sessionMinutes, today)
         }.getOrNull()
 
-        // Counted here, not in the screen: the coach setup opens before Today has drawn once.
-        val coachDone = i.profile.coach.setupState == com.cruxcoach.athlete.model.SetupState.DONE ||
-            i.profile.coach.setupState == com.cruxcoach.athlete.model.SetupState.DISMISSED
-        val openSteps = listOf(coachDone, i.profile.equipmentConfigured, trend.isNotEmpty()).count { !it }
-        val justDone = (lastOpenSteps ?: 0) > 0 && openSteps == 0
-        lastOpenSteps = openSteps
         val dayForm = service.todaysModifier().let { m -> if (daily?.shortenedForFatigue == true) m.copy(setsDelta = 0) else m }
             .takeIf { !it.isNeutral }
         // The weekday's usual workout on a weekday the standard week leaves free: offered once, "Nein danke" holds for weeks.
@@ -342,11 +345,24 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 daily?.reasons?.firstOrNull() == SuggestionReason.USUAL_ROUTINE_WEEKDAY &&
                 i.profile.weekPlan[iso] == null && !DayPlans.isOverridden(i.profile, today)) HabitOffer(iso, h.entry) else null
         }.getOrNull()
+        // Each row says what last time was and what today adds: the numbers the training will plan.
+        // The return ramp is the one the suggestion was just built with: no second look back over half a year.
+        val built = lastInput
+        val steps = if (daily == null) com.cruxcoach.athlete.logic.NextTargets.Steps.CAREFUL
+            else runCatching { service.planSteps(returnState = built?.let { input -> { Result.success(input.returnState) } }) }
+                .getOrDefault(com.cruxcoach.athlete.logic.NextTargets.Steps.CAREFUL)
+        val rows = runCatching {
+            val planned = daily?.routine?.items.orEmpty().filter { !it.warmup }.map { item ->
+                dayForm?.let { com.cruxcoach.athlete.logic.ReadinessModifiers.applyToItem(item, service.catalog.fallbackFor(item.slug), it) } ?: item
+            }
+            val sets = planned.associate { it.slug to it.sets }
+            service.rowTargets(planned, steps, dayForm).mapValues { (slug, t) -> TodayRow(t.last, t.next, sets[slug] ?: 0) }
+        }.getOrDefault(emptyMap())
         _state.update {
             it.copy(
                 loading = false,
-                setupJustDone = it.setupJustDone || justDone,
                 suggestion = daily,
+                rows = rows,
                 dayForm = dayForm,
                 plannedName = plannedName,
                 habitOffer = habitOffer,
@@ -966,7 +982,6 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
 
     fun consumeSuggestionSaved() = _state.update { it.copy(suggestionSaved = false) }
 
-    fun dismissSetupDone() = _state.update { it.copy(setupJustDone = false) }
 
     private fun covers(p: PausePeriod, day: LocalDate, today: LocalDate): Boolean {
         val start = runCatching { LocalDate.parse(p.startDay) }.getOrNull() ?: return false

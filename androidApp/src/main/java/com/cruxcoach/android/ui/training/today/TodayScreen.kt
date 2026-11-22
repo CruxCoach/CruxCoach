@@ -111,8 +111,6 @@ fun TodayScreen(
     /** An exercise of today's card the athlete tapped to swap. */
     var swapFor by rememberSaveable { mutableStateOf<String?>(null) }
     var menu by remember { mutableStateOf(false) }
-    // The checklist's last tick is celebrated once in place before the card goes.
-    val setupJustDone = state.setupJustDone
     val snackbar = remember { SnackbarHostState() }
     val savedText = stringResource(R.string.trsg_saved)
     val weightSavedText = stringResource(R.string.tru_weight_saved)
@@ -186,18 +184,8 @@ fun TodayScreen(
                         onStart = { index, name -> viewModel.startComebackSession(c.injury.id, index, name) })
                 }
             }
-            val steps = setupSteps(state)
-            if (steps.any { !it.done } || setupJustDone) {
-                item(key = "setup") {
-                    SetupChecklistCard(steps, justDone = setupJustDone, onDismissDone = viewModel::dismissSetupDone, onOpen = { step ->
-                        when (step.kind) {
-                            SetupKind.COACH -> onOpenCoachSetup()
-                            SetupKind.EQUIPMENT -> showEquipment = true
-                            SetupKind.WEIGHT -> showWeight = true
-                        }
-                    })
-                }
-            }
+            // No setup checklist here any more (owner 2026-11-21): the start asks what the coach needs, the rest is
+            // asked when it matters and stays reachable under "Coach anpassen" in the settings.
             if (state.openWorkout != null) {
                 item(key = "open_workout") { OpenWorkoutCard(onOpenPlayer) }
             } else if (state.todaysWorkouts.isNotEmpty() && !moreToday) {
@@ -267,9 +255,12 @@ fun TodayScreen(
                     },
                 )
             }
-            // After the checklist: at most one gentle next step (start values, a re-test).
-            if (steps.all { it.done }) {
-                state.suggestions.firstOrNull { it != TodaySuggestion.CONFIGURE_EQUIPMENT && it != TodaySuggestion.LOG_WEIGHT }?.let { s ->
+            // At the very end: at most one gentle next step. What the coach is missing comes first – the equipment when
+            // the start was skipped, the body weight (loads and protein need it; the start no longer asks) – then a
+            // re-test after two months. Own start values are entered under Progress, not asked for here.
+            run {
+                listOf(TodaySuggestion.CONFIGURE_EQUIPMENT, TodaySuggestion.LOG_WEIGHT, TodaySuggestion.PLAN_WEEK, TodaySuggestion.BASELINE_TEST)
+                    .firstOrNull { it in state.suggestions }?.let { s ->
                     item(key = s.name) {
                         SuggestionCard(s, onAction = {
                             when (s) {
@@ -277,6 +268,7 @@ fun TodayScreen(
                                 TodaySuggestion.BASELINE_TEST -> viewModel.startRoutine(BuiltinRoutines.BASELINE_TESTS)
                                 TodaySuggestion.CONFIGURE_EQUIPMENT -> showEquipment = true
                                 TodaySuggestion.LOG_WEIGHT -> showWeight = true
+                                TodaySuggestion.PLAN_WEEK -> planDays = true
                             }
                         }, onSecondary = if (s == TodaySuggestion.SET_BENCHMARKS) onOpenBenchmarks else null)
                     }
@@ -320,8 +312,14 @@ fun TodayScreen(
         )
     }
     if (askWhy) {
+        val adjustTitle = suggestionTitle(state)
         NextSuggestionSheet(
             state = state,
+            onMinutes = { m -> viewModel.chooseMinutes(m) },
+            onCircuit = { on -> viewModel.chooseCircuit(on) },
+            onEdit = { askWhy = false; viewModel.editTarget(adjustTitle).let { (id, from) -> onOpenEditor(id, from) } },
+            onSave = { askWhy = false; viewModel.saveSuggestion(adjustTitle) },
+            onCoach = { askWhy = false; onOpenCoachSetup() },
             onDismiss = { askWhy = false },
             onShuffle = { askWhy = false; viewModel.nextSuggestion() },
             onFocus = { focus -> askWhy = false; viewModel.chooseFocus(focus) },
@@ -460,106 +458,6 @@ fun TodayScreen(
             snackbar.currentSnackbarData?.dismiss()
             val result = snackbar.showSnackbar(text, yes, withDismissAction = true, duration = SnackbarDuration.Long)
             viewModel.answerNeverOffer(result == SnackbarResult.ActionPerformed)
-        }
-    }
-}
-
-// ── "Startklar": the minimum, as a checklist ───────────────────────
-
-internal enum class SetupKind { COACH, EQUIPMENT, WEIGHT }
-
-internal data class SetupStep(val kind: SetupKind, val done: Boolean)
-
-/**
- * What a new athlete has to do at least: goal and week (coach), equipment and
- * body weight. A coach setup the athlete declined counts as done – the
- * checklist never nags about something they said no to.
- */
-internal fun setupSteps(state: TodayState): List<SetupStep> {
-    val coach = state.profile.coach.setupState
-    return listOf(
-        SetupStep(SetupKind.COACH, coach == com.cruxcoach.athlete.model.SetupState.DONE || coach == com.cruxcoach.athlete.model.SetupState.DISMISSED),
-        SetupStep(SetupKind.EQUIPMENT, state.profile.equipmentConfigured),
-        SetupStep(SetupKind.WEIGHT, state.trendKg != null),
-    )
-}
-
-@Composable
-private fun SetupChecklistCard(steps: List<SetupStep>, justDone: Boolean, onDismissDone: () -> Unit, onOpen: (SetupStep) -> Unit) {
-    val done = steps.count { it.done }
-    if (justDone && done == steps.size) {
-        // All three ticked: a short "ready", then the card is gone for good.
-        Card(
-            colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.positiveContainer,
-                contentColor = CruxCoachDesign.colors.onPositiveContainer),
-            modifier = Modifier.fillMaxWidth().testTag("today_setup_done"),
-        ) {
-            Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.CheckCircle, null)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.tru_setup_ready_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(stringResource(R.string.tru_setup_ready_text), style = MaterialTheme.typography.bodySmall)
-                }
-                IconButton(onClick = onDismissDone) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.tru_done)) }
-            }
-        }
-        return
-    }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        modifier = Modifier.fillMaxWidth().testTag("today_setup"),
-    ) {
-        Column(Modifier.padding(vertical = 12.dp)) {
-            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.RocketLaunch, null, tint = CruxCoachDesign.colors.brandAccent)
-                Spacer(Modifier.width(10.dp))
-                LabelBesideOrAbove(modifier = Modifier.weight(1f), label = {
-                    Text(stringResource(R.string.tru_setup_title), style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(end = 8.dp))
-                }) {
-                    Text(stringResource(R.string.tru_setup_progress, done, steps.size), style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            LinearProgressIndicator(
-                progress = { done.toFloat() / steps.size },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                color = CruxCoachDesign.colors.brandAccent, drawStopIndicator = {},
-            )
-            steps.forEachIndexed { i, step ->
-                val (title, text) = when (step.kind) {
-                    SetupKind.COACH -> R.string.tru_setup_coach to R.string.tru_setup_coach_text
-                    SetupKind.EQUIPMENT -> R.string.tru_setup_equipment to R.string.tru_setup_equipment_text
-                    SetupKind.WEIGHT -> R.string.tru_setup_weight to R.string.tru_setup_weight_text
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
-                        .clickable(enabled = !step.done) { onOpen(step) }
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                        .testTag("today_setup_${step.kind.name.lowercase()}"),
-                ) {
-                    Box(
-                        Modifier.size(32.dp).clip(CircleShape)
-                            .background(if (step.done) CruxCoachDesign.colors.positive else MaterialTheme.colorScheme.surface),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (step.done) Icon(Icons.Default.Check, contentDescription = stringResource(R.string.tru_setup_done),
-                            tint = CruxCoachDesign.colors.positiveContainer, modifier = Modifier.size(20.dp))
-                        else Text("${i + 1}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(title), style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = if (step.done) FontWeight.Normal else FontWeight.SemiBold,
-                            color = if (step.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                        Text(stringResource(if (step.done) R.string.tru_setup_done else text), style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (!step.done) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
-                }
-            }
         }
     }
 }
@@ -1140,6 +1038,17 @@ private val AccentOnCard: androidx.compose.ui.graphics.Color
     @androidx.compose.runtime.ReadOnlyComposable
     get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFFFFB74D, light = 0xFF9A3500)
 
+/** "+1 kg" and "−1 kg" on the suggestion card: the theme's green and amber reach only 4.3:1 on its light container. */
+private val StepUpOnCard: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFF8EE8A5, light = 0xFF125C2C)
+
+private val StepDownOnCard: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFFFFD166, light = 0xFF674C00)
+
 /** Water's own colour, the same on Today and in the nutrition log; deeper in the light theme, where its taps need 3:1. */
 internal val WaterBlue: androidx.compose.ui.graphics.Color
     @androidx.compose.runtime.Composable
@@ -1153,6 +1062,7 @@ private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit, onSecondary
         TodaySuggestion.SET_BENCHMARKS -> Triple(R.string.trt_sugg_benchmarks_title, R.string.trt_sugg_benchmarks_text, R.string.tru_estimate)
         TodaySuggestion.BASELINE_TEST -> Triple(R.string.trt_sugg_test_title, R.string.trt_sugg_test_text, R.string.tr_action_start)
         TodaySuggestion.LOG_WEIGHT -> Triple(R.string.trt_sugg_weight_title, R.string.trt_sugg_weight_text, R.string.trt_sugg_weight_action)
+        TodaySuggestion.PLAN_WEEK -> Triple(R.string.trt_sugg_week_title, R.string.trt_sugg_week_text, R.string.trdp_title)
     }
     OutlinedCard(Modifier.fillMaxWidth().testTag("today_suggestion_${s.name.lowercase()}")) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp)) {
@@ -1386,25 +1296,11 @@ private fun DailySuggestionCard(
         modifier = Modifier.fillMaxWidth().testTag("today_suggestion_card"),
     ) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)) {
-            LabelBesideOrAbove(label = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.trt_today_hero), style = MaterialTheme.typography.labelLarge)
-                }
-            }) {
-                // "Einstiegswoche" explains itself like every value: a tap opens the "Why?" sheet with the block.
-                state.block?.let {
-                    Text(blockLabel(it), style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.clip(CruxCoachDesign.shapes.small)
-                            .clickable(onClickLabel = stringResource(R.string.tru_why), onClick = onWhy)
-                            .padding(horizontal = 4.dp, vertical = 2.dp).testTag("today_block"))
-                }
-            }
-            if (state.asksBeforeSuggestion) {
-                // Two questions first, then the suggestion that fits them (owner 2026-10-15).
-                QuickCheckin(onSave = onQuickCheckin, onMore = onMoreCheckin)
-                return@Column
+            // The week of the block ("lighter week") is explained behind "Why?", not as a word on the card.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.trt_today_hero), style = MaterialTheme.typography.labelLarge)
             }
             Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(top = 4.dp).testTag("today_suggestion_title"))
@@ -1416,8 +1312,7 @@ private fun DailySuggestionCard(
                 itemVerticalAlignment = Alignment.CenterVertically,
             ) {
                 // The count matches the list below: the warm-up is part of the time, not of the list.
-                Text(pluralStringResource(R.plurals.trsg_meta_count, main.size, main.size),
-                    style = MaterialTheme.typography.bodyMedium)
+                Text(pluralStringResource(R.plurals.trsg_meta_count, main.size, main.size), style = MaterialTheme.typography.bodyMedium)
                 if (s.timeAdjustable) DurationChip(s.totalMinutes, state.minutesToday, state.profile.sessionMinutes, onChooseMinutes)
                 else Text(stringResource(R.string.trt_duration_value, s.totalMinutes), style = MaterialTheme.typography.bodyMedium)
                 com.cruxcoach.android.ui.training.common.PlacePicker(
@@ -1426,23 +1321,9 @@ private fun DailySuggestionCard(
                     defaultId = TrainingPlaces.default(state.profile)?.id,
                     onPick = onPickPlace,
                 )
-                // One set of each in turn instead of all sets of one exercise first – one tap, today only.
-                if (state.circuitPossible) {
-                    // Clearly on or off (render review 2026-10-17: the selected chip looked like the other one).
-                    FilterChip(
-                        selected = state.circuitToday,
-                        onClick = { onChooseCircuit(!state.circuitToday) },
-                        label = { Text(stringResource(R.string.trcirc_today_chip)) },
-                        leadingIcon = { Icon(if (state.circuitToday) Icons.Default.Check else Icons.Default.Repeat, null, Modifier.size(18.dp)) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = CruxCoachDesign.colors.brandAccent,
-                            selectedLabelColor = CruxCoachDesign.colors.onBrandAccent,
-                            selectedLeadingIconColor = CruxCoachDesign.colors.onBrandAccent,
-                        ),
-                        modifier = Modifier.testTag("today_circuit"),
-                    )
-                }
             }
+            // How the athlete feels today: one optional tap, never a gate.
+            if (state.profile.checkinEnabled) DayFormRow(state, onForm = { energy -> onQuickCheckin(energy, state.checkin?.sore.orEmpty()) }, onMore = onMoreCheckin)
             if (main.isNotEmpty()) {
                 // Each exercise with its sets; a tap swaps it (owner 2026-10-16: overridable with little effort).
                 // Open from the start when an exercise new to the athlete would sit behind "+N more" (issue #68): its
@@ -1479,6 +1360,14 @@ private fun DailySuggestionCard(
                                     Spacer(Modifier.width(4.dp))
                                     Column {
                                         Text(name, style = MaterialTheme.typography.bodyMedium)
+                                        // What the last training was (owner 2026-11-21: every row says last time and today).
+                                        val row = state.rows[item.slug]
+                                        if (item.slug !in state.newToYou) row?.last?.takeIf { it.isNotEmpty() }
+                                            ?.let { com.cruxcoach.android.ui.training.common.setsDoneText(it, def, state.profile.units) }
+                                            ?.let {
+                                                Text(stringResource(R.string.trpr_last_time, it), style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("today_last_${item.slug}"))
+                                            }
                                         // New to the athlete (issue #68): one tap to the steps; the row itself still swaps.
                                         if (item.slug in state.newToYou) {
                                             val how = stringResource(R.string.trt_new_how)
@@ -1502,9 +1391,25 @@ private fun DailySuggestionCard(
                         ) {
                             // The sets the training will plan: today's form may take one off (audit W7: card ≠ player).
                             val planned = state.dayForm?.let { com.cruxcoach.athlete.logic.ReadinessModifiers.applyToItem(item, def, it) } ?: item
-                            Text(com.cruxcoach.android.ui.training.workouts.routineItemSummary(planned, def, state.profile.units, short = true),
-                                style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
-                            Icon(Icons.Default.SwapHoriz, contentDescription = null, Modifier.padding(start = 6.dp).size(18.dp))
+                            val row = state.rows[item.slug]
+                            // The numbers the training will plan; the item's range while there is nothing to go by yet.
+                            val target = row?.let { com.cruxcoach.android.ui.training.common.planText(planned.sets, it.next.reps, it.next.durationS, it.next.loadKg, def, state.profile.units) }
+                                ?: com.cruxcoach.android.ui.training.workouts.routineItemSummary(planned, def, state.profile.units, short = true)
+                            val step = row?.let { com.cruxcoach.android.ui.training.common.stepText(it.last, it.next.reps, it.next.durationS, it.next.loadKg, def, state.profile.units) }
+                            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
+                                Text(target, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                                    modifier = Modifier.testTag("today_target_${item.slug}"))
+                                step?.let { (text, tone) ->
+                                    Text(text, style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                                        fontWeight = if (tone == com.cruxcoach.android.ui.training.common.StepTone.SAME) FontWeight.Normal else FontWeight.SemiBold,
+                                        color = when (tone) {
+                                            com.cruxcoach.android.ui.training.common.StepTone.UP -> StepUpOnCard
+                                            com.cruxcoach.android.ui.training.common.StepTone.SAME -> MaterialTheme.colorScheme.onSecondaryContainer
+                                            com.cruxcoach.android.ui.training.common.StepTone.DOWN -> StepDownOnCard
+                                        },
+                                        modifier = Modifier.testTag("today_step_${item.slug}"))
+                                }
+                            }
                         }
                     }
                     if (main.size > 4) {
@@ -1539,7 +1444,8 @@ private fun DailySuggestionCard(
                 com.cruxcoach.athlete.logic.EnergyBeforeTraining.hint(state.energy, s, state.catalog)
             }
             energyHint?.let { EnergyHintLine(it, state.profile, lighterChosen = state.levelShift < 0, onLighter = onLighter) }
-            checkin()
+            // The day's verdict only when it changes the training (a tired day, a rest day); "all good" needs no line.
+            if (state.checkin != null && state.readiness.level != ReadinessLevel.GO) checkin()
             val plan = s.boardPlan
             if (plan != null) {
                 // Board day: the session on the board is the main thing, the warm-up comes with it.
@@ -1570,41 +1476,32 @@ private fun DailySuggestionCard(
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onNext, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
-                    modifier = Modifier.testTag("today_suggestion_next")) {
-                    Icon(Icons.Default.Refresh, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trsg_next))
-                }
-                Spacer(Modifier.weight(1f))
-                Box {
-                    IconButton(onClick = { menu = true }, modifier = Modifier.testTag("today_suggestion_more")) {
-                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.trt_more_actions))
-                    }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.trsg_why_title)) },
-                            onClick = { menu = false; onWhy() },
-                            leadingIcon = { Icon(Icons.Default.Info, null) },
-                            modifier = Modifier.testTag("today_suggestion_why"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.trsg_edit)) },
-                            onClick = { menu = false; onEdit(title) },
-                            enabled = s.routine.items.isNotEmpty(),
-                            leadingIcon = { Icon(Icons.Default.Edit, null) },
-                            modifier = Modifier.testTag("today_suggestion_edit"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.trsg_save)) },
-                            onClick = { menu = false; onSave(title) },
-                            enabled = s.routine.items.isNotEmpty(),
-                            leadingIcon = { Icon(Icons.Default.BookmarkAdd, null) },
-                            modifier = Modifier.testTag("today_suggestion_save"),
-                        )
-                    }
-                }
+            // One quiet link: everything else about today's training lives in one sheet ("Training anpassen").
+            TextButton(onClick = onNext, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+                modifier = Modifier.align(Alignment.CenterHorizontally).testTag("today_suggestion_next")) {
+                Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_adjust))
             }
         }
+    }
+}
+
+/**
+ * How the athlete feels today, as one optional tap on the card (owner 2026-11-21: the training shows at once, the
+ * day's form is no gate). "Tired" is the check-in's low energy and trims the training as before; "more" opens the
+ * four questions (sleep, fingers, skin, ill) and what hurts.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun DayFormRow(state: TodayState, onForm: (Int) -> Unit, onMore: () -> Unit) {
+    val tired = (state.checkin?.energy ?: 3) <= 2
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().testTag("today_form")) {
+        FilterChip(selected = !tired, onClick = { if (tired) onForm(3) }, label = { Text(stringResource(R.string.trt_form_good)) },
+            leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(!tired), modifier = Modifier.testTag("today_form_good"))
+        FilterChip(selected = tired, onClick = { if (!tired) onForm(2) }, label = { Text(stringResource(R.string.trt_form_tired)) },
+            leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(tired), modifier = Modifier.testTag("today_form_tired"))
+        TextButton(onClick = onMore, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+            modifier = Modifier.testTag("today_checkin_open")) { Text(stringResource(R.string.trt_form_more)) }
     }
 }
 
@@ -1622,18 +1519,15 @@ private fun kindLabel(focus: SuggestionFocus): String = stringResource(when (foc
 @Composable
 private fun DurationChip(minutes: Int, chosen: Int?, usual: Int, onChoose: (Int?) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val content = LocalContentColor.current
     Box {
-        AssistChip(
-            onClick = { open = true },
-            label = { Text(stringResource(R.string.trt_duration_value, minutes)) },
-            leadingIcon = { Icon(Icons.Default.Timer, null, Modifier.size(18.dp)) },
-            trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp)) },
-            colors = AssistChipDefaults.assistChipColors(labelColor = content, leadingIconContentColor = content,
-                trailingIconContentColor = content),
-            border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = content.copy(alpha = 0.4f)),
-            modifier = Modifier.testTag("today_duration"),
-        )
+        // Quiet text with a caret, not a chip (owner 2026-11-21: one filled button per screen, everything else calm).
+        Row(verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clip(CruxCoachDesign.shapes.small)
+                .clickable(onClickLabel = stringResource(R.string.trt_duration_title)) { open = true }
+                .heightIn(min = 48.dp).padding(horizontal = 2.dp).testTag("today_duration")) {
+            Text(stringResource(R.string.trt_duration_value, minutes), style = MaterialTheme.typography.bodyMedium)
+            Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp))
+        }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.testTag("today_duration_menu")) {
             Text(stringResource(R.string.trt_duration_title), style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
@@ -1921,10 +1815,29 @@ private fun NextSuggestionSheet(
     onPlace: (String) -> Unit = {},
     onRestToday: () -> Unit = {},
     onPlanDays: () -> Unit = {},
+    onMinutes: (Int?) -> Unit = {},
+    onCircuit: (Boolean) -> Unit = {},
+    onEdit: () -> Unit = {},
+    onSave: () -> Unit = {},
+    onCoach: () -> Unit = {},
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         modifier = Modifier.testTag("today_next_sheet")) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+            // Everything about today's training in one place (owner 2026-11-21); the card keeps the one button.
+            Text(stringResource(R.string.trt_adjust_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(bottom = 12.dp))
+            if (state.suggestion?.timeAdjustable == true) {
+                Text(stringResource(R.string.trt_duration_title), style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TodayViewModel.DURATION_OPTIONS.forEach { m ->
+                        FilterChip(selected = state.minutesToday == m, onClick = { onMinutes(if (state.minutesToday == m) null else m) },
+                            label = { Text(stringResource(R.string.trt_duration_value, m)) }, modifier = Modifier.testTag("today_adjust_minutes_$m"))
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
             // What the athlete feels like today (owner 2026-10-15: "rather push and pull than fingers").
             Text(stringResource(R.string.trt_next_kind), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
@@ -1967,6 +1880,13 @@ private fun NextSuggestionSheet(
                 FilterChip(selected = state.levelShift > 0, onClick = { onLevel(if (state.levelShift > 0) 0 else 1) },
                     label = { Text(stringResource(R.string.trt_level_harder)) }, modifier = Modifier.testTag("today_level_harder"))
             }
+            // One set of each in turn instead of all sets of one exercise first, today only.
+            if (state.circuitPossible) {
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.trcirc_today_chip), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Switch(checked = state.circuitToday, onCheckedChange = onCircuit, modifier = Modifier.testTag("today_circuit"))
+                }
+            }
             Button(onClick = onShuffle, modifier = Modifier.fillMaxWidth().padding(top = 20.dp).heightIn(min = 52.dp).testTag("today_next_shuffle")) {
                 Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.trt_next_shuffle))
             }
@@ -1977,6 +1897,13 @@ private fun NextSuggestionSheet(
                 }
                 TextButton(onClick = onEquipment, modifier = Modifier.testTag("today_next_equipment")) {
                     Icon(Icons.Default.FitnessCenter, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_next_equipment))
+                }
+                val hasItems = state.suggestion?.routine?.items?.isNotEmpty() == true
+                TextButton(onClick = onEdit, enabled = hasItems, modifier = Modifier.testTag("today_suggestion_edit")) {
+                    Icon(Icons.Default.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_adjust_edit))
+                }
+                TextButton(onClick = onSave, enabled = hasItems, modifier = Modifier.testTag("today_suggestion_save")) {
+                    Icon(Icons.Default.BookmarkAdd, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trsg_save))
                 }
             }
             // No time today: a rest day, and the days around it planned anew (owner 2026-10-19).
@@ -1989,6 +1916,10 @@ private fun NextSuggestionSheet(
                 OutlinedButton(onClick = onPlanDays, modifier = Modifier.testTag("today_next_plan_days")) {
                     Icon(Icons.Default.EditCalendar, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trdp_title))
                 }
+            }
+            // The depth for those who want it: goal and date, the week, focus and preferences, own start values.
+            TextButton(onClick = onCoach, modifier = Modifier.padding(top = 8.dp).testTag("today_adjust_coach")) {
+                Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_adjust_coach))
             }
         }
     }

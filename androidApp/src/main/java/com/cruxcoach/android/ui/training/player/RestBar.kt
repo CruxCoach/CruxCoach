@@ -93,6 +93,21 @@ fun RestBar(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
                             .testTag(if (finishedExercise) "player_exercise_done" else "player_rest_title"))
+                    // The exercise is done: what the next training of it plans, while the effort is still fresh.
+                    if (finishedExercise && done != null) {
+                        val work = state.sets.filter { it.exerciseSlug == done.set.exerciseSlug && it.side == done.set.side && it.setType == SetType.WORK }
+                        state.nextTime[progressKey(done.set.exerciseSlug, done.set.side)]?.let { n ->
+                            com.cruxcoach.android.ui.training.common.planText(work.size, n.reps, n.durationS, n.loadKg, done.def, state.profile.units)
+                        }?.let {
+                            val move = state.nextTime[progressKey(done.set.exerciseSlug, done.set.side)]?.move
+                            val back = move == com.cruxcoach.athlete.logic.NextTargets.Move.DOWN || move == com.cruxcoach.athlete.logic.NextTargets.Move.RELEARN
+                            val up = move == com.cruxcoach.athlete.logic.NextTargets.Move.UP || move == com.cruxcoach.athlete.logic.NextTargets.Move.UP_FAST
+                            // Two lines at a large font: the numbers are the point and must not be cut.
+                            Text(stringResource(R.string.trpr_next_time, it), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                                color = if (up) CruxCoachDesign.colors.positive else if (back) CruxCoachDesign.colors.caution else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("player_next_time"))
+                        }
+                    }
                     if (finishedExercise && next != null) {
                         val parts = listOfNotNull(next.def.name(language), targetSummary(next.set, next.def, null, state.profile.units))
                         Text(stringResource(R.string.trp_next_after, parts.joinToString(" · ")), style = MaterialTheme.typography.bodyMedium,

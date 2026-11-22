@@ -168,7 +168,9 @@ class TodayCoach(
         val habit = PreferenceLearning.habit(
             repo.workoutsBetween(today.minus(DatePeriod(days = PreferenceLearning.WINDOW_DAYS)).toString(), today.toString()),
             today, isRoutine, resets)
-        val events = repo.suggestionEventsSince(sinceMs)
+        // One read of the ledger: behaviour is learned from the last weeks, kept choices hold for as long as they say.
+        val ledger = repo.suggestionEventsSince(nowMs - PreferenceLearning.LEDGER_DAYS * 24L * 3600 * 1000)
+        val events = ledger.filter { it.createdAt >= sinceMs }
         // Today's swaps are learned for the days to come; today's card keeps the rest of its picks
         // (device test 2026-10-17: one swap moved the other exercises around).
         // "Leave it out today" likewise (device test 2026-10-17: the dropped press made the slot pick push-ups instead).
@@ -180,7 +182,7 @@ class TodayCoach(
         val affinity = learned + choices.dislikedToday.associateWith { -10.0 }
         // Turned down on earlier days: rests a few days (today's own swaps keep the card stable instead).
         // Kept after a training ("künftig so"): the chosen exercise leads its slot, the replaced one rests.
-        val kept = PreferenceLearning.keptEffect(PreferenceLearning.kept(events, today, resets))
+        val kept = PreferenceLearning.keptEffect(PreferenceLearning.kept(ledger, today, resets))
         val resting = PreferenceLearning.resting(stable.filterNot { it.day == today.toString() }, today, resets).keys + kept.resting.keys
         // "Kenne ich nicht" on earlier days: not the coach's new pick for a while (today's own works as a swap, the card stays).
         val unfamiliar = PreferenceLearning.unfamiliar(events.filterNot { it.day == today.toString() }, today, resets)
@@ -202,6 +204,7 @@ class TodayCoach(
         val historyWeeks = parsedActivities.filterValues { it.trained }.keys.map { ConsistencyStreak.weekStart(it) }.distinct().size
         // Back after a break or a healed finger injury: a conservative ramp on top of every other rule.
         val returnState = returnState(activities, today)
+        val known = ExerciseFamiliarity.known(trained.associate { it.slug to it.trainings }, allBenchmarks)
         val input = SuggestionInput(
             catalog = catalog,
             profile = profile,
@@ -239,8 +242,10 @@ class TodayCoach(
             minutesLearned = choices.minutesToday == null && usualMinutes != null,
             kept = kept.preferred,
             beyondWeekDays = choices.trainAnyway,
-            known = ExerciseFamiliarity.known(trained.associate { it.slug to it.trainings }, allBenchmarks),
+            known = known,
             unfamiliar = unfamiliar,
+            starter = ExerciseFamiliarity.starter(known),
+            varietyDefault = ExerciseFamiliarity.varietyDefault(ExerciseFamiliarity.starter(known)),
         )
         return Built(input, habit, levelOffers, usual)
     }

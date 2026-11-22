@@ -700,26 +700,42 @@ private fun ExperienceCard(state: CoachSetupState, update: ((CoachProfile) -> Co
                 label = { Text(contextLabel(c)) }, modifier = Modifier.testTag("coach_context_${c.name.lowercase()}"))
         }
     }
-    QuestionLabel(stringResource(R.string.trc_experience))
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        ExperienceBand.entries.forEach { e ->
-            FilterChip(selected = d.experience == e, onClick = { update { it.copy(experience = if (it.experience == e) null else e) } },
-                label = { Text(experienceLabel(e)) }, modifier = Modifier.testTag("coach_experience_${e.name.lowercase()}"))
+    // Answered on the start page already: one line with "change" instead of the three questions again (owner
+    // 2026-11-21: nothing is asked twice). Read from the saved profile, so answering here never folds the card.
+    val saved = state.profile.coach
+    val answered = saved.experience != null && saved.ageBand != null && saved.currentGrade != null
+    var editStart by rememberSaveable { mutableStateOf(false) }
+    if (answered && !editStart) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("coach_start_summary")) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.trc_from_start), style = MaterialTheme.typography.labelLarge)
+                Text(listOfNotNull(d.currentGrade?.let { gradeWithV(it) }, d.experience?.let { experienceLabel(it) }, d.ageBand?.let { ageLabel(it) })
+                    .joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
+            }
+            TextButton(onClick = { editStart = true }, modifier = Modifier.testTag("coach_start_edit")) { Text(stringResource(R.string.trt_checkin_change)) }
         }
-    }
-    PrefillHint(state.prefill[PrefillField.EXPERIENCE])
-    QuestionLabel(stringResource(R.string.trc_age))
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        AgeBand.entries.forEach { a ->
-            FilterChip(selected = d.ageBand == a, onClick = { update { it.copy(ageBand = if (it.ageBand == a) null else a) } },
-                label = { Text(ageLabel(a)) }, modifier = Modifier.testTag("coach_age_${a.name.lowercase()}"))
+    } else {
+        QuestionLabel(stringResource(R.string.trc_experience))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ExperienceBand.entries.forEach { e ->
+                FilterChip(selected = d.experience == e, onClick = { update { it.copy(experience = if (it.experience == e) null else e) } },
+                    label = { Text(experienceLabel(e)) }, modifier = Modifier.testTag("coach_experience_${e.name.lowercase()}"))
+            }
         }
+        PrefillHint(state.prefill[PrefillField.EXPERIENCE])
+        QuestionLabel(stringResource(R.string.trc_age))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            AgeBand.entries.forEach { a ->
+                FilterChip(selected = d.ageBand == a, onClick = { update { it.copy(ageBand = if (it.ageBand == a) null else a) } },
+                    label = { Text(ageLabel(a)) }, modifier = Modifier.testTag("coach_age_${a.name.lowercase()}"))
+            }
+        }
+        PrefillHint(state.prefill[PrefillField.AGE])
+        QuestionLabel(stringResource(R.string.trc_current_grade))
+        GradeStepper(d.currentGrade, startFrom = state.logbook.workingDifficulty, tag = "coach_current_grade",
+            onChange = { g -> update { it.copy(currentGrade = g, currentFlashGrade = capFlash(it.currentFlashGrade, g)) } })
+        PrefillHint(state.prefill[PrefillField.GRADE])
     }
-    PrefillHint(state.prefill[PrefillField.AGE])
-    QuestionLabel(stringResource(R.string.trc_current_grade))
-    GradeStepper(d.currentGrade, startFrom = state.logbook.workingDifficulty, tag = "coach_current_grade",
-        onChange = { g -> update { it.copy(currentGrade = g, currentFlashGrade = capFlash(it.currentFlashGrade, g)) } })
-    PrefillHint(state.prefill[PrefillField.GRADE])
     QuestionLabel(stringResource(R.string.trc_flash_grade))
     GradeStepper(d.currentFlashGrade, startFrom = state.logbook.flashDifficulty ?: d.currentGrade?.let { LogbookSummaries.difficultyOf(it)?.minus(2.0) },
         tag = "coach_flash_grade", onChange = { g -> update { it.copy(currentFlashGrade = capFlash(g, it.currentGrade)) } })

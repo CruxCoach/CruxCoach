@@ -58,7 +58,7 @@
     <string name="trs_tile_percent_bw">% Körpergewicht</string>
     <string name="trs_capacity_chart">%1$s im Verlauf</string>
     <string name="trs_capacity_cd">Fortschritt bei %1$s über %2$d Einheiten.</string>
-    <string name="trs_current_value">Aktueller Leistungswert: %1$s</string>
+    <string name="trs_current_value">Aktueller Kraftwert: %1$s</string>
     <string name="trs_volume_chart">Volumen pro Einheit</string>
     <string name="trs_volume_cd">Volumen über %1$d Einheiten.</string>
     <string name="trs_volume_hint_load">Bewegtes Gewicht × Wiederholungen aller Arbeitssätze: beide Hanteln eines Paars, bei Körpergewichtsübungen samt Körpergewicht.</string>

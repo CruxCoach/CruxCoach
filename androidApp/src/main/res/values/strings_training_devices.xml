@@ -67,10 +67,10 @@
     <string name="trd_force_result_mean">Best 5\u00A0s: %1$s</string>
     <string name="trd_force_result_too_short">The pull was shorter than 5\u00A0s – no value to save.</string>
     <string name="trd_force_result_pct">%1$d\u00A0%% of body weight</string>
-    <string name="trd_force_save">Save as performance value</string>
+    <string name="trd_force_save">Save as strength value</string>
     <string name="trd_force_saved">Saved – the next planned pick-ups use it.</string>
     <string name="trd_force_again">Measure again</string>
     <string name="trd_force_card_title">Force gauge (experimental)</string>
-    <string name="trd_force_card_summary">Measure finger strength with a Tindeq Progressor and save it as a performance value.</string>
+    <string name="trd_force_card_summary">Measure finger strength with a Tindeq Progressor and save it as a strength value.</string>
     <string name="trd_force_card_open">Open force gauge</string>
 </resources>

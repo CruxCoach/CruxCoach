@@ -62,11 +62,14 @@ class ExercisePageTest : AthleteScreenTest() {
     private val pushUps = Routine("r", "Push", items = listOf(RoutineItem("push.push_up", sets = 4, repsMin = 10, repsMax = 10, restS = 60)))
 
     @Test
-    fun `one tap logs the set as planned and the next row is due`() {
+    fun `one tap logs the set as planned with its reserve and the next row is due`() {
+        // Owner 2026-11-21: the reserve answer is the tap that logs the set; the coach keeps the reserve of every set.
         val (id, vm) = player(pushUps)
-        click("player_done")
+        waitForTag("player_done_reserve")
+        click("player_done_rir_2")
         until { work(id).first().isCompleted }
         assertEquals(10, work(id).first().reps)
+        until { work(id).first().rir == 2 }
         until { vm.state.value.current?.set?.id == work(id)[1].id }
         scrollTo("player_set_view", "player_row_active")
         scrollTo("player_set_view", "player_row_${work(id).first().id}")
@@ -96,7 +99,7 @@ class ExercisePageTest : AthleteScreenTest() {
     @Test
     fun `a chip during the rest ends it and logs the next set`() {
         val (id, vm) = player(pushUps)
-        click("player_done")
+        click("player_done_rir_2")
         until { vm.state.value.phase == PlayerPhase.REST && vm.state.value.restArmed }
         waitForTag("player_rest")
         // The next set is the active row during the rest: one tap logs it.
@@ -106,11 +109,24 @@ class ExercisePageTest : AthleteScreenTest() {
     }
 
     @Test
-    fun `the reserve answer sits on the done row`() {
+    fun `the reserve answer can be corrected on the done row`() {
         val (id, vm) = player(Routine("r", "Pull", items = listOf(
             RoutineItem("pull.weighted_pull_up", sets = 3, repsMin = 5, repsMax = 5, loadKg = 20.0, restS = 120))))
-        click("player_done")
+        click("player_done_rir_3")
         until { vm.state.value.phase == PlayerPhase.REST && vm.state.value.restArmed }
+        until { work(id).first().rir == 3 }
+        // The answer is one word on the row; a tap on it brings the choice back.
+        tap("player_rir_edit")
+        tap("player_rir_1")
+        until { work(id).first().rir == 1 }
+    }
+
+    @Test
+    fun `a timed hold asks for the reserve too`() {
+        // A plank was never asked, so its target could not follow how it went.
+        val (id, vm) = player(Routine("r", "Core", items = listOf(RoutineItem("core.front_plank", sets = 2, durationS = 20, restS = 60))))
+        click("player_done")
+        until { vm.state.value.phase == PlayerPhase.REST && work(id).first().isCompleted }
         tap("player_rir_2")
         until { work(id).first().rir == 2 }
     }
@@ -120,9 +136,9 @@ class ExercisePageTest : AthleteScreenTest() {
         val (id, vm) = player(Routine("r", "Two", items = listOf(
             RoutineItem("push.push_up", sets = 4, repsMin = 10, repsMax = 10, restS = 0),
             RoutineItem("core.dead_bug", sets = 2, repsMin = 10, repsMax = 10))))
-        click("player_done")
+        click("player_done_rir_2")
         until { work(id, "push.push_up")[0].isCompleted }
-        click("player_done")
+        click("player_done_rir_2")
         until { work(id, "push.push_up")[1].isCompleted }
         tap("player_end_exercise")
         until { work(id, "push.push_up").size == 2 }
@@ -154,7 +170,7 @@ class ExercisePageTest : AthleteScreenTest() {
             RoutineItem("core.dead_bug", sets = 2, repsMin = 10, repsMax = 10))))
         click("player_strip_1")
         until { vm.state.value.current?.set?.exerciseSlug == "core.dead_bug" }
-        click("player_done")
+        click("player_done_rir_2")
         until { work(id, "core.dead_bug").first().isCompleted }
         assertTrue(repo.suggestionEventsForDay(service.today().toString()).none { it.kind == SuggestionEventKind.SKIPPED_SET })
         // The skipped-over exercise is still there and comes back.
@@ -213,7 +229,7 @@ class ExercisePageTest : AthleteScreenTest() {
             RoutineItem("core.dead_bug", sets = 2, repsMin = 10, repsMax = 10, restS = 0))))
         click("player_strip_1")
         until { vm.state.value.current?.set?.exerciseSlug == "core.dead_bug" }
-        click("player_done")
+        click("player_done_rir_2")
         until { work(id, "core.dead_bug").first().isCompleted }
         val again = WorkoutPlayerViewModel(service).tracked()
         until { again.state.value.phase == PlayerPhase.SET && again.state.value.current != null }
@@ -223,7 +239,7 @@ class ExercisePageTest : AthleteScreenTest() {
     @Test
     fun `the end page asks how hard it was and finishes in one tap`() {
         val (id, vm) = player(Routine("r", "One", items = listOf(RoutineItem("push.push_up", sets = 1, repsMin = 10, repsMax = 10))))
-        click("player_done")
+        click("player_done_rir_2")
         until { vm.state.value.phase == PlayerPhase.COMPLETE }
         // The last exercise stays on screen ("+ set", corrections) until the athlete wraps up.
         click("player_all_done")

@@ -55,7 +55,7 @@
     <!-- Finish dialog -->
     <string name="trw_finish_title">Finish training</string>
     <string name="trw_rpe_label">How hard was it? (1–10)</string>
-    <string name="trw_rpe_info_title">Session RPE</string>
+    <string name="trw_rpe_info_title">Effort</string>
     <string name="trw_rpe_info_text">1 = very easy, 10 = maximal. Together with the duration this gives the training load, which CruxCoach uses for example for your carbohydrate target. It is optional.</string>
     <string name="trw_notes_label">Notes (optional)</string>
     <string name="trw_finish_confirm">Finish</string>
@@ -156,5 +156,5 @@
     <string name="trw_open_replace_empty">End it, start a new one</string>
     <string name="trw_open_continue">Continue “%1$s”</string>
     <string name="trw_own_loads_title">Next time with your loads</string>
-    <string name="trw_own_loads_info">You trained lighter than planned. The next training plans the load you chose; a set that shows more raises it again. You can change or delete it under performance values.</string>
+    <string name="trw_own_loads_info">You trained lighter than planned. The next training plans the load you chose; a set that shows more raises it again. You can change or delete it under strength values.</string>
 </resources>

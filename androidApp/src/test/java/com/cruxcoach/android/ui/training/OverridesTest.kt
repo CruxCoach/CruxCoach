@@ -217,7 +217,7 @@ class OverridesTest : AthleteScreenTest() {
     fun `a done set is corrected from its row, and it can be opened again`() {
         val (id, vm) = player(Routine("r", "Push", items = listOf(RoutineItem("push.push_up", sets = 3, repsMin = 10, repsMax = 10, restS = 60))))
         render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
-        click("player_done")
+        click("player_done_rir_2")
         until { vm.state.value.phase == PlayerPhase.REST && work(id).first().isCompleted }
         // The done row says what was done against the target and opens for a correction – the rest goes on.
         val first = work(id).first().id
@@ -244,7 +244,7 @@ class OverridesTest : AthleteScreenTest() {
     fun `the next load set by hand during the rest wins over the reserve answer`() {
         val (id, vm) = player(Routine("r", "Pull", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 3, repsMin = 5, repsMax = 5, loadKg = 20.0, restS = 120))))
         render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
-        click("player_done")
+        click("player_done_rir_2")
         until { vm.state.value.phase == PlayerPhase.REST && vm.state.value.restArmed }
         // During the rest the next set is already the active row: its load is changed right there.
         scrollTo("player_set_view", "player_load_minus")
@@ -252,6 +252,8 @@ class OverridesTest : AthleteScreenTest() {
         until { work(id).drop(1).all { (it.loadKg ?: 20.0) < 20.0 } }
         val manual = work(id)[1].loadKg
         // "No reserve" would take a step off – the athlete already decided.
+        scrollTo("player_set_view", "player_rir_edit")
+        click("player_rir_edit")
         scrollTo("player_set_view", "player_rir_0")
         click("player_rir_0")
         until { work(id).first().rir == 0 }
@@ -329,19 +331,26 @@ class OverridesTest : AthleteScreenTest() {
     }
 
     @Test
-    fun `today asks how strong and what hurts before the suggestion`() {
+    fun `today shows the training at once, and the day's form is one optional tap`() {
+        // Owner 2026-11-21: nothing is asked before the suggestion; "tired" is the check-in's low energy.
         val vm = loaded(TodayViewModel(service))
         render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
-        scrollTo("today_list", hasTestTag("today_quick_checkin"))
-        assertTrue(compose.onAllNodesWithTag("today_suggestion_start").fetchSemanticsNodes().isEmpty())
-        click("today_quick_strength_4")
-        click("today_quick_hurts_yes")
-        click("today_sore_shoulder")
-        click("today_quick_show")
+        until { vm.state.value.suggestion != null }
+        scrollTo("today_list", hasTestTag("today_suggestion_start"))
+        assertTrue(compose.onAllNodesWithTag("today_quick_checkin").fetchSemanticsNodes().isEmpty())
         val day = service.today().toString()
+        assertEquals(null, repo.checkin(day))
+        scrollTo("today_list", hasTestTag("today_form_tired"))
+        click("today_form_tired")
+        // The chip follows the saved check-in: "good" only answers once the card shows "tired".
+        until { repo.checkin(day)?.energy == 2 && vm.state.value.checkin?.energy == 2 }
+        compose.waitForIdle()
+        click("today_form_good")
+        until { repo.checkin(day)?.energy == 3 }
+        // What hurts today is spared today, not an injury: it is one of the questions behind "more".
+        vm.saveQuickCheckin(4, setOf(InjuryRegion.SHOULDER))
         until { repo.checkin(day)?.sore == setOf(InjuryRegion.SHOULDER) }
         assertEquals(4, repo.checkin(day)?.energy)
-        // Spared today, not an injury.
         assertTrue(repo.activeInjuries().isEmpty())
         until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
         scrollTo("today_list", hasTestTag("today_suggestion_start"))

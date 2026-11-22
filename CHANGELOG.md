@@ -161,6 +161,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   new bug report or feature request, the confirmation offers the same link;
   "Already a member" hides it for good. Buzz is a separate app with its own
   account: nothing from CruxCoach is shared and nothing is sent.
+- Training and nutrition are simple by default, with the depth one tap away:
+  - Your start is one page with four answers, each one tap: how hard you boulder,
+    how long you have been climbing, your age band, and where you train with what.
+    Body data is asked where it is needed (nutrition, loads), not up front.
+  - "Today" shows your training at once. Every exercise says what you did last
+    time and what today adds ("+1 rep", "+5 s", "+1 kg"). One button starts it;
+    "Adjust" holds everything else: time, place, kind of training, easier or
+    harder, a circuit, single exercises. How you feel is one optional tap.
+  - In a training one tap logs a set: the answer to "How many more could you
+    have done?". Under the target stands what you did last time, and after the
+    last set what the next training plans. Timed holds are asked too.
+  - The summary opens with "Next time": per exercise today's sets and the next
+    plan, in the numbers the next training will show. At the top of an
+    exercise's range its next step is one tap away, and the coach suggests it
+    from then on; after a training that was too hard the next plan is lighter.
+  - The coach stays with your exercises, the same ones week after week, so their
+    progress shows. While you are new to training here it picks well-known
+    basics. "Another suggestion" and the variety setting still bring change.
+  - Progress that stood still now moves: body-weight exercises and timed holds
+    gain a repetition or a few seconds after a training with reserve, weights
+    step up at the top of the range, a weight step that is too big is answered
+    with repetitions first, and leg work is never planned "assisted".
+  - A training that was too hard plans one step back, and the step back stays
+    until it went well again. Nothing steps up by itself in a comeback
+    session, with an open injury, in the first weeks after a break or in a
+    lighter week; under 18 and in the first year of climbing only body-weight
+    work steps. A value you enter or test, and a load you change by hand, win
+    over the last training. Stretches and warm-ups keep their own numbers.
+  - Starter workouts and the warm-up before climbing use what your place has:
+    an exercise that needs missing equipment is replaced, not dropped.
+  - The week you plan counts from the day you plan it: earlier days are not
+    "missed". The coach's own week puts no finger training on the day before
+    climbing, and a climbing day is only called a board session for those who
+    climb on boards.
+  - Nutrition has two views. "Simple" shows today's protein and what you ate,
+    and is where you start; "Exact" has energy, macros, water, meals and
+    micronutrients. The energy check only reads days logged as a whole (two
+    main meals or three meals) in the exact view.
+  - Progress opens with "My exercises": where each started and where it stands.
+  - Plainer words in German: "Kraftwert" for the value the coach plans from,
+    "Ausgleich" for antagonist work, "Leichte Woche", "% Körpergewicht".
 - Training beyond the board. A "Today" hub and an "Exercises"
   library inside the new training area. The library has over 200 exercises written for
   climbers – fingers, pulling, pushing and antagonists, core, legs and hips,
