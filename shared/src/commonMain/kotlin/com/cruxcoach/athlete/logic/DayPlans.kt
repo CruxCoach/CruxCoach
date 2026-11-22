@@ -178,11 +178,16 @@ object DayPlans {
      * What to point out in [days] from today on (advice, nothing is locked): hard days back to back, finger training
      * before a hard day. [fingerWork] says whether a planned entry trains the fingers.
      */
-    fun warnings(days: List<Day>, today: LocalDate, seasoned: Boolean = false, fingerWork: (String) -> Boolean): List<Warning> =
+    fun warnings(days: List<Day>, today: LocalDate, tier: Tier = Tier.STANDARD, fingerWork: (String) -> Boolean): List<Warning> =
         days.zipWithNext().mapNotNull { (a, b) ->
-            // Someone who has climbed for years plans hard days in a row on purpose: for them only a limit day counts
-            // (owner 2026-11-22: a pro who trains every day is not told every week that it is too much).
-            fun counts(i: ClimbIntensity?) = if (seasoned) i == ClimbIntensity.LIMIT else hard(i)
+            // Someone who has climbed for years plans hard days in a row on purpose: for an advanced climber only a
+            // limit day counts, an elite climber is told nothing here (owner 2026-11-22: a pro who trains every day is
+            // not told every week that it is too much).
+            fun counts(i: ClimbIntensity?) = when (tier) {
+                Tier.STANDARD -> hard(i)
+                Tier.ADVANCED -> i == ClimbIntensity.LIMIT
+                Tier.ELITE -> false
+            }
             when {
                 b.date < today -> null
                 counts(a.hardness) && counts(b.hardness) -> Warning(WarningKind.HARD_BACK_TO_BACK, b.date, a.date)
@@ -193,21 +198,50 @@ object DayPlans {
         }
 
     /**
-     * A seasoned climber: more than five years of climbing, an adult, at least [SEASONED_DAYS] training days a week
-     * and a boulder grade from [SEASONED_GRADE] on (owner 2026-11-22: ten years of climbing once a week is not what the
-     * lighter rules are for, and the grade says whether someone climbs at the level they are meant for). The planner's
-     * warnings keep to limit days ([warnings]), recovery after climbing is shorter ([ClimbingLoad.recoveryHours]) and
-     * the weekly targets have more room at the top ([WeeklyVolume.targets]).
+     * How much the coach leaves to the athlete (owner 2026-11-22: someone who climbs 7A solidly trains and recovers
+     * quite differently from someone who climbs 8A). Each step needs more than five years of climbing as an adult, a
+     * working boulder grade and training days a week – the higher of the coach setup's number and what the last four
+     * weeks show ([observedDays]). Without a grade the usual rules apply.
+     *
+     * - [ADVANCED]: from [ADVANCED_GRADE], [ADVANCED_DAYS] days. The planner warns about limit days in a row only, a
+     *   hard day holds maximal finger work back the same day only (a limit day the next one too), the weekly targets
+     *   have a quarter more room at the top.
+     * - [ELITE]: from [ELITE_GRADE], [ELITE_DAYS] days. No planner warnings, a limit day holds back the same day only,
+     *   half as much room again in the weekly targets, three finger sessions a week.
+     *
+     * The grade bands follow the usual research classification for bouldering (advanced about 7A–7B+, elite from
+     * about 7C); one scale for everyone.
      */
-    const val SEASONED_DAYS = 4
-    /** The boulder grade (Font) a seasoned climber works at, at least; without a grade nobody counts as seasoned. */
-    const val SEASONED_GRADE = "7a"
+    enum class Tier { STANDARD, ADVANCED, ELITE }
 
-    fun seasoned(coach: com.cruxcoach.athlete.model.CoachProfile): Boolean =
-        (coach.trainingDaysPerWeek ?: 0) >= SEASONED_DAYS &&
-        (coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) } ?: 0.0) >= (LogbookSummaries.difficultyOf(SEASONED_GRADE) ?: Double.MAX_VALUE) &&
-        coach.experience == com.cruxcoach.athlete.model.ExperienceBand.OVER_5 &&
-            coach.ageBand != com.cruxcoach.athlete.model.AgeBand.UNDER_16 && coach.ageBand != com.cruxcoach.athlete.model.AgeBand.Y16_17
+    const val ADVANCED_GRADE = "7a"
+    const val ADVANCED_DAYS = 4
+    const val ELITE_GRADE = "7c"
+    const val ELITE_DAYS = 5
+    /** The days [observedDays] looks back over. */
+    const val OBSERVED_WINDOW_DAYS = 28
+
+    fun tier(coach: com.cruxcoach.athlete.model.CoachProfile, observedDays: Int? = null): Tier {
+        if (coach.experience != com.cruxcoach.athlete.model.ExperienceBand.OVER_5 ||
+            coach.ageBand == com.cruxcoach.athlete.model.AgeBand.UNDER_16 || coach.ageBand == com.cruxcoach.athlete.model.AgeBand.Y16_17) return Tier.STANDARD
+        val grade = coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) } ?: return Tier.STANDARD
+        val days = maxOf(coach.trainingDaysPerWeek ?: 0, observedDays ?: 0)
+        fun from(font: String) = LogbookSummaries.difficultyOf(font) ?: Double.MAX_VALUE
+        return when {
+            grade >= from(ELITE_GRADE) && days >= ELITE_DAYS -> Tier.ELITE
+            grade >= from(ADVANCED_GRADE) && days >= ADVANCED_DAYS -> Tier.ADVANCED
+            else -> Tier.STANDARD
+        }
+    }
+
+    /** Training days a week as the last four weeks show them: days with a training or climbing before [today], per week. */
+    fun observedDays(trainedDays: Collection<LocalDate>, today: LocalDate): Int {
+        val from = today.minus(DatePeriod(days = OBSERVED_WINDOW_DAYS))
+        return trainedDays.distinct().count { it >= from && it < today } * 7 / OBSERVED_WINDOW_DAYS
+    }
+
+    /** Advanced or elite ([tier]). */
+    fun seasoned(coach: com.cruxcoach.athlete.model.CoachProfile, observedDays: Int? = null): Boolean = tier(coach, observedDays) != Tier.STANDARD
 
     /**
      * A free day for the training [entry] that had to give way on [from] (owner 2026-10-19: "the rest adjusts"):

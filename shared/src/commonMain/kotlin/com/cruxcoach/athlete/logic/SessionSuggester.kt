@@ -953,6 +953,7 @@ object SessionSuggester {
     private fun recovery(input: SuggestionInput, ageBand: AgeBand?): Recovery {
         var latest: Evidence? = null
         var blocking: SuggestionReason? = null
+        val tier = DayPlans.tier(input.coach, DayPlans.observedDays(input.activities.filterValues { it.trained }.keys, input.today))
         for (daysAgo in 0..3) {
             val day = input.today.minus(DatePeriod(days = daysAgo))
             val a = input.activities[day] ?: continue
@@ -960,7 +961,7 @@ object SessionSuggester {
             if (latest == null) latest = Evidence.Climbing(daysAgo, a.climbIntensity, a.climbingEfforts, a.climbingMinutes)
             val intensity = a.climbIntensity
             val blocked = if (intensity == null) daysAgo <= 1
-                else daysAgo * 24 < ClimbingLoad.recoveryHours(intensity, ageBand, DayPlans.seasoned(input.coach))
+                else daysAgo * 24 < ClimbingLoad.recoveryHours(intensity, ageBand, tier)
             if (blocked && blocking == null) blocking = when (intensity) {
                 null -> SuggestionReason.FINGERS_LOADED_RECENTLY
                 ClimbIntensity.LIMIT -> SuggestionReason.RECOVERY_AFTER_LIMIT

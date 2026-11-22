@@ -114,7 +114,8 @@ class TodayCoach(
         today: LocalDate, weekStart: LocalDate,
     ): List<AreaProgress> {
         val days = profile.coach.trainingDaysPerWeek ?: profile.weeklyGoal
-        val targets = WeeklyVolume.targets(profile, block, injuries, days)
+        val observed = DayPlans.observedDays(activities.filterValues { it.trained }.keys.mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }, today)
+        val targets = WeeklyVolume.targets(profile, block, injuries, days, observed)
         val workoutDays = repo.workoutsBetween(weekStart.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
         val startMs = weekStart.atStartOfDayIn(zone).toEpochMilliseconds()
         val weekSets = repo.completedSetsSince(startMs).mapNotNull { set -> workoutDays[set.workoutId]?.let { it to set } }

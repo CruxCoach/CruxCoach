@@ -122,15 +122,26 @@ class DayPlansTest {
         p = DayPlans.withDay(p, day(4), fingers, monday)
         p = DayPlans.withDay(p, day(5), PLAN_BOARD, monday)
         val days = DayPlans.preview(p, monday, 7, monday)
-        assertTrue(DayPlans.warnings(days, monday, seasoned = true) { it == fingers }.isEmpty())
+        assertTrue(DayPlans.warnings(days, monday, DayPlans.Tier.ADVANCED) { it == fingers }.isEmpty())
         // Two limit days in a row are pointed out to everyone.
         val twice = DayPlans.preview(DayPlans.withDay(p, day(2), limit, monday), monday, 7, monday)
         assertEquals(listOf(DayPlans.Warning(DayPlans.WarningKind.HARD_BACK_TO_BACK, day(2), day(1))),
-            DayPlans.warnings(twice, monday, seasoned = true) { it == fingers })
+            DayPlans.warnings(twice, monday, DayPlans.Tier.ADVANCED) { it == fingers })
+        // An elite climber is told nothing in the planner.
+        assertTrue(DayPlans.warnings(twice, monday, DayPlans.Tier.ELITE) { it == fingers }.isEmpty())
         val pro = CoachProfile(experience = ExperienceBand.OVER_5, ageBand = AgeBand.Y18_39, trainingDaysPerWeek = 4, currentGrade = "7A")
         assertTrue(DayPlans.seasoned(pro) && DayPlans.seasoned(pro.copy(currentGrade = "7c+")))
         // The grade counts too: below 7A, or without a grade, the usual rules apply.
         assertTrue(!DayPlans.seasoned(pro.copy(currentGrade = "6c+")) && !DayPlans.seasoned(pro.copy(currentGrade = null)))
+        // 7A and 8A are not the same: elite needs 7C and five days; what the last weeks show counts like the setting.
+        assertEquals(DayPlans.Tier.ADVANCED, DayPlans.tier(pro))
+        assertEquals(DayPlans.Tier.ADVANCED, DayPlans.tier(pro.copy(currentGrade = "8a")))
+        assertEquals(DayPlans.Tier.ELITE, DayPlans.tier(pro.copy(currentGrade = "8a", trainingDaysPerWeek = 5)))
+        assertEquals(DayPlans.Tier.ELITE, DayPlans.tier(pro.copy(currentGrade = "7c", trainingDaysPerWeek = null), observedDays = 5))
+        assertEquals(DayPlans.Tier.ADVANCED, DayPlans.tier(pro.copy(trainingDaysPerWeek = null), observedDays = 4))
+        // Twenty training days in the last four weeks are five a week; today itself does not count yet.
+        assertEquals(5, DayPlans.observedDays((1..20).map { monday.plus(DatePeriod(days = it)) }, monday.plus(DatePeriod(days = 28))))
+        assertEquals(0, DayPlans.observedDays(listOf(monday), monday))
         // Years alone are not enough: fewer than four training days a week, fewer years or a young climber is not.
         assertTrue(!DayPlans.seasoned(pro.copy(trainingDaysPerWeek = 3)) && !DayPlans.seasoned(pro.copy(trainingDaysPerWeek = null)))
         assertTrue(!DayPlans.seasoned(pro.copy(experience = ExperienceBand.Y3_5)) && !DayPlans.seasoned(pro.copy(ageBand = AgeBand.Y16_17)))

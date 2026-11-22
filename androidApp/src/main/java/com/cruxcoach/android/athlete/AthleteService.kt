@@ -1167,7 +1167,9 @@ class AthleteService @Inject constructor(
         val coach = profile.coach
         fun day(iso: String?) = iso?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         val block = TrainingBlocks.state(day(coach.blockStartDay), day(coach.targetDate), today)
-        val targets = WeeklyVolume.targets(profile, block, injuries, coach.trainingDaysPerWeek ?: profile.weeklyGoal)
+        val observed = DayPlans.observedDays(activities(days = DayPlans.OBSERVED_WINDOW_DAYS + 1).filterValues { it.trained }.keys
+            .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }, today)
+        val targets = WeeklyVolume.targets(profile, block, injuries, coach.trainingDaysPerWeek ?: profile.weeklyGoal, observed)
         val workoutDays = repo.workoutsBetween(weekStart.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
         val startMs = weekStart.atStartOfDayIn(zone).toEpochMilliseconds()
         val sets = repo.completedSetsSince(startMs).mapNotNull { set -> workoutDays[set.workoutId]?.let { it to set } }

@@ -250,14 +250,15 @@ object ClimbingLoad {
      * Hours before the next maximal finger load after a day of [intensity].
      * Older athletes recover more slowly: +12 h from 40, +24 h from 55.
      *
-     * [seasoned] ([DayPlans.seasoned], and under 40): nobody at that level rests
+     * [tier] ([DayPlans.tier], and under 40): nobody at that level rests
      * two days after every hard day (owner 2026-11-22). After a hard or a volume day only the same day is held back,
      * after a limit day the next one too. Trained athletes recover faster, and over weeks 24 h between sessions builds
      * as much as 48–72 h.
      */
-    fun recoveryHours(intensity: ClimbIntensity, ageBand: AgeBand?, seasoned: Boolean = false): Int {
-        if (seasoned && ageBand != AgeBand.Y40_54 && ageBand != AgeBand.Y55_PLUS) return when (intensity) {
-            ClimbIntensity.LIMIT -> 36
+    fun recoveryHours(intensity: ClimbIntensity, ageBand: AgeBand?, tier: DayPlans.Tier = DayPlans.Tier.STANDARD): Int {
+        if (tier != DayPlans.Tier.STANDARD && ageBand != AgeBand.Y40_54 && ageBand != AgeBand.Y55_PLUS) return when (intensity) {
+            // An elite climber is held back the day of a limit session only.
+            ClimbIntensity.LIMIT -> if (tier == DayPlans.Tier.ELITE) 24 else 36
             ClimbIntensity.HARD, ClimbIntensity.VOLUME -> 24
             ClimbIntensity.LIGHT -> 12
         }
