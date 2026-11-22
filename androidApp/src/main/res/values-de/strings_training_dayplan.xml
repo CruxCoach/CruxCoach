@@ -2,6 +2,8 @@
 <resources>
     <!-- Einzelne Tage über die Standardwoche planen (Besitzer 2026-10-19). -->
     <string name="trdp_title">Einzelne Tage planen</string>
+    <!-- Knopf der Karte „Deine Woche planen“ auf Heute; das Blatt dahinter behält seinen eigenen Titel. -->
+    <string name="trdp_card_action">Planen</string>
     <string name="trdp_intro">Bei jedem Tag, den du nicht selbst geplant hast, steht der Vorschlag des Coachs. Tipp einen Tag an, um ihn selbst zu planen oder zu tauschen – den Rest plant der Coach um deine Wahl herum.</string>
     <string name="trdp_today">Heute</string>
     <string name="trdp_tomorrow">Morgen</string>

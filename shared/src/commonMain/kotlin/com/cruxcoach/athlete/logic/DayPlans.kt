@@ -97,10 +97,13 @@ object DayPlans {
 
     // ── The days around the climbing: what the coach will do (preview) ──────────
 
-    /** What a day of the preview stands for; free days say how the coach fits them around the climbing. */
+    /**
+     * What a day of the preview stands for; free days say how the coach fits them around the climbing. Which climbing
+     * day shapes the days around it depends on the athlete's level ([preview], [Tier]).
+     */
     enum class Hint {
         REST, CLIMB, BOARD, ROUTINE, PAUSED,
-        /** The day after a hard or limit day: recovery, no maximal finger work. */
+        /** The day after a hard or limit day (advanced: a limit day only): recovery, no maximal finger work. */
         AFTER_HARD,
         /** The day before a limit day: legs and core, fingers and pulling stay fresh. */
         BEFORE_LIMIT,
@@ -133,6 +136,17 @@ object DayPlans {
 
     private fun hard(i: ClimbIntensity?) = i == ClimbIntensity.HARD || i == ClimbIntensity.LIMIT
 
+    /**
+     * A climbing day of intensity [i] is one the coach plans around for an athlete of [tier]: a hard or limit day,
+     * for an advanced climber a limit day only, for an elite climber none (owner 2026-11-22: someone who has climbed
+     * for years plans hard days in a row on purpose, and a pro who trains every day is not held back every week).
+     */
+    private fun counts(i: ClimbIntensity?, tier: Tier) = when (tier) {
+        Tier.STANDARD -> hard(i)
+        Tier.ADVANCED -> i == ClimbIntensity.LIMIT
+        Tier.ELITE -> false
+    }
+
     internal fun paused(pauses: List<PausePeriod>, day: LocalDate): Boolean {
         val d = day.toString()
         return pauses.any { p -> p.startDay <= d && p.endDay.let { it == null || it >= d } }
@@ -141,12 +155,15 @@ object DayPlans {
     /**
      * [days] days from [from]: the plan in force and, for free days, how the coach shapes them around the climbing.
      * [logged] is the climbing already logged (intensity, null when unknown) for today and before: it counts over
-     * the plan, as the coach's recovery rules do.
+     * the plan, as the coach's recovery rules do. [tier] is the athlete's level as those rules read it
+     * ([recoveryTier]): the day after a merely hard day is an open day for an advanced climber, as on today's card
+     * ([ClimbingLoad.recoveryHours]), and an elite climber's free days are all open.
      */
     fun preview(
         profile: AthleteProfile, from: LocalDate, days: Int, today: LocalDate,
         pauses: List<PausePeriod> = emptyList(),
         logged: Map<LocalDate, ClimbIntensity?> = emptyMap(),
+        tier: Tier = Tier.STANDARD,
     ): List<Day> {
         fun hardness(d: LocalDate): ClimbIntensity? {
             if (paused(pauses, d)) return null
@@ -165,10 +182,10 @@ object DayPlans {
                 e == PLAN_BOARD -> Hint.BOARD
                 e != null -> Hint.ROUTINE
                 climbingPlanned(profile, d) -> Hint.CLIMB
-                hard(hardness(d.minus(DatePeriod(days = 1)))) -> Hint.AFTER_HARD
+                counts(hardness(d.minus(DatePeriod(days = 1))), tier) -> Hint.AFTER_HARD
+                !counts(hardness(d.plus(DatePeriod(days = 1))), tier) -> Hint.OPEN
                 hardness(d.plus(DatePeriod(days = 1))) == ClimbIntensity.LIMIT -> Hint.BEFORE_LIMIT
-                hard(hardness(d.plus(DatePeriod(days = 1)))) -> Hint.BEFORE_HARD
-                else -> Hint.OPEN
+                else -> Hint.BEFORE_HARD
             }
             Day(d, e, isOverridden(profile, d), hint, h)
         }
@@ -180,22 +197,38 @@ object DayPlans {
      */
     fun warnings(days: List<Day>, today: LocalDate, tier: Tier = Tier.STANDARD, fingerWork: (String) -> Boolean): List<Warning> =
         days.zipWithNext().mapNotNull { (a, b) ->
-            // Someone who has climbed for years plans hard days in a row on purpose: for an advanced climber only a
-            // limit day counts, an elite climber is told nothing here (owner 2026-11-22: a pro who trains every day is
-            // not told every week that it is too much).
-            fun counts(i: ClimbIntensity?) = when (tier) {
-                Tier.STANDARD -> hard(i)
-                Tier.ADVANCED -> i == ClimbIntensity.LIMIT
-                Tier.ELITE -> false
-            }
+            // For an advanced climber only a limit day counts, an elite climber is told nothing here ([counts]).
             when {
                 b.date < today -> null
-                counts(a.hardness) && counts(b.hardness) -> Warning(WarningKind.HARD_BACK_TO_BACK, b.date, a.date)
-                a.date >= today && a.hint == Hint.ROUTINE && a.entry != null && counts(b.hardness) && fingerWork(a.entry) ->
+                counts(a.hardness, tier) && counts(b.hardness, tier) -> Warning(WarningKind.HARD_BACK_TO_BACK, b.date, a.date)
+                a.date >= today && a.hint == Hint.ROUTINE && a.entry != null && counts(b.hardness, tier) && fingerWork(a.entry) ->
                     Warning(WarningKind.FINGERS_BEFORE_HARD, b.date, a.date)
                 else -> null
             }
         }
+
+    /**
+     * How hard the two days of [w] are planned, for an acknowledgement to remember ("Verstanden"): "1,2" is a hard
+     * day followed by a limit day, 0 anything easier.
+     */
+    fun planned(w: Warning, days: List<Day>): String {
+        fun rank(date: LocalDate) = when (days.firstOrNull { it.date == date }?.hardness) {
+            ClimbIntensity.LIMIT -> 2
+            ClimbIntensity.HARD -> 1
+            else -> 0
+        }
+        return rank(w.other).toString() + "," + rank(w.date)
+    }
+
+    /**
+     * An acknowledgement [seen] (what [planned] said when the athlete read the warning) still holds for what is
+     * planned [now]: neither day got harder since. Hard + hard read once says nothing about limit + limit.
+     */
+    fun covers(seen: String?, now: String): Boolean {
+        val a = seen?.split(',')?.mapNotNull { it.trim().toIntOrNull() } ?: return false
+        val b = now.split(',').mapNotNull { it.trim().toIntOrNull() }
+        return a.size == 2 && b.size == 2 && b[0] <= a[0] && b[1] <= a[1]
+    }
 
     /**
      * How much the coach leaves to the athlete (owner 2026-11-22: someone who climbs 7A solidly trains and recovers
@@ -246,6 +279,15 @@ object DayPlans {
         return trainedDays.distinct().count { it >= from && it < today } * 7 / OBSERVED_WINDOW_DAYS
     }
 
+    /**
+     * The [tier] as the recovery rules read it: from 40 on the usual hours apply at every level
+     * ([ClimbingLoad.recoveryHours]). The planner's hints, the free day for a training that gave way and the
+     * coach's week go by this one; its warnings go by [tier].
+     */
+    fun recoveryTier(coach: com.cruxcoach.athlete.model.CoachProfile, observedDays: Int? = null, sex: com.cruxcoach.athlete.model.Sex? = null): Tier =
+        if (coach.ageBand == com.cruxcoach.athlete.model.AgeBand.Y40_54 || coach.ageBand == com.cruxcoach.athlete.model.AgeBand.Y55_PLUS) Tier.STANDARD
+        else tier(coach, observedDays, sex)
+
     /** Advanced or elite ([tier]). */
     fun seasoned(coach: com.cruxcoach.athlete.model.CoachProfile, observedDays: Int? = null, sex: com.cruxcoach.athlete.model.Sex? = null): Boolean =
         tier(coach, observedDays, sex) != Tier.STANDARD
@@ -253,14 +295,16 @@ object DayPlans {
     /**
      * A free day for the training [entry] that had to give way on [from] (owner 2026-10-19: "the rest adjusts"):
      * the first day within a week after it, not before today, with nothing planned and no climbing; a training
-     * with finger work also not right before or after a hard day, any other not right before a limit day.
+     * with finger work also not right before or after a hard day, any other not right before a limit day – which
+     * days those are follows the athlete's [tier] ([recoveryTier]), as the hints of [preview] do.
      */
     fun freeDayFor(
         profile: AthleteProfile, from: LocalDate, today: LocalDate, fingerWork: Boolean,
         pauses: List<PausePeriod> = emptyList(),
+        tier: Tier = Tier.STANDARD,
     ): LocalDate? {
         val start = maxOf(from.plus(DatePeriod(days = 1)), today)
-        return preview(profile, start, 7, today, pauses).firstOrNull { d ->
+        return preview(profile, start, 7, today, pauses, tier = tier).firstOrNull { d ->
             d.entry == null && d.hint != Hint.CLIMB && d.hint != Hint.PAUSED && when {
                 fingerWork -> d.hint == Hint.OPEN
                 else -> d.hint != Hint.BEFORE_LIMIT

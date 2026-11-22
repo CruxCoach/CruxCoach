@@ -81,7 +81,9 @@ data class CoachSetupState(
     val catalog: com.cruxcoach.athlete.catalog.ExerciseCatalog = com.cruxcoach.athlete.catalog.ExerciseCatalog.EMPTY,
 ) {
     val proposal: Map<Int, String>
-        get() = WeekPlanSuggester.suggest(draft, logbook, routines, profile.equipment, injuries)
+        get() = WeekPlanSuggester.suggest(draft, logbook, routines, profile.equipment, injuries,
+            // The level as the line under the training days names it, read as the recovery rules do (from 40 on as usual).
+            com.cruxcoach.athlete.logic.DayPlans.recoveryTier(draft.copy(trainingDaysPerWeek = draft.trainingDaysPerWeek ?: profile.weeklyGoal), sex = profile.sex))
 }
 
 const val COACH_STEPS = 5

@@ -111,6 +111,10 @@ object CoachLogic {
  *
  * The same week can be planned around what the athlete already decided ([around], [forDays]): the day planner shows
  * it for the days left open (owner 2026-11-22: "what the coach has in mind", not "the coach decides").
+ *
+ * The athlete's level shapes the week as it shapes the recovery rules ([DayPlans.recoveryTier]): an advanced
+ * climber's finger day may stand next to a hard climbing day (only a limit day keeps it a day away), an elite
+ * climber's next to any, and an elite week holds up to [ELITE_FINGER_DAYS] finger days.
  */
 object WeekPlanSuggester {
 
@@ -128,13 +132,17 @@ object WeekPlanSuggester {
     fun isTraining(entry: String): Boolean =
         entry != PLAN_REST && entry != PLAN_FREE && entry != PLAN_BOARD && entry != MOBILITY && !DayPlans.isClimb(entry)
 
+    /** Finger days in an elite climber's week, the athlete's own and the coach's together ([WeeklyVolume.targets]). */
+    const val ELITE_FINGER_DAYS = 3
+
     fun suggest(
         coach: CoachProfile,
         logbook: LogbookSummary,
         routines: List<Routine>,
         equipment: Set<EquipmentV2>,
         injuries: List<Injury>,
-    ): Map<Int, String> = around(coach, logbook, routines, equipment, injuries, Fixed()) { false }
+        tier: DayPlans.Tier = DayPlans.Tier.STANDARD,
+    ): Map<Int, String> = around(coach, logbook, routines, equipment, injuries, Fixed(), tier) { false }
 
     /**
      * The week for the days [fixed] leaves open, planned around the athlete's own days: his climbing days count as
@@ -142,6 +150,10 @@ object WeekPlanSuggester {
      * already planned), max finger work keeps a day's distance from every climbing day, and there is one finger day
      * a week, his or the coach's ([fingerWork] says which of his entries trains the fingers). Without anything fixed
      * this is [suggest].
+     *
+     * [tier] ([DayPlans.recoveryTier]) loosens both, as today's card does: an advanced climber's finger day keeps
+     * its distance from a limit day only, an elite climber's from none, and an elite week holds up to
+     * [ELITE_FINGER_DAYS] finger days – every second training of the coach, never two days in a row.
      */
     fun around(
         coach: CoachProfile,
@@ -150,6 +162,7 @@ object WeekPlanSuggester {
         equipment: Set<EquipmentV2>,
         injuries: List<Injury>,
         fixed: Fixed,
+        tier: DayPlans.Tier = DayPlans.Tier.STANDARD,
         fingerWork: (String) -> Boolean,
     ): Map<Int, String> {
         val active = injuries.filter { it.isActive }
@@ -179,9 +192,12 @@ object WeekPlanSuggester {
         chosen.sort()
 
         val all = rotation(coach, routines, equipment, active, climbingPaused)
-        // What the athlete planned himself is not proposed a second time; one finger day a week, his or the coach's.
-        val ownFinger = ownTraining.values.any { fingerWork(it) }
-        val left = all.filter { it !in ownTraining.values && (!ownFinger || it != FINGER) }
+        // What the athlete planned himself is not proposed a second time. One finger day a week, his or the coach's;
+        // up to three at the elite level.
+        val elite = tier == DayPlans.Tier.ELITE
+        val ownFingerDays: Set<Int> = ownTraining.filterValues { fingerWork(it) }.keys
+        val fingerDays = ((if (elite) ELITE_FINGER_DAYS else 1) - ownFingerDays.size).coerceAtLeast(0)
+        val left = all.filter { if (it == FINGER) fingerDays > 0 && (elite || it !in ownTraining.values) else it !in ownTraining.values }
         val other = left.firstOrNull { it != FINGER } ?: all.firstOrNull { it != FINGER } ?: PULL
         val rotation = left.ifEmpty { listOf(other) }
         val plan = mutableMapOf<Int, String>()
@@ -194,14 +210,34 @@ object WeekPlanSuggester {
             if (entry == FINGER) finger++
             entry
         }.toMutableList()
+        if (elite && FINGER in rotation) {
+            // More often rather than longer: every second training of the week is a finger day, the others follow
+            // the rotation.
+            val others = rotation.filter { it != FINGER }.ifEmpty { listOf(other) }
+            var next = 0
+            for (index in entries.indices) {
+                entries[index] = if (index % 2 == 0 && index / 2 < fingerDays) FINGER else others[next++ % others.size]
+            }
+        }
         // No max finger work the day after a climbing day, and none the day before one: the day planner warns about
         // exactly that, so the coach's own week must not start with it (phone check 2026-11-21). The finger day moves
         // to an off-wall day that fits; only without one it gives way (review 2026-11-21: it was dropped although
-        // Saturday was free).
-        fun fingerFits(day: Int) = ((day + 5) % 7 + 1) !in climbing && (day % 7 + 1) !in climbing
-        val at = entries.indexOf(FINGER)
-        if (at >= 0 && !fingerFits(chosen[at])) {
-            val to = chosen.indices.firstOrNull { it != at && fingerFits(chosen[it]) }
+        // Saturday was free). The planner warns an advanced climber about limit days only and an elite climber not
+        // at all, so their finger days keep their distance from those only.
+        val keepOff: Set<Int> = when (tier) {
+            DayPlans.Tier.STANDARD -> climbing
+            DayPlans.Tier.ADVANCED -> own.filterValues { DayPlans.climbOf(it)?.intensity == ClimbIntensity.LIMIT }.keys
+            DayPlans.Tier.ELITE -> emptySet()
+        }
+        // Finger days never follow each other, the athlete's own included; [moving] is the one changing places.
+        fun fingerFits(index: Int, moving: Int = index): Boolean {
+            val day = chosen[index]
+            val fingers = ownFingerDays + chosen.indices.filter { it != index && it != moving && entries[it] == FINGER }.map { chosen[it] }
+            return listOf((day + 5) % 7 + 1, day % 7 + 1).none { it in keepOff || it in fingers }
+        }
+        for (at in entries.indices) {
+            if (entries[at] != FINGER || fingerFits(at)) continue
+            val to = chosen.indices.firstOrNull { it != at && entries[it] != FINGER && fingerFits(it, moving = at) }
             if (to == null) entries[at] = other else { entries[at] = entries[to]; entries[to] = FINGER }
         }
         chosen.forEachIndexed { index, day -> plan[day] = entries[index] }
@@ -225,7 +261,8 @@ object WeekPlanSuggester {
      * alike. Next to a hard day the planner's own advice then decides ([DayPlans.Hint]; it knows what was logged and
      * looks across the week's end): no finger work the day before or after a hard day, legs and core before a limit
      * day. A training that does not fit its day changes places with one of the same week that does; only without
-     * one it gives way.
+     * one it gives way. [tier] is the level [days] were previewed with ([DayPlans.recoveryTier]): the hints already
+     * follow it, and so does the week ([around]).
      * A proposal is the plan the coach would write; on the day itself today's card still goes by form and recovery.
      */
     fun forDays(
@@ -235,6 +272,7 @@ object WeekPlanSuggester {
         injuries: List<Injury>,
         days: List<DayPlans.Day>,
         pauses: List<PausePeriod> = emptyList(),
+        tier: DayPlans.Tier = DayPlans.Tier.STANDARD,
         fingerWork: (String) -> Boolean,
     ): Map<LocalDate, String> {
         fun mondayOf(date: LocalDate) = date.minus(DatePeriod(days = date.dayOfWeek.isoDayNumber - 1))
@@ -249,7 +287,7 @@ object WeekPlanSuggester {
                 if (entry != null) entries[weekday] = entry else if (DayPlans.isOverridden(profile, date)) freed += weekday
                 if (DayPlans.paused(pauses, date)) paused += weekday
             }
-            around(profile.coach, logbook, routines, profile.equipment, injuries, Fixed(entries, freed, paused), fingerWork)
+            around(profile.coach, logbook, routines, profile.equipment, injuries, Fixed(entries, freed, paused), tier, fingerWork)
         }
         val hints = days.associate { it.date to it.hint }
         val result = mutableMapOf<LocalDate, String>()
@@ -265,7 +303,8 @@ object WeekPlanSuggester {
             else -> true
         }
         // Finger work that moves keeps the week's rule: no climbing the day before or after, planned or proposed.
-        fun clear(date: LocalDate, entry: String): Boolean = !fingerWork(entry) ||
+        // For an advanced or elite climber the hints above say all there is to it ([around]).
+        fun clear(date: LocalDate, entry: String): Boolean = tier != DayPlans.Tier.STANDARD || !fingerWork(entry) ||
             listOf(date.minus(DatePeriod(days = 1)), date.plus(DatePeriod(days = 1))).none { next ->
                 val there = DayPlans.entry(profile, next) ?: week(mondayOf(next))[next.dayOfWeek.isoDayNumber]
                 there == PLAN_BOARD || DayPlans.isClimb(there)

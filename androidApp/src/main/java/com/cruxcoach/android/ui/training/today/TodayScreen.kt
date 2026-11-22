@@ -1094,7 +1094,7 @@ private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit, onSecondary
         TodaySuggestion.SET_BENCHMARKS -> Triple(R.string.trt_sugg_benchmarks_title, R.string.trt_sugg_benchmarks_text, R.string.tru_estimate)
         TodaySuggestion.BASELINE_TEST -> Triple(R.string.trt_sugg_test_title, R.string.trt_sugg_test_text, R.string.tr_action_start)
         TodaySuggestion.LOG_WEIGHT -> Triple(R.string.trt_sugg_weight_title, R.string.trt_sugg_weight_text, R.string.trt_sugg_weight_action)
-        TodaySuggestion.PLAN_WEEK -> Triple(R.string.trt_sugg_week_title, R.string.trt_sugg_week_text, R.string.trdp_title)
+        TodaySuggestion.PLAN_WEEK -> Triple(R.string.trt_sugg_week_title, R.string.trt_sugg_week_text, R.string.trdp_card_action)
     }
     OutlinedCard(Modifier.fillMaxWidth().testTag("today_suggestion_${s.name.lowercase()}")) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp)) {

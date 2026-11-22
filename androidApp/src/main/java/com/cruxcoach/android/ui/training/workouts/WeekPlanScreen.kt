@@ -51,7 +51,8 @@ class WeekPlanViewModel @Inject constructor(private val service: AthleteService)
             service.ensureReady()
             val logbook = runCatching { service.logbookSummary() }.getOrDefault(com.cruxcoach.athlete.logic.LogbookSummary())
             combine(service.repo.observeProfile(), service.repo.observeRoutines(), service.repo.observeActiveInjuries()) { profile, routines, injuries ->
-                val proposal = com.cruxcoach.athlete.logic.WeekPlanSuggester.suggest(profile.coach, logbook, routines, profile.equipment, injuries)
+                val proposal = com.cruxcoach.athlete.logic.WeekPlanSuggester.suggest(profile.coach, logbook, routines, profile.equipment, injuries,
+                    runCatching { service.recoveryTier(profile) }.getOrDefault(com.cruxcoach.athlete.logic.DayPlans.Tier.STANDARD))
                 WeekPlanState(false, profile, routines, proposal)
             }.collect { _state.value = it }
         }

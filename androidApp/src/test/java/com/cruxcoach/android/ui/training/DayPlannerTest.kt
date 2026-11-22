@@ -19,6 +19,7 @@ import com.cruxcoach.athlete.model.ClimbingDayKind
 import com.cruxcoach.athlete.model.PLAN_REST
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -114,6 +115,36 @@ class DayPlannerTest : AthleteScreenTest() {
         compose.waitUntil(WAIT_MS) { vm.state.value.days.firstOrNull { it.date == day }?.entry == hard }
         compose.waitUntil(WAIT_MS) { day !in vm.state.value.proposals }
         assertTrue(vm.state.value.proposals.isNotEmpty())
+    }
+
+    @Test
+    fun `an acknowledged warning comes back when the days get harder, and old ones are forgotten`() {
+        val today = service.today()
+        val d1 = today.plus(DatePeriod(days = 1))
+        val d2 = today.plus(DatePeriod(days = 2))
+        val hard = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.HARD).entry
+        val limit = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.LIMIT).entry
+        // An acknowledgement of days gone by, as the first version wrote it.
+        val old = "planwarn.seen.HARD_BACK_TO_BACK." + today.minus(DatePeriod(days = 9)) + "." + today.minus(DatePeriod(days = 8))
+        repo.putSetting(old, "1")
+        repo.updateProfile { it.copy(datePlan = mapOf(d1.toString() to hard, d2.toString() to hard)) }
+        val vm = loaded(DayPlannerViewModel(service))
+        render { DayPlannerSheet(onDismiss = {}, viewModel = vm) }
+
+        compose.waitUntil(WAIT_MS) { vm.state.value.warnings.size == 1 }
+        click("day_planner_warning_seen")
+        compose.waitUntil(WAIT_MS) { vm.state.value.warnings.isEmpty() }
+        // "Verstanden" remembers what was planned: hard and hard.
+        compose.waitUntil(WAIT_MS) { repo.setting("planwarn.seen.HARD_BACK_TO_BACK.$d1.$d2") == "1,1" }
+        // The same two days as limit days are another plan: the warning is back.
+        repo.updateProfile { it.copy(datePlan = mapOf(d1.toString() to limit, d2.toString() to limit)) }
+        compose.waitUntil(WAIT_MS) { vm.state.value.warnings.size == 1 }
+        // Hard and hard again: read already.
+        repo.updateProfile { it.copy(datePlan = mapOf(d1.toString() to hard, d2.toString() to hard)) }
+        compose.waitUntil(WAIT_MS) { vm.state.value.warnings.isEmpty() }
+        // The acknowledgement of the days gone by was emptied when the planner opened.
+        assertNull(repo.setting(old))
+        assertTrue(old !in repo.settingsWithPrefix("planwarn.seen."))
     }
 
     @Test

@@ -59,8 +59,24 @@ import javax.inject.Inject
 /** How far ahead the planner shows days (owner 2026-10-19: "two days later", also over a weekend). */
 internal const val PLANNER_DAYS = 14
 
-/** Settings prefix: planner warnings the athlete acknowledged (kind and the two days). */
+/**
+ * Settings prefix: planner warnings the athlete acknowledged. The key names the kind and the two days, the value how
+ * hard they were planned when the warning was read ([DayPlans.planned]): a plan that got harder since is warned
+ * about again. Keys of days gone by are emptied when the planner opens (settings have no delete).
+ */
 internal const val WARNING_SEEN = "planwarn.seen."
+
+/**
+ * The athlete's level as the coach's recovery rules read it ([DayPlans.recoveryTier]): from the coach setup and what
+ * the last four weeks show. The planner's hints and the coach's week go by it.
+ */
+internal fun AthleteService.recoveryTier(profile: AthleteProfile, today: LocalDate = today()): DayPlans.Tier =
+    DayPlans.recoveryTier(profile.coach, observedTrainingDays(today), profile.sex)
+
+/** Training days a week as the last four weeks show them ([DayPlans.observedDays]). */
+internal fun AthleteService.observedTrainingDays(today: LocalDate = today()): Int =
+    DayPlans.observedDays(activities(days = DayPlans.OBSERVED_WINDOW_DAYS + 1).filterValues { it.trained }.keys
+        .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }, today)
 
 data class DayPlannerState(
     val loading: Boolean = true,
@@ -96,11 +112,14 @@ class DayPlannerViewModel @Inject constructor(private val service: AthleteServic
     private val _state = MutableStateFlow(DayPlannerState())
     val state: StateFlow<DayPlannerState> = _state.asStateFlow()
     private val pausesNow = MutableStateFlow<List<PausePeriod>>(emptyList())
+    /** The level the days were previewed with, for the free day of a training that gives way. */
+    private val tierNow = MutableStateFlow(DayPlans.Tier.STANDARD)
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val repo = service.repo
+            runCatching { forgetPastWarnings(service.today()) }
             val from = service.today().minus(DatePeriod(days = 3)).toString()
             combine(repo.observeProfile(), repo.observeRoutines(), repo.observePauses(), repo.observeActiveInjuries(),
                 service.observeActivityChanges(from)) { p, r, pauses, injuries, _ -> Inputs(p, r, pauses, injuries)
@@ -119,18 +138,21 @@ class DayPlannerViewModel @Inject constructor(private val service: AthleteServic
             if (a.climbingMinutes <= 0 && a.climbingEfforts <= 0) null
             else runCatching { LocalDate.parse(day) }.getOrNull()?.let { it to a.climbIntensity }
         }.toMap()
-        val days = DayPlans.preview(profile, today, PLANNER_DAYS, today, pauses, logged)
+        // The athlete's level: the hints, the coach's week and a training's free day read it as the recovery rules do
+        // (from 40 on the usual ones), the warnings as set.
+        val observed = service.observedTrainingDays(today)
+        val recovery = DayPlans.recoveryTier(profile.coach, observed, profile.sex)
+        tierNow.value = recovery
+        val days = DayPlans.preview(profile, today, PLANNER_DAYS, today, pauses, logged, recovery)
         // The coach's week for the open days, from the same answers and logbook rhythm as the standard week's proposal.
         val logbook = runCatching { service.logbookSummary() }.getOrDefault(LogbookSummary())
         val proposals = runCatching {
-            WeekPlanSuggester.forDays(profile, logbook, routines, injuries, days, pauses) { fingerWork(it, routines) }
+            WeekPlanSuggester.forDays(profile, logbook, routines, injuries, days, pauses, recovery) { fingerWork(it, routines) }
         }.getOrDefault(emptyMap())
-        // Read once ("Verstanden"), a warning about the same two days stays away.
-        val seen = service.repo.settingsWithPrefix(WARNING_SEEN).keys
-        val observed = DayPlans.observedDays(service.activities(days = DayPlans.OBSERVED_WINDOW_DAYS + 1).filterValues { it.trained }.keys
-            .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }, today)
+        // Read once ("Verstanden"), a warning about the same two days stays away – as long as neither got harder.
+        val seen = service.repo.settingsWithPrefix(WARNING_SEEN)
         val warnings = DayPlans.warnings(days, today, DayPlans.tier(profile.coach, observed, profile.sex)) { fingerWork(it, routines) }
-            .filter { warningKey(it) !in seen }
+            .filter { !DayPlans.covers(seen[warningKey(it)], DayPlans.planned(it, days)) }
         _state.update {
             it.copy(loading = false, today = today, profile = profile, routines = routines, days = days, proposals = proposals, warnings = warnings)
         }
@@ -138,10 +160,18 @@ class DayPlannerViewModel @Inject constructor(private val service: AthleteServic
 
     private fun warningKey(w: DayPlans.Warning) = WARNING_SEEN + w.kind.name + "." + w.other + "." + w.date
 
-    /** "Verstanden" on a warning: the advice was read; the athlete decides. */
+    /** "Verstanden" on a warning: the advice was read for what is planned now; the athlete decides. */
     fun dismiss(w: DayPlans.Warning) = io {
-        service.repo.putSetting(warningKey(w), "1")
+        service.repo.putSetting(warningKey(w), DayPlans.planned(w, _state.value.days))
         _state.update { s -> s.copy(warnings = s.warnings - w) }
+    }
+
+    /** Acknowledgements of days gone by say nothing any more: their keys are emptied (blank counts as none). */
+    private fun forgetPastWarnings(today: LocalDate) {
+        service.repo.settingsWithPrefix(WARNING_SEEN).keys.forEach { key ->
+            val later = runCatching { LocalDate.parse(key.substringAfterLast('.')) }.getOrNull()
+            if (later == null || later < today) service.repo.putSetting(key, "")
+        }
     }
 
     /** A planned training trains the fingers (a hangboard or block exercise beyond the warm-up). */
@@ -171,7 +201,7 @@ class DayPlannerViewModel @Inject constructor(private val service: AthleteServic
         val gone = displaced?.takeIf { isTraining(it) && DayPlans.entry(now, date) != it }
         // The training that had to give way: the coach offers the next free day that fits it; nothing moves unasked.
         val offer = gone?.let { e ->
-            DayPlans.freeDayFor(now, date, today, fingerWork(e, _state.value.routines), pausesNow.value)?.let { MoveOffer(e, date, it) }
+            DayPlans.freeDayFor(now, date, today, fingerWork(e, _state.value.routines), pausesNow.value, tierNow.value)?.let { MoveOffer(e, date, it) }
         }
         _state.update { it.copy(lastChange = PlanChange(date, entry, before), moveOffer = offer) }
     }
