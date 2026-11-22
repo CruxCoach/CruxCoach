@@ -105,6 +105,9 @@ class CoachSetupViewModel @Inject constructor(
     private var persisted = CoachProfile()
     private var persistedMinutes = 45
 
+    /** Cards changed since they were last stored or skipped: leaving the setup keeps them ([keepChanges]). */
+    private val changed = mutableSetOf<Int>()
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
@@ -187,8 +190,15 @@ class CoachSetupViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); slugs.forEach { service.repo.setFavorite(it, true) } }
     }
 
-    fun update(transform: (CoachProfile) -> CoachProfile) = _state.update { it.copy(draft = transform(it.draft)) }
-    fun setMinutes(minutes: Int) = _state.update { it.copy(sessionMinutes = minutes) }
+    fun update(transform: (CoachProfile) -> CoachProfile) {
+        changed += _state.value.step
+        _state.update { it.copy(draft = transform(it.draft)) }
+    }
+
+    fun setMinutes(minutes: Int) {
+        changed += _state.value.step
+        _state.update { it.copy(sessionMinutes = minutes) }
+    }
 
     /** Equipment from the sheet on the preferences card; stored at once like the settings do. */
     fun saveEquipment(equipment: Set<EquipmentV2>) = io { service.savePlaceEquipment(null, equipment) }
@@ -204,17 +214,46 @@ class CoachSetupViewModel @Inject constructor(
         var s = _state.value
         // The week card shows the weekly goal when nothing was chosen; "Weiter" takes what it shows.
         if (s.step == 1 && s.draft.trainingDaysPerWeek == null) {
-            s = s.copy(draft = s.draft.copy(trainingDaysPerWeek = s.profile.weeklyGoal.coerceIn(1, 7)))
+            s = s.copy(draft = asShown(s))
             _state.value = s
         }
+        changed -= s.step
         save(s.step, s.draft, s.sessionMinutes, finish = false)
         _state.update { it.copy(step = (it.step + 1).coerceAtMost(COACH_STEPS - 1)) }
     }
 
+    /** The draft as the cards show it: the week card shows the weekly goal while no training days are chosen. */
+    private fun asShown(s: CoachSetupState): CoachProfile =
+        if (s.draft.trainingDaysPerWeek != null) s.draft else s.draft.copy(trainingDaysPerWeek = s.profile.weeklyGoal.coerceIn(1, 7))
+
     /** "Überspringen": this card's changes are dropped, the stored answers stay. */
-    fun skip() = _state.update { s ->
-        s.copy(draft = revertCard(s.step, s.draft, persisted), sessionMinutes = if (s.step == 1) persistedMinutes else s.sessionMinutes,
-            step = (s.step + 1).coerceAtMost(COACH_STEPS - 1))
+    fun skip() {
+        changed -= _state.value.step
+        _state.update { s ->
+            s.copy(draft = revertCard(s.step, s.draft, persisted), sessionMinutes = if (s.step == 1) persistedMinutes else s.sessionMinutes,
+                step = (s.step + 1).coerceAtMost(COACH_STEPS - 1))
+        }
+    }
+
+    /**
+     * The arrow in the app bar, and "back" on the first card: leaving keeps every card that was changed, as "Weiter"
+     * would (Nokia walk 2026-11-22: years and grade changed, the arrow tapped, both were gone). A card that was only
+     * looked at stores nothing, so opening the setup confirms no prefilled answer; "Überspringen" stays the way to
+     * drop a card's changes.
+     */
+    fun keepChanges() {
+        val s = _state.value
+        val steps = changed.sorted()
+        changed.clear()
+        if (s.loading || steps.isEmpty()) return
+        val shown = asShown(s)
+        viewModelScope.launch(Dispatchers.IO) {
+            // The screen is on its way out: the write must not end with its view model.
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                service.ensureReady()
+                steps.forEach { step -> store(step, shown, s.sessionMinutes, finish = false) }
+            }
+        }
     }
 
     fun back() = _state.update { it.copy(step = (it.step - 1).coerceAtLeast(0)) }
@@ -265,7 +304,9 @@ class CoachSetupViewModel @Inject constructor(
         }
     }
 
-    private fun save(step: Int, draft: CoachProfile, minutes: Int, finish: Boolean) = io {
+    private fun save(step: Int, draft: CoachProfile, minutes: Int, finish: Boolean) = io { store(step, draft, minutes, finish) }
+
+    private fun store(step: Int, draft: CoachProfile, minutes: Int, finish: Boolean) {
         val today = service.today().toString()
         service.repo.updateProfile { p ->
             // Only this card's fields come from the draft; everything else stays as other screens left it.
@@ -383,11 +424,13 @@ fun CoachSetupScreen(
     LaunchedEffect(state.testStarted) { if (state.testStarted) { viewModel.consumeTestStarted(); onStartTest() } }
     val testTitle = BuiltinRoutines.byKey(BuiltinRoutines.BASELINE_TESTS)?.let { routineName(it) } ?: ""
 
-    BackHandler(enabled = state.step > 0) { viewModel.back() }
+    // Leaving keeps what was changed on the cards; "back" goes one card back and leaves from the first one.
+    val leave = { viewModel.keepChanges(); onBack() }
+    BackHandler { if (state.step > 0) viewModel.back() else leave() }
 
     TrainingScaffold(
         title = stringResource(R.string.trc_setup_title),
-        onBack = onBack,
+        onBack = leave,
         actions = {
             // A rare step in ⋮: as a text action it left the title one letter at the largest font.
             var menu by remember { mutableStateOf(false) }
