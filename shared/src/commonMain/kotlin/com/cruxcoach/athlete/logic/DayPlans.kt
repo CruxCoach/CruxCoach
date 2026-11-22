@@ -99,7 +99,7 @@ object DayPlans {
 
     /**
      * What a day of the preview stands for; free days say how the coach fits them around the climbing. Which climbing
-     * day shapes the days around it depends on the athlete's level ([preview], [Tier]).
+     * day shapes the day after it depends on the athlete's level ([preview], [Tier]).
      */
     enum class Hint {
         REST, CLIMB, BOARD, ROUTINE, PAUSED,
@@ -156,8 +156,9 @@ object DayPlans {
      * [days] days from [from]: the plan in force and, for free days, how the coach shapes them around the climbing.
      * [logged] is the climbing already logged (intensity, null when unknown) for today and before: it counts over
      * the plan, as the coach's recovery rules do. [tier] is the athlete's level as those rules read it
-     * ([recoveryTier]): the day after a merely hard day is an open day for an advanced climber, as on today's card
-     * ([ClimbingLoad.recoveryHours]), and an elite climber's free days are all open.
+     * ([recoveryTier]): the day after a merely hard day is no recovery day for an advanced climber, and for an elite
+     * climber none is, as on today's card ([ClimbingLoad.recoveryHours]). The day before a hard or limit day stays
+     * what it is at every level: there the card keeps the fingers fresh for everyone.
      */
     fun preview(
         profile: AthleteProfile, from: LocalDate, days: Int, today: LocalDate,
@@ -171,10 +172,13 @@ object DayPlans {
             if (d < today) return null
             return if (climbingPlanned(profile, d)) climbIntensity(profile, d) ?: ClimbIntensity.HARD else null
         }
+        // Logged without an intensity: the coach cannot say how hard it was and holds the next day back at every level.
+        fun unknown(d: LocalDate) = !paused(pauses, d) && d <= today && logged.containsKey(d) && logged[d] == null
         return (0 until days).map { offset ->
             val d = from.plus(DatePeriod(days = offset))
             val e = entry(profile, d)
             val h = hardness(d)
+            val yesterday = d.minus(DatePeriod(days = 1))
             val hint = when {
                 paused(pauses, d) -> Hint.PAUSED
                 e == PLAN_REST -> Hint.REST
@@ -182,10 +186,10 @@ object DayPlans {
                 e == PLAN_BOARD -> Hint.BOARD
                 e != null -> Hint.ROUTINE
                 climbingPlanned(profile, d) -> Hint.CLIMB
-                counts(hardness(d.minus(DatePeriod(days = 1))), tier) -> Hint.AFTER_HARD
-                !counts(hardness(d.plus(DatePeriod(days = 1))), tier) -> Hint.OPEN
+                counts(hardness(yesterday), tier) || unknown(yesterday) -> Hint.AFTER_HARD
                 hardness(d.plus(DatePeriod(days = 1))) == ClimbIntensity.LIMIT -> Hint.BEFORE_LIMIT
-                else -> Hint.BEFORE_HARD
+                hard(hardness(d.plus(DatePeriod(days = 1)))) -> Hint.BEFORE_HARD
+                else -> Hint.OPEN
             }
             Day(d, e, isOverridden(profile, d), hint, h)
         }
@@ -295,8 +299,8 @@ object DayPlans {
     /**
      * A free day for the training [entry] that had to give way on [from] (owner 2026-10-19: "the rest adjusts"):
      * the first day within a week after it, not before today, with nothing planned and no climbing; a training
-     * with finger work also not right before or after a hard day, any other not right before a limit day – which
-     * days those are follows the athlete's [tier] ([recoveryTier]), as the hints of [preview] do.
+     * with finger work also not right before or after a hard day, any other not right before a limit day. Which day
+     * after a climbing day that is follows the athlete's [tier] ([recoveryTier]), as the hints of [preview] do.
      */
     fun freeDayFor(
         profile: AthleteProfile, from: LocalDate, today: LocalDate, fingerWork: Boolean,

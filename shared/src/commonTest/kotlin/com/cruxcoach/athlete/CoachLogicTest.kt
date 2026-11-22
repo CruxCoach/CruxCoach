@@ -165,36 +165,50 @@ class CoachLogicTest {
     fun theWeekFollowsTheAthletesLevel() {
         val climb = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.HARD).entry
         fun week(coach: CoachProfile, tier: DayPlans.Tier) = WeekPlanSuggester.suggest(coach, LogbookSummary(), emptyList(), home, emptyList(), tier)
-        // Three climbing days and two trainings: every free day is next to a climbing day, so there is no finger day ...
+        // Three climbing days and two trainings, each next to a climbing day: no finger day at the standard level ...
         val three = CoachProfile(climbingDays = setOf(2, 4, 6), trainingDaysPerWeek = 5)
         assertEquals(mapOf(1 to pullDay, 2 to climb, 3 to pullDay, 4 to climb, 5 to PLAN_REST, 6 to climb, 7 to PLAN_REST),
             week(three, DayPlans.Tier.STANDARD))
-        // ... but for an advanced climber there is: a hard day holds the fingers back the same day only.
-        val withFingers = mapOf(1 to fingerDay, 2 to climb, 3 to pullDay, 4 to climb, 5 to PLAN_REST, 6 to climb, 7 to PLAN_REST)
-        assertEquals(withFingers, week(three, DayPlans.Tier.ADVANCED))
-        assertEquals(withFingers, week(three, DayPlans.Tier.ELITE))
+        // ... an advanced climber's fingers are held back the day of a hard day only: Sunday, after Saturday's
+        // climbing, takes the finger day, and a training moves there. The day before a climbing day stays free of it,
+        // as on today's card.
+        val seasoned = mapOf(1 to pullDay, 2 to climb, 3 to PLAN_REST, 4 to climb, 5 to PLAN_REST, 6 to climb, 7 to fingerDay)
+        assertEquals(seasoned, week(three, DayPlans.Tier.ADVANCED))
+        assertEquals(seasoned, week(three, DayPlans.Tier.ELITE))
         // The proposal per date reads the same level as the hints it is checked against.
         val profile = threeDays.copy(coach = three)
         val advanced = WeekPlanSuggester.forDays(profile, LogbookSummary(), emptyList(), emptyList(),
             DayPlans.preview(profile, monday, 7, monday, tier = DayPlans.Tier.ADVANCED), tier = DayPlans.Tier.ADVANCED) { it == fingerDay }
-        assertEquals(fingerDay, advanced[date(0)])
-        assertEquals(pullDay, proposals(profile, DayPlans.preview(profile, monday, 7, monday))[date(0)])
+        assertEquals(fingerDay, advanced[date(6)])
+        assertTrue(fingerDay !in proposals(profile, DayPlans.preview(profile, monday, 7, monday)).values)
 
-        // An elite week holds up to three finger days: every second training, never two days in a row.
+        // An elite week holds up to three finger days: at most every second training, never two days in a row, and
+        // never the day before a climbing day.
         val one = CoachProfile(climbingDays = setOf(4), trainingDaysPerWeek = 6)
         assertEquals(mapOf(1 to fingerDay, 2 to pullDay, 3 to legsDay, 4 to climb, 5 to coreDay, 6 to pullDay, 7 to PLAN_REST),
             week(one, DayPlans.Tier.STANDARD))
-        assertEquals(mapOf(1 to fingerDay, 2 to pullDay, 3 to fingerDay, 4 to climb, 5 to legsDay, 6 to fingerDay, 7 to PLAN_REST),
+        assertEquals(mapOf(1 to fingerDay, 2 to pullDay, 3 to legsDay, 4 to climb, 5 to fingerDay, 6 to coreDay, 7 to PLAN_REST),
             week(one, DayPlans.Tier.ELITE))
-        assertEquals(setOf(1, 3, 5), week(CoachProfile(trainingDaysPerWeek = 7), DayPlans.Tier.ELITE).filterValues { it == fingerDay }.keys)
+        val everyDay = CoachProfile(trainingDaysPerWeek = 7)
+        assertEquals(setOf(1, 3, 5), week(everyDay, DayPlans.Tier.ELITE).filterValues { it == fingerDay }.keys)
+        // One in a comeback, as in the weekly targets (finger strength as a focus keeps the finger day in a comeback's week).
+        val fingerFocus = everyDay.copy(focus = setOf(FocusArea.FINGER_STRENGTH))
+        assertEquals(setOf(1, 3, 5), week(fingerFocus, DayPlans.Tier.ELITE).filterValues { it == fingerDay }.keys)
+        assertEquals(setOf(1), week(fingerFocus.copy(goal = CoachGoal.COMEBACK), DayPlans.Tier.ELITE).filterValues { it == fingerDay }.keys)
         // His own finger day is one of the three, and the coach's keep a day's distance from it.
         val own = WeekPlanSuggester.around(one, LogbookSummary(), emptyList(), home, emptyList(),
             WeekPlanSuggester.Fixed(entries = mapOf(2 to fingerDay)), DayPlans.Tier.ELITE) { it == fingerDay }
-        assertEquals(setOf(5), own.filterValues { it == fingerDay }.keys)
-        // A limit day holds an elite climber back the same day only: a finger day may follow it.
+        assertEquals(mapOf(1 to pullDay, 3 to legsDay, 4 to climb, 5 to fingerDay, 6 to coreDay, 7 to PLAN_REST), own)
+        // His own routine leads the week at every level.
+        val mine = Routine("r1", "Mine", items = listOf(RoutineItem("pull.pull_up")), updatedAt = 5)
+        val withRoutine = WeekPlanSuggester.suggest(CoachProfile(climbingDays = setOf(2, 5), trainingDaysPerWeek = 3), LogbookSummary(),
+            listOf(mine), home, emptyList(), DayPlans.Tier.ELITE)
+        assertTrue("r1" in withRoutine.values, "$withRoutine")
+        // A limit day holds an elite climber back the same day only: a finger day may follow it. The day before it
+        // is for legs at every level.
         val limit = DayPlans.withDay(threeDays.copy(coach = CoachProfile(trainingDaysPerWeek = 5)), date(2), limitDay, monday)
         assertEquals(
-            mapOf(date(0) to fingerDay, date(1) to pullDay, date(3) to fingerDay, date(4) to PLAN_REST, date(5) to legsDay, date(6) to PLAN_REST),
+            mapOf(date(0) to fingerDay, date(1) to legsDay, date(3) to fingerDay, date(4) to PLAN_REST, date(5) to pullDay, date(6) to PLAN_REST),
             WeekPlanSuggester.forDays(limit, LogbookSummary(), emptyList(), emptyList(),
                 DayPlans.preview(limit, monday, 7, monday, tier = DayPlans.Tier.ELITE), tier = DayPlans.Tier.ELITE) { it == fingerDay },
         )

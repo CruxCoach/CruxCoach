@@ -163,17 +163,22 @@ class DayPlansTest {
         val open = DayPlans.Hint.OPEN
         assertEquals(listOf(DayPlans.Hint.BEFORE_HARD, climb, DayPlans.Hint.AFTER_HARD, climb, DayPlans.Hint.AFTER_HARD, open, open),
             hints(DayPlans.Tier.STANDARD))
-        // Advanced: a hard day holds the fingers back the same day only, so the days around it are open (as on
-        // today's card); the limit day still shapes the day before and the day after.
-        assertEquals(listOf(open, climb, DayPlans.Hint.BEFORE_LIMIT, climb, DayPlans.Hint.AFTER_HARD, open, open),
+        // Advanced: a hard day holds the fingers back the same day only, so the day after it is no recovery day (as
+        // on today's card); the day after the limit day still is. The day before a climbing day keeps the fingers
+        // fresh at every level, as the card does.
+        assertEquals(listOf(DayPlans.Hint.BEFORE_HARD, climb, DayPlans.Hint.BEFORE_LIMIT, climb, DayPlans.Hint.AFTER_HARD, open, open),
             hints(DayPlans.Tier.ADVANCED))
-        // Elite: every free day is open.
-        assertEquals(listOf(open, climb, open, climb, open, open, open), hints(DayPlans.Tier.ELITE))
+        // Elite: no day after a climbing day is held back.
+        assertEquals(listOf(DayPlans.Hint.BEFORE_HARD, climb, DayPlans.Hint.BEFORE_LIMIT, climb, open, open, open),
+            hints(DayPlans.Tier.ELITE))
+        // Climbing logged without an intensity holds the next day back at every level: the coach cannot say how hard it was.
+        assertEquals(DayPlans.Hint.AFTER_HARD,
+            DayPlans.preview(AthleteProfile(), monday, 1, monday, logged = mapOf(day(-1) to null), tier = DayPlans.Tier.ELITE)[0].hint)
 
         // A finger training that gave way on Monday finds its free day by the same level.
         assertEquals(day(5), DayPlans.freeDayFor(p, monday, monday, fingerWork = true))
         assertEquals(day(5), DayPlans.freeDayFor(p, monday, monday, fingerWork = true, tier = DayPlans.Tier.ADVANCED))
-        assertEquals(day(2), DayPlans.freeDayFor(p, monday, monday, fingerWork = true, tier = DayPlans.Tier.ELITE))
+        assertEquals(day(4), DayPlans.freeDayFor(p, monday, monday, fingerWork = true, tier = DayPlans.Tier.ELITE))
         assertEquals(day(4), DayPlans.freeDayFor(p, monday, monday, fingerWork = false, tier = DayPlans.Tier.ADVANCED))
         // With the hard day alone, the day after it is free for an advanced climber's finger training.
         val onlyHard = DayPlans.withDay(AthleteProfile(), day(1), hardDay, monday)
