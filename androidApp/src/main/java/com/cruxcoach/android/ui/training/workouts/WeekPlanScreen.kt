@@ -41,6 +41,8 @@ data class WeekPlanState(
     val proposal: Map<Int, String> = emptyMap(),
     /** The usual climbing days (ISO weekdays) the proposal is built around: the athlete's own, else the logbook's. */
     val climbingDays: Set<Int> = emptySet(),
+    /** [climbingDays] are the logbook's: the athlete named none yet. */
+    val climbingDaysFromLogbook: Boolean = false,
 )
 
 @HiltViewModel
@@ -59,7 +61,10 @@ class WeekPlanViewModel @Inject constructor(private val service: AthleteService)
             combine(service.repo.observeProfile(), service.repo.observeRoutines(), service.repo.observeActiveInjuries()) { profile, routines, injuries ->
                 val proposal = com.cruxcoach.athlete.logic.WeekPlanSuggester.suggest(profile.coach, logbook, routines, profile.equipment, injuries)
                 WeekPlanState(false, profile, routines, proposal)
-            }.collect { _state.value = it.copy(climbingDays = usualDays(it.profile)) }
+            }.collect {
+                _state.value = it.copy(climbingDays = usualDays(it.profile),
+                    climbingDaysFromLogbook = it.profile.coach.climbingDays.none { d -> d in 1..7 } && logbookDays.isNotEmpty())
+            }
         }
     }
 
@@ -210,10 +215,15 @@ private fun ProposalCard(state: WeekPlanState, onApply: () -> Unit, onClimbingDa
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 (1..7).forEach { day ->
                     val selected = day in state.climbingDays
-                    FilterChip(selected = selected, onClick = { onClimbingDay(day, !selected) },
+                    // A tap shows what it changes: the proposal opens.
+                    FilterChip(selected = selected, onClick = { open = true; onClimbingDay(day, !selected) },
                         label = { Text(weekdayName(day, java.time.format.TextStyle.SHORT)) },
                         modifier = Modifier.testTag("week_plan_climbing_day_$day"))
                 }
+            }
+            if (state.climbingDaysFromLogbook) {
+                Text(stringResource(R.string.trc_prefill_logbook), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("week_plan_climbing_days_logbook"))
             }
             // A proposal that is already the week needs no second list above the days.
             if (open && !same) {

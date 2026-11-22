@@ -105,8 +105,12 @@ class CoachSetupViewModel @Inject constructor(
     private var persisted = CoachProfile()
     private var persistedMinutes = 45
 
-    /** Cards changed since they were last stored or skipped: leaving the setup keeps them ([keepChanges]). */
-    private val changed = mutableSetOf<Int>()
+    /**
+     * The draft as it was opened, stored or skipped, card by card: a card that differs from it was changed, and
+     * leaving the setup keeps it ([keepChanges]). Prefilled answers are part of it, so they alone change no card.
+     */
+    private var settled = CoachProfile()
+    private var settledMinutes = 45
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -159,6 +163,8 @@ class CoachSetupViewModel @Inject constructor(
                 d = d.copy(currentFlashGrade = logbook.flashGrade)
                 prefill[PrefillField.FLASH_GRADE] = PrefillSource.LOGBOOK
             }
+            settled = d
+            settledMinutes = profile.sessionMinutes
             _state.value = CoachSetupState(
                 loading = false,
                 draft = d,
@@ -190,15 +196,8 @@ class CoachSetupViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); slugs.forEach { service.repo.setFavorite(it, true) } }
     }
 
-    fun update(transform: (CoachProfile) -> CoachProfile) {
-        changed += _state.value.step
-        _state.update { it.copy(draft = transform(it.draft)) }
-    }
-
-    fun setMinutes(minutes: Int) {
-        changed += _state.value.step
-        _state.update { it.copy(sessionMinutes = minutes) }
-    }
+    fun update(transform: (CoachProfile) -> CoachProfile) = _state.update { it.copy(draft = transform(it.draft)) }
+    fun setMinutes(minutes: Int) = _state.update { it.copy(sessionMinutes = minutes) }
 
     /** Equipment from the sheet on the preferences card; stored at once like the settings do. */
     fun saveEquipment(equipment: Set<EquipmentV2>) = io { service.savePlaceEquipment(null, equipment) }
@@ -217,10 +216,19 @@ class CoachSetupViewModel @Inject constructor(
             s = s.copy(draft = asShown(s))
             _state.value = s
         }
-        changed -= s.step
+        settle(s.step, s)
         save(s.step, s.draft, s.sessionMinutes, finish = false)
         _state.update { it.copy(step = (it.step + 1).coerceAtMost(COACH_STEPS - 1)) }
     }
+
+    /** The card [step] stands as [s] has it: stored, or skipped back to what is stored. */
+    private fun settle(step: Int, s: CoachSetupState) {
+        settled = mergeCard(step, settled, s.draft)
+        if (step == 1) settledMinutes = s.sessionMinutes
+    }
+
+    private fun changed(step: Int, s: CoachSetupState): Boolean =
+        mergeCard(step, settled, s.draft) != settled || (step == 1 && s.sessionMinutes != settledMinutes)
 
     /** The draft as the cards show it: the week card shows the weekly goal while no training days are chosen. */
     private fun asShown(s: CoachSetupState): CoachProfile =
@@ -228,30 +236,36 @@ class CoachSetupViewModel @Inject constructor(
 
     /** "Überspringen": this card's changes are dropped, the stored answers stay. */
     fun skip() {
-        changed -= _state.value.step
+        val step = _state.value.step
         _state.update { s ->
             s.copy(draft = revertCard(s.step, s.draft, persisted), sessionMinutes = if (s.step == 1) persistedMinutes else s.sessionMinutes,
                 step = (s.step + 1).coerceAtMost(COACH_STEPS - 1))
         }
+        settle(step, _state.value)
     }
 
     /**
      * The arrow in the app bar, and "back" on the first card: leaving keeps every card that was changed, as "Weiter"
      * would (Nokia walk 2026-11-22: years and grade changed, the arrow tapped, both were gone). A card that was only
-     * looked at stores nothing, so opening the setup confirms no prefilled answer; "Überspringen" stays the way to
-     * drop a card's changes.
+     * looked at, or changed and put back, stores nothing, so opening the setup confirms no prefilled answer;
+     * "Überspringen" stays the way to drop a card's changes.
      */
-    fun keepChanges() {
+    fun keepChanges() = leave(dismiss = false)
+
+    private fun leave(dismiss: Boolean) {
         val s = _state.value
-        val steps = changed.sorted()
-        changed.clear()
-        if (s.loading || steps.isEmpty()) return
+        val steps = if (s.loading) emptyList() else (0 until COACH_STEPS - 1).filter { changed(it, s) }
+        steps.forEach { settle(it, s) }
+        if (steps.isEmpty() && !dismiss) return
         val shown = asShown(s)
-        viewModelScope.launch(Dispatchers.IO) {
-            // The screen is on its way out: the write must not end with its view model.
-            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+        // The screen is on its way out: started right here and not cancellable, the write does not end with its view model.
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
                 service.ensureReady()
                 steps.forEach { step -> store(step, shown, s.sessionMinutes, finish = false) }
+                if (dismiss) service.repo.updateProfile { p ->
+                    p.copy(coach = p.coach.copy(setupState = SetupState.DISMISSED, setupUpdatedAt = System.currentTimeMillis()))
+                }
             }
         }
     }
@@ -297,12 +311,8 @@ class CoachSetupViewModel @Inject constructor(
 
     fun consumeTestStarted() = _state.update { it.copy(testStarted = false) }
 
-    /** "Nicht mehr fragen": keeps every answer, hides the setup prompts. */
-    fun dismiss() = io {
-        service.repo.updateProfile { p ->
-            p.copy(coach = p.coach.copy(setupState = SetupState.DISMISSED, setupUpdatedAt = System.currentTimeMillis()))
-        }
-    }
+    /** "Nicht mehr fragen": keeps every answer – also what was changed on the cards, as the arrow does – and hides the setup prompts. */
+    fun dismiss() = leave(dismiss = true)
 
     private fun save(step: Int, draft: CoachProfile, minutes: Int, finish: Boolean) = io { store(step, draft, minutes, finish) }
 

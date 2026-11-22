@@ -32,9 +32,8 @@
     <string name="trt_day_climbed">climbed</string>
     <string name="trt_day_trained">trained</string>
     <string name="trt_day_paused">pause</string>
-    <string name="trt_day_rest">rest</string>
     <string name="trt_day_nothing">nothing logged</string>
-    <string name="trt_day_open">open – the coach decides on the day</string>
+    <string name="trt_day_running">training in progress</string>
     <string name="trt_day_suggested">suggested: %1$s</string>
     <string name="trt_continue_workout">Training in progress – continue</string>
     <string name="trt_pause_end">End pause</string>
