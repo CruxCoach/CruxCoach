@@ -1207,7 +1207,7 @@ class AthleteService @Inject constructor(
         val workoutDays = repo.workoutsBetween(weekStart.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
         val startMs = weekStart.atStartOfDayIn(zone).toEpochMilliseconds()
         val sets = repo.completedSetsSince(startMs).mapNotNull { set -> workoutDays[set.workoutId]?.let { it to set } }
-        return WeeklyVolume.progress(sets, activities(days = 8), catalog, weekStart, targets, today)
+        return WeeklyVolume.progress(sets, activities(days = 8), catalog, weekStart, targets, today, WeeklyVolume.fingerGapDays(profile, observed))
     }
 
     /** How far the week is for the area [slug] trains – a hint where it is left out or removed, never a lock; null without a target. */
