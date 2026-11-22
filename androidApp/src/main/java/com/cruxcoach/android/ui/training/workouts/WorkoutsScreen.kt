@@ -333,7 +333,8 @@ fun WorkoutsScreen(
             }
 
             item { SectionTitle(stringResource(R.string.trwo_templates)) }
-            items(BuiltinRoutines.all, key = { "b-" + it.builtinKey }) { routine ->
+            // A day's trainings first; the warm-up, the add-on, the injury workout and the test after them.
+            items(BuiltinRoutines.all.sortedBy { it.builtinKey !in PLANNABLE_STARTERS }, key = { "b-" + it.builtinKey }) { routine ->
                 val name = routineName(routine)
                 RoutineCard(
                     routine = routine,

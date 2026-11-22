@@ -12,7 +12,7 @@
 
     <!-- Wochenansicht -->
     <string name="trw_week_title">Diese Woche</string>
-    <string name="trw_week_progress">%1$d von %2$d geplant</string>
+    <string name="trw_week_progress">%1$d von %2$d geplanten gemacht</string>
     <string name="trw_short_board">Board</string>
     <string name="trw_short_rest">Ruhe</string>
     <string name="trw_status_done">erledigt</string>

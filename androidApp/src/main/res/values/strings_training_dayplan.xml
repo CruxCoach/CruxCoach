@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Plan single days over the standard week (owner 2026-10-19). -->
-    <string name="trdp_title">Plan days</string>
+    <string name="trdp_title">Plan single days</string>
     <string name="trdp_intro">Tap a day to plan or swap it. The coach fits the free days around your climbing days.</string>
     <string name="trdp_today">Today</string>
     <string name="trdp_tomorrow">Tomorrow</string>
     <string name="trdp_free">Free – the coach decides</string>
-    <string name="trdp_free_short">Free</string>
+    <string name="trdp_free_short">Coach decides</string>
     <string name="trdp_usual_climb">Usual climbing day</string>
     <string name="trdp_only_this_day">this day only</string>
     <string name="trdp_standard">As in the standard week: %1$s</string>
@@ -41,5 +41,7 @@
     <string name="trdp_reason_day_rest">A rest day is planned for today. Light mobility is optional.</string>
     <string name="trdp_reason_day_plan">This is what you planned for today.</string>
     <string name="trdp_reason_day_board">A board day is planned for today – warm up properly, a short antagonist block afterwards.</string>
+    <string name="trdp_group_climbing">Climbing</string>
+    <string name="trdp_group_own">Your workouts</string>
     <string name="trdp_training">Training</string>
 </resources>

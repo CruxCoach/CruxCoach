@@ -5,7 +5,7 @@
     <string name="trs_range_12w">12\u00A0weeks</string>
     <string name="trs_range_6m">6\u00A0months</string>
     <string name="trs_range_1y">1\u00A0year</string>
-    <string name="trs_kind_e1rm">Est. 1RM</string>
+    <string name="trs_kind_e1rm">Estimated max</string>
     <string name="trs_kind_ten_second">10-s max</string>
     <string name="trs_kind_reps">Max reps</string>
     <string name="trs_kind_seconds">Longest hold</string>
@@ -67,8 +67,8 @@
     <string name="trs_volume_hint_hang">Seconds × weight held of all work sets, body weight included on hangs.</string>
     <string name="trs_bests">Personal bests</string>
     <string name="trs_best_load">Total load %1$s</string>
-    <string name="trs_best_e1rm">Est. 1RM %1$s (total)</string>
-    <string name="trs_best_e1rm_lifted">Est. 1RM %1$s</string>
+    <string name="trs_best_e1rm">Estimated max %1$s (total)</string>
+    <string name="trs_best_e1rm_lifted">Estimated max %1$s</string>
     <string name="trs_sessions">Sessions</string>
 
     <string name="trs_progress_title">Progress</string>

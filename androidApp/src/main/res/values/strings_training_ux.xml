@@ -78,7 +78,7 @@
     <string name="tr_tab_progress">Progress</string>
     <string name="tru_progress_training">Training</string>
     <string name="tru_hub_body">Weight trend and measurements</string>
-    <string name="tru_hub_benchmarks">Max hang, pull-up and co.</string>
+    <string name="tru_hub_benchmarks">What you can do in an exercise</string>
     <plurals name="tru_hub_history_days">
         <item quantity="one">Training day · %1$s</item>
         <item quantity="other">Training days · %1$s</item>

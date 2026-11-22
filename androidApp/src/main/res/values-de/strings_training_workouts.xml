@@ -5,8 +5,8 @@
     <string name="trwo_mine">Meine Workouts</string>
     <string name="trwo_mine_empty">Noch keine eigenen Workouts. Leg eins mit „Neues Workout“ an, kopiere unten eine Vorlage oder speichere ein beendetes Training in der Zusammenfassung als Workout.</string>
     <string name="trwo_week_plan">Wochenplan</string>
-    <string name="trwo_week_plan_empty">Noch keine Standardwoche. Plan, welches Workout an welchen Tag gehört – „Heute“ schlägt es dann vor.</string>
-    <string name="trwo_week_plan_edit">Wochenplan bearbeiten</string>
+    <string name="trwo_week_plan_empty">Noch keine Standardwoche. Der Coach schlägt dir eine vor – ein Tipp übernimmt sie.</string>
+    <string name="trwo_week_plan_edit">Standardwoche planen</string>
     <string name="trwo_week_plan_intro">Deine Standardwoche: was an welchen Tag gehört. Der Vorschlag auf „Heute“ folgt diesem Plan; dein Wochenziel an Trainingstagen bleibt davon getrennt.</string>
     <string name="trwo_templates">Startvorlagen</string>
     <string name="trwo_history">Verlauf</string>
