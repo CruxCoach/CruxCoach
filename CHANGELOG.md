@@ -646,6 +646,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Kilter and the other Aurora boards
   take every color within their power limits, MoonBoard green, blue and red,
   Quantum four colors with up to 92 LEDs each; Shiny Wall is not supported yet.
+- A climb's page counts your logs on its two logging buttons: "Try (4)" and
+  "Top (2)" are your tries and tops of this climb over all days and angles.
+  The try that topped counts as the top.
 
 ### Fixed
 - Sharing the board ("Share with board apps"): a climb the sharing phone lights
