@@ -788,7 +788,7 @@ private fun ExperienceCard(state: CoachSetupState, update: ((CoachProfile) -> Co
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("coach_start_summary")) {
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.trc_from_start), style = MaterialTheme.typography.labelLarge)
-                Text(listOfNotNull(d.currentGrade?.let { gradeWithV(it) }, d.experience?.let { experienceLabel(it) }, d.ageBand?.let { ageLabel(it) })
+                Text(listOfNotNull(d.currentGrade?.let { gradeWithV(it) }, d.experience?.let { stringResource(R.string.trc_from_start_experience, experienceLabel(it)) }, d.ageBand?.let { ageLabel(it) })
                     .joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
             }
             TextButton(onClick = { editStart = true }, modifier = Modifier.testTag("coach_start_edit")) { Text(stringResource(R.string.trt_checkin_change)) }

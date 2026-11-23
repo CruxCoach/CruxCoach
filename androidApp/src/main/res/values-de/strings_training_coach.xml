@@ -62,6 +62,8 @@
     <string name="trc_context_rope">Seil</string>
     <string name="trc_context_outdoor">Fels</string>
     <string name="trc_experience">Du kletterst seit</string>
+    <!-- The years in the summary line "7a (V6) · seit über 5 Jahren · 18–39" -->
+    <string name="trc_from_start_experience">seit %1$s</string>
     <string name="trc_experience_under_1">unter 1\u00A0Jahr</string>
     <string name="trc_experience_1_2">1–2\u00A0Jahren</string>
     <string name="trc_experience_3_5">3–5\u00A0Jahren</string>

@@ -62,6 +62,8 @@
     <string name="trc_context_rope">Rope</string>
     <string name="trc_context_outdoor">Outdoor</string>
     <string name="trc_experience">Climbing for</string>
+    <!-- The years in the summary line "7a (V6) · over 5 years · 18–39" -->
+    <string name="trc_from_start_experience">%1$s</string>
     <string name="trc_experience_under_1">under 1\u00A0year</string>
     <string name="trc_experience_1_2">1–2\u00A0years</string>
     <string name="trc_experience_3_5">3–5\u00A0years</string>

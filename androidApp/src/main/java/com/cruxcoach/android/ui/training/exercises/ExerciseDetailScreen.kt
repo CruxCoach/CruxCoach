@@ -632,6 +632,8 @@ internal fun setSummary(def: ExerciseDefinition, set: ExerciseSet, profile: Athl
     }
     set.edgeMm?.let { parts += stringResource(R.string.tr_format_mm, formatNumber(it)) }
     set.grip?.let { parts += gripLabel(it) }
-    set.rir?.let { parts += "RIR $it" }
+    // In the words the summary of a training uses; a timed hold's reserve is in seconds.
+    set.rir?.let { parts += stringResource(if (def.kind == ExerciseKind.TIME || def.kind == ExerciseKind.HANG) R.string.trpg_rir_short_seconds
+        else R.string.trw_rir_short, it) }
     return parts.joinToString(" · ")
 }

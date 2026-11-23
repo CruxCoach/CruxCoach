@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -93,7 +94,7 @@ fun ExerciseProgressCard(slug: String, onOpenStats: () -> Unit) {
             }
             if (series.isNotEmpty()) {
                 DateLineChart(series, { capacityText(def, progress.kind, it, units) },
-                    stringResource(R.string.trs_capacity_cd, def.name(lang), progress.sessionCount),
+                    pluralStringResource(R.plurals.trs_capacity_cd, progress.sessionCount, def.name(lang), progress.sessionCount),
                     Modifier.fillMaxWidth().padding(top = 8.dp), height = 110.dp)
             }
             TextButton(onClick = onOpenStats, modifier = Modifier.testTag("exercise_progress_open")) {

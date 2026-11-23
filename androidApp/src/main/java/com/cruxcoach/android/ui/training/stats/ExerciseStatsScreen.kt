@@ -172,7 +172,7 @@ fun ExerciseStatsScreen(
                     Text(stringResource(R.string.trs_no_value), style = MaterialTheme.typography.bodySmall)
                 } else {
                     DateLineChart(series, { capacityText(def, kind, it, units) },
-                        stringResource(R.string.trs_capacity_cd, def.name(lang), sessions.size),
+                        pluralStringResource(R.plurals.trs_capacity_cd, sessions.size, def.name(lang), sessions.size),
                         Modifier.fillMaxWidth().testTag("exercise_stats_chart"), level = level)
                 }
                 if (s.levels.isNotEmpty()) {
@@ -192,7 +192,7 @@ fun ExerciseStatsScreen(
                 val points = sessions.map { it.day to it.volume }.filter { it.second > 0 }
                 if (points.isNotEmpty()) {
                     DateLineChart(listOf(ChartSeries(stringResource(R.string.trs_volume_chart), colors[2], points)),
-                        { it.roundToInt().toString() }, stringResource(R.string.trs_volume_cd, points.size),
+                        { it.roundToInt().toString() }, pluralStringResource(R.plurals.trs_volume_cd, points.size, points.size),
                         Modifier.fillMaxWidth().testTag("exercise_stats_volume"), height = 140.dp)
                 }
                 Text(stringResource(volumeHint(def)), style = MaterialTheme.typography.bodySmall,
