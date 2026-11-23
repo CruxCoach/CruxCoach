@@ -1429,6 +1429,8 @@
     <string name="board_ascent_attempt">Attempt</string>
     <string name="board_dock_attempt">Try</string>
     <string name="board_dock_top">Top</string>
+    <!-- A logging button's word and how often the climber has logged it for this climb: "Top (3)" -->
+    <string name="board_dock_label_count">%1$s (%2$d)</string>
     <string name="board_dock_connect">Connect</string>
     <string name="board_dock_light">Light</string>
     <string name="board_dock_queue">Queue</string>

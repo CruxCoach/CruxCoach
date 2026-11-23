@@ -2227,6 +2227,7 @@ private fun BoardDetailBottomActions(
         ) {
             BoardDetailActionDock(
                 loggingEnabled = !state.isLoading && !state.isQuickLogging,
+                counts = remember(state.userAscents) { climbLogCounts(state.userAscents) },
                 lamp = BoardDeliveryPolicy.lampMode(
                     decision = decision,
                     hasDirectPayload = hasDirectPayload,
@@ -2256,7 +2257,17 @@ private fun BoardDetailBottomActions(
  * middle one is in.
  */
 @Composable
-private fun DockButtonContent(icon: ImageVector, contentDescription: String, label: String, iconTint: Color = LocalContentColor.current) {
+private fun DockButtonContent(
+    icon: ImageVector,
+    contentDescription: String,
+    label: String,
+    iconTint: Color = LocalContentColor.current,
+    /** How often this button's log exists for the climb; shown after the word as "Top (3)", nothing at zero. */
+    count: Int = 0,
+) {
+    val counted = if (count > 0) stringResource(R.string.board_dock_label_count, label, count) else null
+    // A narrow phone with a large font has no room for the number: then the word alone, never a cut one.
+    var countFits by remember(counted) { mutableStateOf(true) }
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -2265,10 +2276,12 @@ private fun DockButtonContent(icon: ImageVector, contentDescription: String, lab
         Icon(icon, contentDescription = contentDescription, tint = iconTint, modifier = Modifier.size(27.dp))
         Spacer(Modifier.height(1.dp))
         Text(
-            label,
+            if (counted != null && countFits) counted else label,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
+            softWrap = false,
+            onTextLayout = { if (it.hasVisualOverflow) countFits = false },
         )
     }
 }
@@ -2276,6 +2289,8 @@ private fun DockButtonContent(icon: ImageVector, contentDescription: String, lab
 @Composable
 private fun BoardDetailActionDock(
     loggingEnabled: Boolean,
+    /** This climber's logged tries and tops of the climb, in brackets on the two logging buttons. */
+    counts: ClimbLogCounts,
     lamp: BoardDetailLampMode,
     lightEnabled: Boolean,
     lightInProgress: Boolean,
@@ -2305,6 +2320,7 @@ private fun BoardDetailActionDock(
                 contentDescription = stringResource(R.string.board_ascent_attempt),
                 label = stringResource(R.string.board_dock_attempt),
                 iconTint = ErrorRed,
+                count = counts.tries,
             )
         }
         when (lamp) {
@@ -2392,6 +2408,7 @@ private fun BoardDetailActionDock(
                 contentDescription = stringResource(R.string.board_ascent_send),
                 label = stringResource(R.string.board_dock_top),
                 iconTint = SuccessGreen,
+                count = counts.tops,
             )
         }
     }
