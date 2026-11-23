@@ -180,14 +180,6 @@ private fun energyOf(n: Nutrients): MacroTotals.Energy? =
         ?: if (n.protein == null && n.carbs == null && n.fat == null) null
         else MacroTotals.Energy(4 * (n.protein ?: 0.0) + 4 * (n.carbs ?: 0.0) + 9 * (n.fat ?: 0.0), estimated = true)
 
-/** "80 g", "2 × portion", or nothing for one portion of a food without a weight. */
-@Composable
-private fun entryAmount(entry: FoodLogEntry, units: UnitSystem): String? = when {
-    entry.amountG != null -> amountText(entry.amountG!!, FuelUnits.unitFor(units, FuelUnits.isDrink(entry.foodItemId, entry.name)))
-    entry.portions != null && entry.portions != 1.0 -> stringResource(R.string.trf_entry_portions, formatNumber(entry.portions!!))
-    else -> null
-}
-
 /** A saved food's name; a favourite carries its star, now that the star button sits in the row's menu. */
 @Composable
 private fun FoodName(item: FoodItem) {
@@ -263,6 +255,8 @@ private fun FoodMenu(
 @Composable
 private fun LoggedStrip(
     last: FoodLogEntry,
+    /** The saved food of [last] while there is one: a dish reads by its portions, as in its row. */
+    food: FoodItem?,
     dayEntries: List<FoodLogEntry>,
     showCalories: Boolean,
     units: UnitSystem,
@@ -280,7 +274,7 @@ private fun LoggedStrip(
                 Spacer(Modifier.width(8.dp))
                 // TalkBack reads the confirmation when it appears or changes.
                 Column(Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }) {
-                    Text(listOfNotNull(stringResource(R.string.trf_recent_logged, last.name), entryAmount(last, units)).joinToString(" · "),
+                    Text(listOfNotNull(stringResource(R.string.trf_recent_logged, last.name), entryAmountText(last, food, units)).joinToString(" · "),
                         style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.testTag("fuel_logged_text"))
                     Text(pluralStringResource(R.plurals.trf_logged_meal, meal.size, meal.size, mealLabel(last.meal)) + " · " +
@@ -391,6 +385,7 @@ fun FoodsSheet(
         .sortedBy { if (it.source == Recipe.SOURCE) 0 else 1 }
     // A row's menu holds what can be done with a saved food; picking an ingredient needs none of it.
     val menus = onDelete != null || onEditRecipe != null
+    val foodsById = remember(foods) { foods.associateBy { it.id } }
     var blsResults by remember { mutableStateOf<List<BlsFood>>(emptyList()) }
     var productResults by remember { mutableStateOf<List<OffProduct>>(emptyList()) }
     var usdaResults by remember { mutableStateOf<List<BlsFood>>(emptyList()) }
@@ -430,7 +425,7 @@ fun FoodsSheet(
                 if (meal != null) MealPicker(meal, onMealChange)
             }
             logged.lastOrNull()?.let { last ->
-                LoggedStrip(last, dayEntries, showCalories, units, onUndo = { onUndoLogged(last) }, onDone = onDismiss)
+                LoggedStrip(last, foodsById[last.foodItemId], dayEntries, showCalories, units, onUndo = { onUndoLogged(last) }, onDone = onDismiss)
             }
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
@@ -458,12 +453,10 @@ fun FoodsSheet(
                         // One tap each, like "log again" below: the usual amount, into the chosen meal.
                         items(shownDishes, key = { "dish_${it.id}" }) { item ->
                             val (portions, grams) = FuelViewModel.usualAmount(item, lastByFood[item.id])
-                            val count = portions ?: 1.0
-                            val amount = when {
-                                grams != null -> amountText(grams, FuelUnits.unitFor(units, FuelUnits.isDrink(item.id, item.name, item.servingLabel)))
-                                count == 1.0 -> stringResource(R.string.trf_one_portion)
-                                else -> stringResource(R.string.trf_entry_portions, formatNumber(count))
-                            }
+                            // In the words the confirmation and the day's list use after the tap: the entry gets these
+                            // portions and this weight.
+                            val amount = loggedAmountText(portions, FuelViewModel.loggedGrams(item, portions, grams),
+                                FuelUnits.unitFor(units, FuelUnits.isDrink(item.id, item.name, item.servingLabel)), dish = true)
                             val values = FuelViewModel.scale(item, portions, grams)
                                 ?.let { macrosText(it.protein, it.carbs, it.fat, energyOf(it), showCalories) }
                             ListItem(
@@ -502,7 +495,7 @@ fun FoodsSheet(
                         }
                         // One tap each: the same food with the same amount (UX review 2026-10-16).
                         items(shownRecent, key = { "recent_${it.id}" }) { entry ->
-                            val amount = entryAmount(entry, units)
+                            val amount = entryAmountText(entry, foodsById[entry.foodItemId], units)
                             ListItem(
                                 headlineContent = { Text(entry.name, maxLines = 1) },
                                 supportingContent = {
