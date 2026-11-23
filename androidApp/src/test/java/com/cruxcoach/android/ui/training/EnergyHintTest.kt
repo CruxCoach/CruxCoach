@@ -16,9 +16,12 @@ import com.cruxcoach.athlete.model.FoodLogEntry
 import com.cruxcoach.athlete.model.Meal
 import com.cruxcoach.athlete.model.Sex
 import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.minus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -32,6 +35,18 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
 class EnergyHintTest : AthleteScreenTest() {
+
+    /**
+     * A fixed day: which finger exercise the coach picks changes with the date (its choice has a jitter seeded by the
+     * day), and on some days it is not a maximal one – then there is no hint to test. With the real date both tests
+     * failed all of 2026-11-23, in every pull request and in the publishing run. The clock keeps running from there.
+     */
+    @Before
+    fun fixedDay() {
+        val start = LocalDate.parse(ENERGY_HINT_DAY).atStartOfDayIn(service.zone).toEpochMilliseconds() + 12 * 3_600_000L
+        val offset = start - System.currentTimeMillis()
+        service.clock = { System.currentTimeMillis() + offset }
+    }
 
     private fun lowEnergyDays() {
         val today = service.today()
@@ -94,3 +109,6 @@ class EnergyHintTest : AthleteScreenTest() {
         waitForText("Your energy has been on the low side lately – a snack with carbohydrates before hard finger work helps.")
     }
 }
+
+/** A day on which the chosen finger session is maximal work (see [EnergyHintTest.fixedDay]). */
+private const val ENERGY_HINT_DAY = "2026-11-22"
