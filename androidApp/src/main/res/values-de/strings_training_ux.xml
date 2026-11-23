@@ -116,7 +116,6 @@
     <string name="tru_set_sex">Geschlecht</string>
     <string name="tru_set_birth_year">Geburtsjahr</string>
     <string name="tru_water_reached">Trinkziel erreicht</string>
-    <string name="tru_new_food">Neu</string>
     <plurals name="tru_hub_records">
         <item quantity="one">%d Bestwert</item>
         <item quantity="other">%d Bestwerte</item>
