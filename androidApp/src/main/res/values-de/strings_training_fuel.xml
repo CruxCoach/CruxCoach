@@ -42,10 +42,10 @@
     <string name="trf_recipe_add">Zutat hinzufügen</string>
     <string name="trf_recipe_add_confirm">Hinzufügen</string>
     <string name="trf_recipe_pick">Zutat wählen</string>
-    <string name="trf_recipe_only_weighed">Dieses Lebensmittel hat kein Gewicht – wähle eines mit Grammangabe.</string>
+    <string name="trf_recipe_only_weighed">Dieses Lebensmittel hat kein Gewicht – wähl eines mit Grammangabe.</string>
     <string name="trf_recipe_portions">Portionen</string>
     <string name="trf_recipe_cooked">Gewicht fertig (%1$s, optional)</string>
-    <string name="trf_recipe_cooked_hint">Wiege das fertige Gericht, wenn möglich: Nudeln und Reis nehmen Wasser auf, Fleisch verliert es. Ohne Angabe teilen die Portionen das Rohgewicht.</string>
+    <string name="trf_recipe_cooked_hint">Wieg das fertige Gericht, wenn möglich: Nudeln und Reis nehmen Wasser auf, Fleisch verliert es. Ohne Angabe teilen die Portionen das Rohgewicht.</string>
     <string name="trf_recipe_per_portion">Pro Portion (%1$s): %3$s\u00A0g Kohlenhydrate · %2$s\u00A0g Protein · %4$s\u00A0g Fett</string>
     <string name="trf_foods_usda_title">US-Lebensmittel (USDA)</string>
     <string name="trf_usda_attribution">Lebensmitteldaten: USDA FoodData Central (gemeinfrei)</string>
@@ -107,7 +107,7 @@
 
     <string name="trf_find_food">Lebensmittel suchen</string>
     <string name="trf_foods_bls_title">Lebensmitteldatenbank (BLS)</string>
-    <string name="trf_foods_bls_hint">Tippe mindestens zwei Buchstaben, um 7.140 Lebensmittel aus dem Bundeslebensmittelschlüssel zu durchsuchen.</string>
+    <string name="trf_foods_bls_hint">Tipp mindestens zwei Buchstaben, um 7.140 Lebensmittel aus dem Bundeslebensmittelschlüssel zu durchsuchen.</string>
     <string name="trf_foods_bls_none">Kein Treffer in der Datenbank.</string>
     <string name="trf_foods_searching">Suche läuft …</string>
     <string name="trf_foods_products_title">Markenprodukte (Open Food Facts)</string>

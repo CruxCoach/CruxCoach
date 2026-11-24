@@ -3,7 +3,7 @@
     <string name="trwo_new">Neues Workout</string>
     <string name="trwo_continue">Training läuft – weitermachen</string>
     <string name="trwo_mine">Meine Workouts</string>
-    <string name="trwo_mine_empty">Noch keine eigenen Workouts. Leg eins mit „Neues Workout“ an, kopiere unten eine Vorlage oder speichere ein beendetes Training in der Zusammenfassung als Workout.</string>
+    <string name="trwo_mine_empty">Noch keine eigenen Workouts. Leg eins mit „Neues Workout“ an, kopier unten eine Vorlage oder speichere ein beendetes Training in der Zusammenfassung als Workout.</string>
     <string name="trwo_week_plan">Wochenplan</string>
     <string name="trwo_week_plan_empty">Noch keine Standardwoche. Der Coach schlägt dir eine vor – mit einem Tippen übernimmst du sie.</string>
     <string name="trwo_week_plan_edit">Standardwoche planen</string>

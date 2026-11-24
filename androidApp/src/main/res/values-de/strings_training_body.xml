@@ -16,7 +16,7 @@
     <string name="trb_range_all">Alle</string>
     <string name="trb_chart_description">Gewichtstrend vom %1$s bis %2$s, von %3$s auf %4$s.</string>
     <string name="trb_chart_description_hidden">Gewichtstrend vom %1$s bis %2$s: %3$s.</string>
-    <string name="trb_no_weight">Noch kein Gewicht eingetragen. Tippe auf +, um zu starten – gelegentliches Wiegen reicht.</string>
+    <string name="trb_no_weight">Noch kein Gewicht eingetragen. Tipp auf +, um zu starten – gelegentliches Wiegen reicht.</string>
     <string name="trb_measurements">Messwerte</string>
     <string name="trb_add_measurement">Messwert</string>
     <string name="trb_delta">%1$s zum Vorwert</string>

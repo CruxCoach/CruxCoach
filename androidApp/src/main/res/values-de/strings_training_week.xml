@@ -2,7 +2,7 @@
 <resources>
     <!-- Trainings-Erinnerung (Wochenplan) -->
     <string name="trw_notify_title">Heute: %1$s</string>
-    <string name="trw_notify_text">Tippe für deinen Vorschlag – er passt sich deinem Tag an.</string>
+    <string name="trw_notify_text">Tipp für deinen Vorschlag – er passt sich deinem Tag an.</string>
     <string name="trw_notify_board">Board-Session</string>
     <string name="trw_reminder_title">Trainings-Erinnerung</string>
     <string name="trw_reminder_info">An Tagen mit einem Workout im Wochenplan erinnert dich CruxCoach zur gewählten Zeit. Keine Erinnerung an Ruhetagen, an Tagen, an denen du schon trainiert oder geklettert hast, und während einer Pause.</string>
