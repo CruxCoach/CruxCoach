@@ -30,9 +30,15 @@
     <string name="trs_legend_climbing">Climbing</string>
     <string name="trs_legend_off_board">Off the wall</string>
     <string name="trs_minutes_per_week">Minutes per week</string>
-    <string name="trs_minutes_chart_cd">Training minutes per week, %1$d\u00A0minutes in total.</string>
+    <plurals name="trs_minutes_chart_cd">
+        <item quantity="one">Training minutes per week, %1$d\u00A0minute in total.</item>
+        <item quantity="other">Training minutes per week, %1$d\u00A0minutes in total.</item>
+    </plurals>
     <string name="trs_calendar">Calendar</string>
-    <string name="trs_calendar_cd">Training calendar of the last 16\u00A0weeks with %1$d training days.</string>
+    <plurals name="trs_calendar_cd">
+        <item quantity="one">Training calendar of the last 16\u00A0weeks with %1$d training day.</item>
+        <item quantity="other">Training calendar of the last 16\u00A0weeks with %1$d training days.</item>
+    </plurals>
     <string name="trs_calendar_hint">One column per week, Monday on top. Stronger colour = harder day.</string>
     <string name="trs_load_title">Load by body area</string>
     <string name="trs_load_cd">%1$s: loading days per week, %2$d this week.</string>
@@ -54,10 +60,16 @@
     <string name="trs_tile_sessions">Sessions</string>
     <string name="trs_tile_percent_bw">% body weight</string>
     <string name="trs_capacity_chart">%1$s over time</string>
-    <string name="trs_capacity_cd">Progress of %1$s across %2$d sessions.</string>
+    <plurals name="trs_capacity_cd">
+        <item quantity="one">Progress of %1$s in %2$d session.</item>
+        <item quantity="other">Progress of %1$s across %2$d sessions.</item>
+    </plurals>
     <string name="trs_current_value">Current strength value: %1$s</string>
     <string name="trs_volume_chart">Volume per session</string>
-    <string name="trs_volume_cd">Volume across %1$d sessions.</string>
+    <plurals name="trs_volume_cd">
+        <item quantity="one">Volume in %1$d session.</item>
+        <item quantity="other">Volume across %1$d sessions.</item>
+    </plurals>
     <string name="trs_volume_hint_load">Weight lifted × reps of all work sets: both dumbbells of a pair, body weight included on bodyweight exercises.</string>
     <string name="trs_volume_hint_reps">Reps (or rounds) of all work sets.</string>
     <string name="trs_volume_hint_time">Seconds held in all work sets.</string>

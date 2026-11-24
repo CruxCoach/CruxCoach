@@ -313,7 +313,7 @@ fun StatsHubScreen(
                     val bars = s.weeks.map { w ->
                         WeekBar(w.weekStart, listOf(climbColor to w.climbingMinutes.toDouble(), offBoardColor to w.workoutMinutes.toDouble()))
                     }
-                    WeeklyBarChart(bars, stringResource(R.string.trs_minutes_chart_cd, s.weeks.sumOf { it.climbingMinutes + it.workoutMinutes }),
+                    WeeklyBarChart(bars, s.weeks.sumOf { it.climbingMinutes + it.workoutMinutes }.let { pluralStringResource(R.plurals.trs_minutes_chart_cd, it, it) },
                         Modifier.fillMaxWidth().testTag("stats_minutes_chart"))
                 }
 
@@ -327,7 +327,7 @@ fun StatsHubScreen(
                 item {
                     s.today?.let { today ->
                         CalendarHeatmap(s.calendar, today,
-                            stringResource(R.string.trs_calendar_cd, s.calendar.count { it.value > 0 }),
+                            s.calendar.count { it.value > 0 }.let { pluralStringResource(R.plurals.trs_calendar_cd, it, it) },
                             Modifier.testTag("stats_calendar"))
                     }
                 }

@@ -30,9 +30,15 @@
     <string name="trs_legend_climbing">Klettern</string>
     <string name="trs_legend_off_board">Ohne Wand</string>
     <string name="trs_minutes_per_week">Minuten pro Woche</string>
-    <string name="trs_minutes_chart_cd">Trainingsminuten pro Woche, insgesamt %1$d\u00A0Minuten.</string>
+    <plurals name="trs_minutes_chart_cd">
+        <item quantity="one">Trainingsminuten pro Woche, insgesamt %1$d\u00A0Minute.</item>
+        <item quantity="other">Trainingsminuten pro Woche, insgesamt %1$d\u00A0Minuten.</item>
+    </plurals>
     <string name="trs_calendar">Kalender</string>
-    <string name="trs_calendar_cd">Trainingskalender der letzten 16\u00A0Wochen mit %1$d Trainingstagen.</string>
+    <plurals name="trs_calendar_cd">
+        <item quantity="one">Trainingskalender der letzten 16\u00A0Wochen mit %1$d Trainingstag.</item>
+        <item quantity="other">Trainingskalender der letzten 16\u00A0Wochen mit %1$d Trainingstagen.</item>
+    </plurals>
     <string name="trs_calendar_hint">Eine Spalte pro Woche, Montag oben. Kräftigere Farbe = härterer Tag.</string>
     <string name="trs_load_title">Belastung nach Körperbereich</string>
     <string name="trs_load_cd">%1$s: Belastungstage pro Woche, diese Woche %2$d.</string>
@@ -54,10 +60,16 @@
     <string name="trs_tile_sessions">Einheiten</string>
     <string name="trs_tile_percent_bw">% Körpergewicht</string>
     <string name="trs_capacity_chart">%1$s im Verlauf</string>
-    <string name="trs_capacity_cd">Fortschritt bei %1$s über %2$d Einheiten.</string>
+    <plurals name="trs_capacity_cd">
+        <item quantity="one">Fortschritt bei %1$s in %2$d Einheit.</item>
+        <item quantity="other">Fortschritt bei %1$s über %2$d Einheiten.</item>
+    </plurals>
     <string name="trs_current_value">Aktueller Kraftwert: %1$s</string>
     <string name="trs_volume_chart">Volumen pro Einheit</string>
-    <string name="trs_volume_cd">Volumen über %1$d Einheiten.</string>
+    <plurals name="trs_volume_cd">
+        <item quantity="one">Volumen in %1$d Einheit.</item>
+        <item quantity="other">Volumen über %1$d Einheiten.</item>
+    </plurals>
     <string name="trs_volume_hint_load">Bewegtes Gewicht × Wiederholungen aller Arbeitssätze: beide Hanteln eines Paars, bei Körpergewichtsübungen samt Körpergewicht.</string>
     <string name="trs_volume_hint_reps">Wiederholungen (oder Runden) aller Arbeitssätze.</string>
     <string name="trs_volume_hint_time">Gehaltene Sekunden aller Arbeitssätze.</string>
