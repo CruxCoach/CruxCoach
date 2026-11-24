@@ -651,6 +651,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   The try that topped counts as the top.
 
 ### Fixed
+- An exercise's record "estimated max" counts the reps you had in reserve, as
+  your strength value does: the same set no longer reads "2 × 3.1 kg" in one
+  place and "2 × 3 kg" in the other.
+- With the largest font a climb's page shows the ascent count in thousands
+  ("106k") instead of cutting the number off.
 - Sharing the board ("Share with board apps"): a climb the sharing phone lights
   itself no longer cuts off the phones connected through it. Each of its own
   sends stopped the sharing for a moment; the others lost the board, and until

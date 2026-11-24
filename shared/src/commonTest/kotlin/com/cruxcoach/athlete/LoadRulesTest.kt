@@ -98,6 +98,10 @@ class LoadRulesTest {
         val record = assertNotNull(PersonalRecords.score(bench, set(bench, 20.0, 10)))
         assertEquals(RecordKind.ESTIMATED_MAX, record.first)
         assertEquals(capacity.value, record.second, 1e-9)
+        // With reps in reserve both read the set the same way: 15 reps and 2 in reserve are 17.
+        val spared = set(bench, 2.0, 15, rir = 2)
+        assertEquals(4.0 * (1 + 17 / 30.0), assertNotNull(BenchmarkMath.implied(bench, spared)).value, 1e-9)
+        assertEquals(4.0 * (1 + 17 / 30.0), assertNotNull(PersonalRecords.score(bench, spared)).second, 1e-9)
         // The session's % body weight is the total.
         val progress = ProgressStats.exerciseProgress(bench, listOf(set(bench, 20.0, 10)), TimeZone.UTC, 80.0)
         assertEquals(capacity.value / 80.0 * 100.0, progress.percentBodyweight!!, 1e-9)

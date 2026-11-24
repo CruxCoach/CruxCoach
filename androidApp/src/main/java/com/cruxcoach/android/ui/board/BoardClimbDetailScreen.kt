@@ -2553,7 +2553,12 @@ private fun CompactClimbOverview(
                             modifier = Modifier.size(15.dp),
                         )
                         Text(
-                            text = "${climb.ascensionistCount ?: 0}",
+                            // With a large font the row runs out of the card at the count: thousands are enough then.
+                            text = (climb.ascensionistCount ?: 0).let { count ->
+                                if (count >= 10_000 && androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) {
+                                    stringResource(R.string.board_detail_count_thousands, count / 1000)
+                                } else "$count"
+                            },
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
