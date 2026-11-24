@@ -61,7 +61,10 @@ object PersonalRecords {
         if (!set.isCompleted || set.setType == SetType.WARMUP) return null
         return when (def.kind) {
             ExerciseKind.LOAD_REPS -> {
-                val reps = set.reps ?: return null
+                // The reserve counts as reps the athlete could have done, as in the strength value
+                // ([BenchmarkMath.implied]): the exercise page showed "estimated max 2 × 3.1 kg" as the value and
+                // "2 × 3 kg" as the record of the very same set (device check 2026-11-24).
+                val reps = (set.reps ?: return null) + (set.rir ?: 0).coerceAtLeast(0)
                 if (reps <= 0) return null
                 val load = StrengthMath.effectiveLoad(def, set.loadKg, set.bodyweightKg)
                     ?: set.loadKg ?: return null
