@@ -33,7 +33,7 @@
     <string name="trc_target_date">Termin (Reise, Wettkampf – optional)</string>
     <string name="trc_pick_date">Datum wählen</string>
     <string name="trc_preview_goal_none">Ohne Ziel verteilt der Coach alles gleichmäßig.</string>
-    <string name="trc_preview_goal_perform">Kletterspezifische Kraft hat Vorrang: Finger, Zug, Power.</string>
+    <string name="trc_preview_goal_perform">Kletterspezifische Kraft hat Vorrang: Finger, Zug, Schnellkraft.</string>
     <string name="trc_preview_goal_strength">Kraftübungen haben Vorrang, mit kleinen, stetigen Steigerungen.</string>
     <string name="trc_preview_goal_healthy">Mehr Ausgleichsübungen, Rumpf und Mobilität; die Fingerlast bleibt moderat.</string>
     <string name="trc_preview_goal_comeback">Vorsichtiger Wiedereinstieg: erst leichtere Lasten, Fingerarbeit baut sich langsam auf.</string>
@@ -87,7 +87,7 @@
     <string name="trc_focus_unknown">Weiß ich nicht – schlag was vor</string>
     <string name="trc_focus_finger">Fingerkraft</string>
     <string name="trc_focus_pull">Zugkraft und Blockieren</string>
-    <string name="trc_focus_power">Power und Dynamik</string>
+    <string name="trc_focus_power">Schnellkraft und Dynamik</string>
     <string name="trc_focus_power_endurance">Kraftausdauer</string>
     <string name="trc_focus_core">Körperspannung</string>
     <string name="trc_focus_mobility">Mobilität (Hüfte, Schulter)</string>

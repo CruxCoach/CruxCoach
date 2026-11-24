@@ -49,7 +49,7 @@
     <string name="tre_focus_finger">Fingerkraft</string>
     <string name="tre_focus_mobility">Mobilität</string>
     <string name="tre_focus_pe">Kraftausdauer</string>
-    <string name="tre_focus_power">Power</string>
+    <string name="tre_focus_power">Schnellkraft</string>
     <string name="tre_focus_prevention">Vorbeugung</string>
     <string name="tre_focus_pull">Zugkraft</string>
     <string name="tre_gen_limit">Limit-Bouldern</string>
@@ -114,7 +114,7 @@
     <string name="tre_trend_spike">steigt stark</string>
     <string name="tre_trend_stall">Seit %1$d Einheiten kein Fortschritt.</string>
     <string name="tre_trend_stall_generic">Probier für ein paar Wochen eine andere Leiste oder Griffart.</string>
-    <string name="tre_trend_stall_try">Variation: %1$s</string>
+    <string name="tre_trend_stall_try">Variante: %1$s</string>
     <string name="tre_trend_title">Über mehrere Einheiten</string>
     <string name="tre_reason_return_break">Zurück nach einer Pause: weniger Sätze und vorerst keine maximale Fingerlast – der Körper braucht einen kurzen Anlauf.</string>
     <string name="tre_reason_return_finger">Du hast deine Fingerverletzung erst kürzlich als vorbei eingetragen: Fingertraining bleibt noch ein paar Wochen leicht.</string>
