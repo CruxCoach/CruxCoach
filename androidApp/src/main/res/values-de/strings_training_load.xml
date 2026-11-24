@@ -32,7 +32,7 @@
     <string name="trl_subject_finger">Deine Fingerkraft</string>
     <string name="trl_subject_pull">Deine Zugkraft</string>
     <string name="trl_reading_below">%1$s (%2$s) ist typisch für etwa %3$s – du kletterst %4$s. Kraft könnte für dich ein Hebel sein.</string>
-    <string name="trl_reading_above">%1$s (%2$s) ist typisch für etwa %3$s – du kletterst %4$s. An der Kraft liegt es nicht; Technik, Power oder Taktik bringen dir vermutlich mehr.</string>
+    <string name="trl_reading_above">%1$s (%2$s) ist typisch für etwa %3$s – du kletterst %4$s. An der Kraft liegt es nicht; Technik, Schnellkraft oder Taktik bringen dir vermutlich mehr.</string>
     <string name="trl_reading_within">%1$s (%2$s) liegt im typischen Bereich für %3$s.</string>
     <string name="trl_reading_no_grade">%1$s (%2$s) ist typisch für Kletternde um %3$s.</string>
 
@@ -97,7 +97,7 @@
     <string name="trl_bottleneck_title">Stärken und Engpässe</string>
     <string name="trl_area_finger">Finger</string>
     <string name="trl_area_pull">Zug</string>
-    <string name="trl_area_power">Limit und Power</string>
+    <string name="trl_area_power">Limit und Schnellkraft</string>
     <string name="trl_area_endurance">Kraftausdauer</string>
     <string name="trl_area_core">Rumpf</string>
     <string name="trl_reason_below">unter dem, was für deinen Grad typisch ist</string>

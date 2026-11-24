@@ -589,7 +589,7 @@
     <!-- Training -->
     <string name="phase_base">Basis</string>
     <string name="phase_strength">Kraft</string>
-    <string name="phase_power">Power</string>
+    <string name="phase_power">Schnellkraft</string>
     <string name="phase_performance">Performance</string>
     <string name="phase_deload">Deload</string>
 
@@ -600,7 +600,7 @@
 
     <!-- Session Types -->
     <string name="session_strength">Kraft</string>
-    <string name="session_power">Power</string>
+    <string name="session_power">Schnellkraft</string>
     <string name="session_volume">Volumen</string>
     <string name="session_technique">Technik</string>
     <string name="session_deload">Deload</string>
@@ -629,7 +629,7 @@
     <string name="cat_pull">Zugkraft</string>
     <string name="cat_push">Druckkraft</string>
     <string name="cat_core">Rumpf</string>
-    <string name="cat_power">Power</string>
+    <string name="cat_power">Schnellkraft</string>
     <string name="cat_endurance">Ausdauer</string>
     <string name="cat_mobility">Mobilität</string>
     <string name="cat_technique">Technik</string>
@@ -652,7 +652,7 @@
     <string name="workout_rest">Pause</string>
     <string name="workout_exercise_of">Übung %1$d von %2$d</string>
     <string name="workout_type_strength">Kraft-Workout</string>
-    <string name="workout_type_power">Power-Workout</string>
+    <string name="workout_type_power">Schnellkraft-Workout</string>
     <string name="workout_type_volume">Volumen-Workout</string>
     <string name="workout_type_technique">Technik-Workout</string>
     <string name="workout_type_deload">Deload-Workout</string>
@@ -1648,7 +1648,7 @@
     <string name="training_reminder_title">Training heute geplant</string>
     <string name="training_reminder_message">%1$s-Session mit %2$d Übungen</string>
     <string name="training_type_strength">Kraft</string>
-    <string name="training_type_power">Power</string>
+    <string name="training_type_power">Schnellkraft</string>
     <string name="training_type_volume">Volumen</string>
     <string name="training_type_technique">Technik</string>
     <string name="training_type_deload">Deload</string>
