@@ -11,7 +11,7 @@
     <string name="trl_tile_pull">Zugkraft</string>
     <string name="trl_tile_pull_sub">Klimmzug mit Zusatzgewicht, Gesamtlast pro Körpergewicht</string>
     <string name="trl_empty_title">Dein Profil beginnt mit ein paar Zahlen</string>
-    <string name="trl_empty_text">Logge Boulder am Board oder trag einen Klettertag ein. Trag dazu einen Kraftwert für Max Hangs oder Klimmzüge mit Zusatzgewicht ein. Dann siehst du, wo du stehst und wie Grad und Kraft zusammenhängen.</string>
+    <string name="trl_empty_text">Logg Boulder am Board oder trag einen Klettertag ein. Trag dazu einen Kraftwert für Max Hangs oder Klimmzüge mit Zusatzgewicht ein. Dann siehst du, wo du stehst und wie Grad und Kraft zusammenhängen.</string>
     <string name="trl_action_values">Kraftwerte eintragen</string>
     <string name="trl_action_log_climbing">Klettertag eintragen</string>
     <string name="trl_day_deleted">Klettertag gelöscht</string>
@@ -21,9 +21,9 @@
     <string name="trl_tab_pull">Zug</string>
     <string name="trl_position_finger_axis">Beidarmiges Hängen von etwa 10\u00A0s an einer 20-mm-Leiste: Körpergewicht plus Zusatzgewicht in Prozent des Körpergewichts, gegen den Grad, den du damals geklettert bist.</string>
     <string name="trl_position_pull_axis">Maximaler Klimmzug mit Zusatzgewicht: Körpergewicht plus Zusatzgewicht in Prozent des Körpergewichts, gegen den Grad, den du damals geklettert bist.</string>
-    <string name="trl_position_no_finger">Noch kein Fingerkraft-Wert. Trag einen Max Hang ein (oder schätze ihn) oder mach einen im Training.</string>
+    <string name="trl_position_no_finger">Noch kein Fingerkraft-Wert. Trag einen Max Hang ein (oder schätz ihn) oder mach einen im Training.</string>
     <string name="trl_position_no_pull">Noch kein Zug-Wert. Trag Klimmzüge mit Zusatzgewicht oder deine maximalen Klimmzüge ein.</string>
-    <string name="trl_position_no_grade">Es gibt einen Kraftwert, aber noch keinen Grad: Logge Boulder am Board oder trag einen Klettertag ein.</string>
+    <string name="trl_position_no_grade">Es gibt einen Kraftwert, aber noch keinen Grad: Logg Boulder am Board oder trag einen Klettertag ein.</string>
     <string name="trl_position_you">du: %1$s · %2$s</string>
     <string name="trl_position_cd">Kraft im Verhältnis zum Grad: dein neuester Wert %1$s bei %2$s, insgesamt %3$d Werte, gezeigt vor dem typischen Bereich.</string>
     <string name="trl_legend_band">typischer Bereich</string>

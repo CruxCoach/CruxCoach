@@ -9,13 +9,13 @@
     <string name="trd_hc_unsupported">Health Connect ist auf diesem Gerät nicht verfügbar.</string>
     <string name="trd_hc_install_hint">Health Connect muss zuerst installiert oder aktualisiert werden.</string>
     <string name="trd_hc_install">Health Connect installieren oder aktualisieren</string>
-    <string name="trd_hc_permission_hint">Erlaube den Zugriff in Health Connect für die eingeschalteten Teile.</string>
+    <string name="trd_hc_permission_hint">Erlaub den Zugriff in Health Connect für die eingeschalteten Teile.</string>
     <string name="trd_hc_permit">Zugriff erlauben</string>
     <string name="trd_hc_sync_now">Jetzt synchronisieren</string>
     <string name="trd_hc_syncing">Synchronisiere …</string>
     <string name="trd_hc_manage">Zugriff verwalten</string>
     <string name="trd_hc_sync_result">Letzte Synchronisierung: %1$d neu, %2$d aktualisiert, %3$d übersprungen (von Hand eingetragen)</string>
-    <string name="trd_hc_sync_failed">Synchronisierung hat nicht geklappt – prüfe den Zugriff in Health Connect.</string>
+    <string name="trd_hc_sync_failed">Synchronisierung hat nicht geklappt – prüf den Zugriff in Health Connect.</string>
     <string name="trd_hc_sleep_last_night">Schlaf letzte Nacht: %1$s\u00A0h</string>
     <string name="trd_hc_privacy">Die Verbindung selbst lädt nichts hoch: Was CruxCoach liest, bleibt in seiner verschlüsselten Datenbank auf diesem Handy (und ist nur dann Teil deines verschlüsselten Backups, wenn du das Backup eingeschaltet hast), und was es schreibt, geht nur an Health Connect auf diesem Handy.</string>
     <string name="trd_sleep_chip">Aus Health Connect: %1$s\u00A0h → %2$d</string>

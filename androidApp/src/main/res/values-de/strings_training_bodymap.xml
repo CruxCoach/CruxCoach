@@ -3,20 +3,20 @@
     <!-- Körperkarte und Griff-Piktogramme (Übungsbilder). -->
     <string name="trb_front">Vorne</string>
     <string name="trb_back">Hinten</string>
-    <string name="trb_tap_hint">Tippe auf den Körper, um zu wählen</string>
+    <string name="trb_tap_hint">Tipp auf den Körper, um zu wählen</string>
     <string name="trb_cd_title">Körperkarte</string>
     <string name="trb_cd_main">Hauptsächlich: %1$s.</string>
     <string name="trb_cd_involved">Mit beteiligt: %1$s.</string>
     <string name="trb_legend_main">Hauptsächlich</string>
     <string name="trb_legend_involved">Mit beteiligt</string>
     <string name="trb_detail_title">Was trainiert wird</string>
-    <string name="trb_detail_tap">Tippe auf eine Stelle für ihren Namen</string>
+    <string name="trb_detail_tap">Tipp auf eine Stelle für ihren Namen</string>
     <string name="trb_selected_main">%1$s – hauptsächlich trainiert</string>
     <string name="trb_selected_involved">%1$s – mit beteiligt</string>
     <string name="trb_selected_none">%1$s – hier kaum beteiligt</string>
     <string name="trb_grip_title">Griff</string>
     <string name="trb_edge_mm">%1$d\u00A0mm</string>
-    <string name="trb_injury_where">Tippe auf die Stelle, die wehtut – oder wähle unten einen Bereich</string>
+    <string name="trb_injury_where">Tipp auf die Stelle, die wehtut – oder wähl unten einen Bereich</string>
     <string name="trb_area_fingers">Finger</string>
     <string name="trb_area_forearm_flexors">Unterarm-Beuger</string>
     <string name="trb_area_forearm_extensors">Unterarm-Strecker</string>

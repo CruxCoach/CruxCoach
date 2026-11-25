@@ -54,7 +54,7 @@
     <string name="trx_start_with">Damit starten</string>
     <string name="trx_injury_avoid">Deine Verletzung (%1$s): Der Coach lässt diese Übung im Moment weg. Selbst hinzufügen kannst du sie trotzdem.</string>
     <string name="trx_injury_caution">Deine Verletzung (%1$s): nur schmerzfrei und mit weniger Last.</string>
-    <string name="trx_injury_one_side">Deine Verletzung (%1$s): trainiere nur die %2$s Seite.</string>
+    <string name="trx_injury_one_side">Deine Verletzung (%1$s): trainier nur die %2$s Seite.</string>
     <string name="trx_not_found">Diese Übung gibt es nicht mehr.</string>
     <string name="trx_region_finger">Finger</string>
     <string name="trx_region_pulley">Ringbänder</string>
@@ -66,7 +66,7 @@
     <string name="trx_custom_delete">Übung löschen</string>
     <string name="trx_custom_delete_title">„%1$s“ löschen?</string>
     <string name="trx_custom_delete_text">Sie verschwindet aus der Bibliothek, deinen Workouts und ihrem Kraftwert. Eingetragene Sätze bleiben im Verlauf.</string>
-    <string name="trx_custom_guessed">Bereich, Art und Gewicht sind aus dem Namen erkannt. Tippe unten, um sie zu ändern.</string>
+    <string name="trx_custom_guessed">Bereich, Art und Gewicht sind aus dem Namen erkannt. Tipp unten, um sie zu ändern.</string>
     <string name="trx_custom_name_required">Bitte gib einen Namen ein.</string>
     <string name="trx_custom_category">Kategorie</string>
     <string name="trx_custom_kind">So trägst du ein</string>
