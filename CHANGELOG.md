@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Built, but switched off in 0.2.5: spray walls and the wall games (Knot among them) come with 0.2.6.
+
 ### Added
 - Spray walls, from the main menu. Photograph your own wall (camera or photo
   library, crop and turn), and the phone suggests the holds. Download the hold
@@ -30,6 +32,67 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   deleted, the app says "Withdrawing the wall, then deleting it …". Your
   logbook is never published. Spray walls are not in the CruxCoach backup, the
   data export or Android backups, so a private wall is lost with the phone.
+- Wall games, from the main menu or a problem's menu ("Play as a game"):
+  "Floor is lava" (lit rows rise from the bottom, five speeds), "Endurance" (a
+  problem appears row by row, five waiting times), "Hold thief" (a random
+  problem across the whole wall at 60 % down to 10 % hand holds; steal holds
+  to make it harder) and "Traverse" (a problem lights move by move from its
+  start to its top, only the last seven moves stay lit, adjustable tempo).
+  Countdown with beeps and a stopwatch; for Shiny Wall, Kilter, the other
+  Aurora boards and MoonBoard (not Quantum). Without a connected board the
+  game runs on the screen; games are never logged.
+- Knot, a new wall game for 1 to 8 players: a low field of colour stripes
+  lights up (four colours, three on the MoonBoard). After a beep the phone
+  calls a player, a hand or a foot and a colour ("Player 2 – right hand –
+  blue"), from recordings in English or German that come with the app, so no
+  speech engine is needed; the called holds blink. The field grows with the
+  number of climbers, so they get in each other's way, and stays low; as many
+  climb as the wall is wide (0.8 m each, 4 on a 12 ft board). Whoever comes
+  off taps their name: the last one on the wall wins, solo you count the
+  calls you hold. More players wait in line and step in for whoever comes
+  off; then the most calls held win. Three sliders, harder to the right: the
+  speed (10 to 3 seconds per call, or "Tap for the next call" for someone
+  below the wall), the spacing (close, medium, wide), which sets how far each
+  colour is from a climber, about 50, 75 or 100 cm, with the colours repeating
+  across the field, and the holds per colour (many, normal, few: 4 + 3, 3 + 2
+  or 2 + 1 hand and foot spots of each colour within every climber's reach).
+  The board preview follows the sliders, shows each climber's part and how
+  many holds light. With the board's catalogue, every game draws a fresh field
+  away from the last one's holds ("Draw again" for another), leaves out the
+  hardest hand holds and keeps the colours and the climbers' parts about
+  equally hard. Optional names, a
+  safety hint before the first game and a hint on steep walls. For Kilter,
+  the other Aurora boards and MoonBoard (not Shiny Wall or Quantum).
+
+### Fixed
+- Knot: every spacing is a real step. Medium and Wide widen the field where
+  it is too narrow for the colours to spread (solo about 1.2, 1.8 and 2.4 m),
+  until the colours really are farther apart than at the closer spacing; a
+  spacing is greyed out only when the wall has no room for it. A slider's
+  thumb no longer jumps back: it stops at the nearest step on offer, goes on
+  past a greyed step the way the finger moves (or a key or screen reader
+  steps) and stays put while the finger rests over one; a slider with only
+  one step on offer is shown disabled with the reason, and a holds step
+  greyed because the spacing would reach no farther says so.
+- Knot: the field is narrower, 0.6 m per climber and at least 1.2 m (1.2 m
+  for one or two climbers, 1.8 m for three), so the climbers get in each
+  other's way; where it doesn't fit in the middle of the wall, it moves up to
+  10 cm to one side. Hand spots go on hand holds only: never on Kilter's
+  screw-ons, and with the board's catalogue never on a hold its climbs use
+  mostly as a foot or rarely as a hand. The called holds no longer stay dark
+  when the board misses the end of a blink: half a second after every blink
+  the field goes out once more, a write that fails is tried again, and after
+  the end blink the wall is sent dark once more.
+- Knot, at the start positions: the screen shows the field that is lit, not
+  already the next game's; the speed slider works there; "Go" right after a
+  slider starts on that slider's field; and the next game keeps away from the
+  field as it lit. A colour's only foot hold within a climber's reach never
+  gets both feet, a drawn field never lights more holds than the board takes,
+  and the number of players stays adjustable when no field fits.
+
+## [0.2.5] - 2026-11-25
+
+### Added
 - Board size check: not sure which size your Kilter or other Aurora-family board is,
   or other holds light up than the app shows? The board picker and the climb's ⋯ menu
   now light a few marked holds for a size, so you can compare with the board and switch
@@ -124,37 +187,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   short "your year so far". A list view serves screen readers, and turning
   animations off in the system turns them off here too. Computed on your phone;
   nothing is uploaded.
-- Wall games, from the main menu or a problem's menu ("Play as a game"):
-  "Floor is lava" (lit rows rise from the bottom, five speeds), "Endurance" (a
-  problem appears row by row, five waiting times), "Hold thief" (a random
-  problem across the whole wall at 60 % down to 10 % hand holds; steal holds
-  to make it harder) and "Traverse" (a problem lights move by move from its
-  start to its top, only the last seven moves stay lit, adjustable tempo).
-  Countdown with beeps and a stopwatch; for Shiny Wall, Kilter, the other
-  Aurora boards and MoonBoard (not Quantum). Without a connected board the
-  game runs on the screen; games are never logged.
-- Knot, a new wall game for 1 to 8 players: a low field of colour stripes
-  lights up (four colours, three on the MoonBoard). After a beep the phone
-  calls a player, a hand or a foot and a colour ("Player 2 – right hand –
-  blue"), from recordings in English or German that come with the app, so no
-  speech engine is needed; the called holds blink. The field grows with the
-  number of climbers, so they get in each other's way, and stays low; as many
-  climb as the wall is wide (0.8 m each, 4 on a 12 ft board). Whoever comes
-  off taps their name: the last one on the wall wins, solo you count the
-  calls you hold. More players wait in line and step in for whoever comes
-  off; then the most calls held win. Three sliders, harder to the right: the
-  speed (10 to 3 seconds per call, or "Tap for the next call" for someone
-  below the wall), the spacing (close, medium, wide), which sets how far each
-  colour is from a climber, about 50, 75 or 100 cm, with the colours repeating
-  across the field, and the holds per colour (many, normal, few: 4 + 3, 3 + 2
-  or 2 + 1 hand and foot spots of each colour within every climber's reach).
-  The board preview follows the sliders, shows each climber's part and how
-  many holds light. With the board's catalogue, every game draws a fresh field
-  away from the last one's holds ("Draw again" for another), leaves out the
-  hardest hand holds and keeps the colours and the climbers' parts about
-  equally hard. Optional names, a
-  safety hint before the first game and a hint on steep walls. For Kilter,
-  the other Aurora boards and MoonBoard (not Shiny Wall or Quantum).
 - Community: Settings → Community explains the CruxCoach community on Buzz
   (talk to the developers, test new builds first, help shape what comes next)
   and "Join on Buzz" opens community.cruxcoach.org/join in the browser. After a
@@ -675,30 +707,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   0 kg this week"; the line is left out.
 - Injuries: the pause rows write their dates like the injury card above
   ("09.11.2026", "Nov 9, 2026"), not as "2026-11-09".
-- Knot: every spacing is a real step. Medium and Wide widen the field where
-  it is too narrow for the colours to spread (solo about 1.2, 1.8 and 2.4 m),
-  until the colours really are farther apart than at the closer spacing; a
-  spacing is greyed out only when the wall has no room for it. A slider's
-  thumb no longer jumps back: it stops at the nearest step on offer, goes on
-  past a greyed step the way the finger moves (or a key or screen reader
-  steps) and stays put while the finger rests over one; a slider with only
-  one step on offer is shown disabled with the reason, and a holds step
-  greyed because the spacing would reach no farther says so.
-- Knot: the field is narrower, 0.6 m per climber and at least 1.2 m (1.2 m
-  for one or two climbers, 1.8 m for three), so the climbers get in each
-  other's way; where it doesn't fit in the middle of the wall, it moves up to
-  10 cm to one side. Hand spots go on hand holds only: never on Kilter's
-  screw-ons, and with the board's catalogue never on a hold its climbs use
-  mostly as a foot or rarely as a hand. The called holds no longer stay dark
-  when the board misses the end of a blink: half a second after every blink
-  the field goes out once more, a write that fails is tried again, and after
-  the end blink the wall is sent dark once more.
-- Knot, at the start positions: the screen shows the field that is lit, not
-  already the next game's; the speed slider works there; "Go" right after a
-  slider starts on that slider's field; and the next game keeps away from the
-  field as it lit. A colour's only foot hold within a climber's reach never
-  gets both feet, a drawn field never lights more holds than the board takes,
-  and the number of players stays adjustable when no field fits.
 - Tapping a screen's back arrow several times in a row no longer ends on a
   black screen that only closing the app got rid of. The arrow now stops at
   the first screen, as the system's Back always did.

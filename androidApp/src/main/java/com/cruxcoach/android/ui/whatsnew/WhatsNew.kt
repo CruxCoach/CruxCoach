@@ -74,9 +74,8 @@ object WhatsNewItems {
     /** 0.2.4: Kilter-built boards connect, the Kilter upload works, board map and hold cleaning. */
     val RELEASE_024 = WhatsNewItem(id = "release-0.2.4", sinceVersionCode = 10)
 
-    /** 0.2.5. Not registered yet: the release preparation adds it to [registry]
-     *  together with versionCode 11 (an entry newer than the build never fires,
-     *  and ReleaseMetadataTest forbids it). Features add their line to whatsnew_025_body. */
+    /** 0.2.5: training and nutrition, statistics, year in review, Shiny Wall and the community.
+     *  Registered with versionCode 11 in the release preparation. */
     val RELEASE_025 = WhatsNewItem(id = "release-0.2.5", sinceVersionCode = 11)
 
     /** FEAT-015 — Board Locations Map (0.2.0). Headline feature; users
@@ -112,6 +111,7 @@ object WhatsNewItems {
         RELEASE_022,
         RELEASE_023,
         RELEASE_024,
+        RELEASE_025,
     )
 }
 
