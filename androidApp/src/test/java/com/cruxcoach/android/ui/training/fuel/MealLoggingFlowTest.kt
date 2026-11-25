@@ -175,8 +175,11 @@ class MealLoggingFlowTest : AthleteScreenTest() {
             texts["entry of a dish"] = entryAmountText(entry, bowl, UnitSystem.METRIC)
             // The dish was deleted since: the entry is a food like any other.
             texts["entry without its dish"] = entryAmountText(entry, null, UnitSystem.METRIC)
+            // A dish named after its ingredients is weighed, whatever drink is among them.
+            val shake = FoodItem(id = "shake", name = "Eier gekocht + Banane roh + Milch fettarm, frisch", servingG = 440.0, source = Recipe.SOURCE)
+            texts["dish with milk in its name"] = entryAmountText(entry.copy(foodItemId = "shake", name = shake.name, amountG = 440.0), shake, UnitSystem.METRIC)
         }
-        compose.waitUntil(WAIT_MS) { texts.size == 11 }
+        compose.waitUntil(WAIT_MS) { texts.size == 12 }
         assertEquals("1\u00A0portion (200\u00A0g)", texts["dish"])
         assertEquals("0.5\u00A0× portion (100\u00A0g)", texts["dish half"])
         assertEquals("1\u00A0portion", texts["dish no weight"])
@@ -188,6 +191,7 @@ class MealLoggingFlowTest : AthleteScreenTest() {
         assertEquals("80\u00A0g", texts["food grams"])
         assertEquals("1\u00A0portion (200\u00A0g)", texts["entry of a dish"])
         assertEquals("200\u00A0g", texts["entry without its dish"])
+        assertEquals("1\u00A0portion (440\u00A0g)", texts["dish with milk in its name"])
     }
 
     @Test

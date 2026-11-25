@@ -456,7 +456,7 @@ fun FoodsSheet(
                             // In the words the confirmation and the day's list use after the tap: the entry gets these
                             // portions and this weight.
                             val amount = loggedAmountText(portions, FuelViewModel.loggedGrams(item, portions, grams),
-                                FuelUnits.unitFor(units, FuelUnits.isDrink(item.id, item.name, item.servingLabel)), dish = true)
+                                FuelUnits.unitFor(units, isDrink(item)), dish = true)
                             val values = FuelViewModel.scale(item, portions, grams)
                                 ?.let { macrosText(it.protein, it.carbs, it.fat, energyOf(it), showCalories) }
                             ListItem(
@@ -676,7 +676,7 @@ fun AmountDialog(
     val perPortion = FuelViewModel.isPerPortion(item)
     val gramsPossible = !perPortion
     // Drinks are measured by volume (ml, or fl oz and cups in US units); 1 ml counts as 1 g.
-    val drink = FuelUnits.isDrink(item.id, item.name, item.servingLabel)
+    val drink = isDrink(item)
     val baseUnit = FuelUnits.unitFor(units, drink)
     val amountUnits = if (units == UnitSystem.IMPERIAL && drink) listOf(baseUnit, FuelUnits.Amount.CUP) else listOf(baseUnit)
     // A change starts from the entry; a new entry from the amount eaten last time.

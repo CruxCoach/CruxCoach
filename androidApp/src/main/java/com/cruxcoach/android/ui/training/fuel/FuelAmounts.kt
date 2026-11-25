@@ -72,11 +72,20 @@ fun loggedAmountText(portions: Double?, grams: Double?, unit: Amount, dish: Bool
 }
 
 /**
+ * Whether a saved food is measured by volume. A dish is not judged by its name: the name lists its ingredients
+ * ("Eier + Banane + Milch"), and one drink among them made the whole dish read "1 portion (440 ml)" (device check
+ * 2026-11-25). A dish is a drink only when its serving says so.
+ */
+fun isDrink(food: FoodItem): Boolean =
+    if (food.source == Recipe.SOURCE) FuelUnits.isDrink(null, "", food.servingLabel)
+    else FuelUnits.isDrink(food.id, food.name, food.servingLabel)
+
+/**
  * [loggedAmountText] of a logged entry. [food] is its saved food while there is one: it says whether the entry is a
  * dish, and a drink by its label is measured in ml.
  */
 @Composable
 fun entryAmountText(entry: FoodLogEntry, food: FoodItem?, units: UnitSystem): String? {
-    val drink = food?.let { FuelUnits.isDrink(it.id, it.name, it.servingLabel) } ?: FuelUnits.isDrink(entry.foodItemId, entry.name)
+    val drink = food?.let { isDrink(it) } ?: FuelUnits.isDrink(entry.foodItemId, entry.name)
     return loggedAmountText(entry.portions, entry.amountG, FuelUnits.unitFor(units, drink), dish = food?.source == Recipe.SOURCE)
 }
