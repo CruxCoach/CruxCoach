@@ -158,7 +158,10 @@ private fun Setup(state: ComebackUiState, injury: Injury, vm: ComebackViewModel,
     var confirming by rememberSaveable { mutableStateOf(false) }
     val finger = injury.region == InjuryRegion.FINGER
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        injury.plan?.endedOn?.let { Text(stringResource(R.string.cb_end) + ": " + it, style = MaterialTheme.typography.bodySmall) }
+        // "Plan ended on 25 Nov 2026" – the line read "End plan: 2026-11-25", the button's label and the stored day.
+        injury.plan?.endedOn?.let {
+            Text(stringResource(R.string.cb_ended_on, com.cruxcoach.android.ui.training.coach.formatIsoDay(it)), style = MaterialTheme.typography.bodySmall)
+        }
         // 1 · About the injury
         StepCard(stringResource(R.string.cb_step_questions)) {
             Text(injury.check?.answeredOn?.let { stringResource(R.string.cb_step_questions_done, com.cruxcoach.android.ui.training.coach.formatIsoDay(it)) } ?: stringResource(R.string.cb_step_questions_open),
