@@ -14,7 +14,7 @@
     <string name="fvp_unavailable_alternatives">Suchen, Barcode, Beschreiben und Schnelleintrag funktionieren wie gewohnt.</string>
 
     <string name="fvp_setup_text">Die Erkennung läuft nur auf deinem Gerät, dein Foto verlässt das Handy nicht. Dafür lädt CruxCoach einmalig ein KI-Modell (%1$s, %2$s).</string>
-    <string name="fvp_setup_estimate">Es erkennt Lebensmittel und schätzt die Grammzahl. Die Nährwerte kommen aus dem Bundeslebensmittelschlüssel (BLS 4.0). Prüfe die Vorschläge, bevor du sie einträgst.</string>
+    <string name="fvp_setup_estimate">Es erkennt Lebensmittel und schätzt die Grammzahl. Die Nährwerte kommen aus dem Bundeslebensmittelschlüssel (BLS 4.0). Prüf die Vorschläge, bevor du sie einträgst.</string>
     <string name="fvp_setup_source">Quelle: CruxCoach-Mirror (blossom.cruxcoach.org), falls er die Dateien hat, sonst Hugging Face (Qwen3.5, Apache-2.0). Beim Download erfährt der Server nur, dass dieses Modell geladen wird.</string>
     <string name="fvp_allow_mobile">Auch über mobile Daten laden</string>
     <string name="fvp_download">Herunterladen (%s)</string>
@@ -34,8 +34,8 @@
     <string name="fvp_elapsed">%d\u00A0s</string>
     <string name="fvp_photo_description">Dein Foto der Mahlzeit</string>
 
-    <string name="fvp_review_hint">Erkannt in %d\u00A0s. Mengen sind Schätzungen – tippe auf ein Lebensmittel, um es zu ändern.</string>
-    <string name="fvp_review_text_hint">Aus deiner Beschreibung. Mengen ohne Angabe sind typische Portionen – tippe auf ein Lebensmittel, um es zu ändern.</string>
+    <string name="fvp_review_hint">Erkannt in %d\u00A0s. Mengen sind Schätzungen – tipp auf ein Lebensmittel, um es zu ändern.</string>
+    <string name="fvp_review_text_hint">Aus deiner Beschreibung. Mengen ohne Angabe sind typische Portionen – tipp auf ein Lebensmittel, um es zu ändern.</string>
     <string name="fvp_review_text_model_hint">Vom KI-Modell in %d\u00A0s ausgewertet. Bitte prüfen – es kann sich irren.</string>
     <string name="fvp_text_model">Mit KI-Modell auswerten</string>
     <string name="fvp_review_empty">Auf diesem Foto wurde kein Essen erkannt.</string>
@@ -65,9 +65,9 @@
     <string name="fvp_choose_none">Ohne Nährwerte</string>
     <string name="fvp_per_100">pro 100\u00A0g: %1$s\u00A0kcal · K\u00A0%3$s · P\u00A0%2$s · F\u00A0%4$s</string>
 
-    <string name="fvp_error_memory">Dem Handy ging bei der Erkennung der Arbeitsspeicher aus. Schließe andere Apps und versuche es erneut.</string>
+    <string name="fvp_error_memory">Dem Handy ging bei der Erkennung der Arbeitsspeicher aus. Schließ andere Apps und versuch es erneut.</string>
     <string name="fvp_error_image">Das Foto konnte nicht gelesen werden.</string>
-    <string name="fvp_error_download">Der Download ist fehlgeschlagen. Bitte versuche es erneut.</string>
+    <string name="fvp_error_download">Der Download ist fehlgeschlagen. Bitte versuch es erneut.</string>
     <string name="fvp_error_corrupt">Die geladenen Dateien waren beschädigt und wurden gelöscht. Bitte lade sie erneut.</string>
     <string name="fvp_error_no_storage">Für das Modell ist kein Speicher verfügbar.</string>
     <string name="fvp_error_space">Nicht genug freier Speicher: %1$s nötig, %2$s frei.</string>
