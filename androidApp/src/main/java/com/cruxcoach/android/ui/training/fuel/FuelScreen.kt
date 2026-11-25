@@ -1129,7 +1129,7 @@ private fun SaveMealDialog(
     onDismiss: () -> Unit,
     onSave: (name: String, replace: String?) -> Unit,
 ) {
-    var name by rememberSaveable { mutableStateOf(entries.take(3).joinToString(" + ") { it.name }.take(60)) }
+    var name by rememberSaveable { mutableStateOf(entries.take(3).joinToString(" + ") { it.name.substringBefore(",").trim() }.take(60)) }
     val namesake = Recipe.namesake(name, dishNames)
     AlertDialog(
         onDismissRequest = onDismiss,

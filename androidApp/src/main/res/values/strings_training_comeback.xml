@@ -195,6 +195,7 @@
     <string name="cb_export_diary">Day\tmorning\tpressure\tsession\tswollen\tnote</string>
     <string name="cb_export_yes">yes</string>
     <string name="cb_end">End plan</string>
+    <string name="cb_ended_on">Plan ended on %1$s</string>
     <string name="cb_end_title">End the comeback plan?</string>
     <string name="cb_end_text">Your diary stays. If the injury is over, CruxCoach eases finger training back in for a few weeks.</string>
     <string name="cb_end_resolved">End – injury is over</string>
