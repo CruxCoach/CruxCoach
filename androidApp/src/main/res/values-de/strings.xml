@@ -2286,7 +2286,7 @@
     <string name="settings_backup_check_decrypt_failed">Ein Backup wurde gefunden, aber nicht entschlüsselt — der Schlüssel passt anscheinend nicht.</string>
     <string name="settings_backup_check_error">Fehler beim Suchen nach einem Backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
-    <string name="settings_backup_restored">Backup verarbeitet: %1$d Logbucheinträge, %2$d Listen. Bereits vorhandene Daten wurden nicht dupliziert.</string>
+    <string name="settings_backup_restored">Backup verarbeitet – Logbucheinträge: %1$d, Listen: %2$d. Bereits vorhandene Daten wurden nicht dupliziert.</string>
     <string name="settings_backup_restore_catalogue_loading">Boards werden noch geladen. Die Wiederherstellung läuft trotzdem; Namen, Grade und eigene Climbs werden verknüpft, sobald sie da sind.</string>
     <string name="import_in_progress_short">Daten werden importiert…</string>
     <string name="settings_backup_succeeded">Backup erstellt.</string>

@@ -2289,7 +2289,7 @@
     <string name="settings_backup_check_decrypt_failed">A backup was found, but it could not be decrypted — the key doesn\'t seem to match.</string>
     <string name="settings_backup_check_error">Error while looking for a backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup could not be restored.</string>
-    <string name="settings_backup_restored">Backup processed: %1$d logbook entries, %2$d lists. Existing data was not duplicated.</string>
+    <string name="settings_backup_restored">Backup processed – logbook entries: %1$d, lists: %2$d. Existing data was not duplicated.</string>
     <string name="settings_backup_restore_catalogue_loading">Boards are still loading. The restore runs anyway; names, grades and your own climbs are linked once they are in.</string>
     <string name="import_in_progress_short">Importing data…</string>
     <string name="settings_backup_succeeded">Backup created.</string>
