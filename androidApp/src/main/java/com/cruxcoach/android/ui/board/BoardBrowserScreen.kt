@@ -487,7 +487,10 @@ fun BoardBrowserScreen(
             // 2-button action bar (Playlist + Zufall) — only visible when no playlist is running
             if (!isSessionActive && !queueState.isActive && !queueState.isConnecting) {
                 SessionTimerBar(
-                    onRandomClimb = { viewModel.pickRandomClimb() }
+                    // Sorted at random, the list itself is the random pick: the button deals it again.
+                    shuffleList = state.filter.sortField == ClimbSortField.RANDOM,
+                    onRandomClimb = { viewModel.pickRandomClimb() },
+                    onReshuffle = { viewModel.reshuffle() },
                 )
             }
 
@@ -586,11 +589,6 @@ fun BoardBrowserScreen(
                         )
                     }
                 }
-            }
-
-            // Random order: say so and offer a new one, right above the list it shuffles.
-            if (state.filter.sortField == ClimbSortField.RANDOM && state.climbs.isNotEmpty()) {
-                RandomOrderBar(onReshuffle = { viewModel.reshuffle() })
             }
 
             // Active hold filter banner (only shown when filter is active)
