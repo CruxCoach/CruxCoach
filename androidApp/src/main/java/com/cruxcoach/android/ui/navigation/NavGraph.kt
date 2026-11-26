@@ -1287,6 +1287,24 @@ internal fun BrowserMainDrawer(
                         }, null)
                     },
                     label = { Text(stringResource(label)) }, selected = route == Routes.BOARD_BROWSER,
+                    // Training and nutrition ship as a beta in 0.2.5 (owner 2026-11-26): the menu says so.
+                    badge = if (route == com.cruxcoach.android.ui.training.TrainingRoutes.TODAY) {
+                        {
+                            Surface(
+                                color = com.cruxcoach.android.ui.theme.OrangeAccent.copy(alpha = 0.16f),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                                modifier = Modifier.testTag("menu_today_beta"),
+                            ) {
+                                Text(
+                                    stringResource(com.cruxcoach.android.R.string.main_menu_beta),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    color = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.onBrandAccentContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                    } else null,
                     onClick = { onSelect(route) },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).testTag(tag),
                 )

@@ -6,6 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
@@ -312,28 +313,31 @@ internal fun BoardSelectionDialog(
                 }
                 // The gyms around the user, each with the boards it has: the
                 // quickest way to the right board when you stand in your gym.
-                onFindNearbyGym?.let { find ->
-                    TextButton(
-                        onClick = find,
-                        modifier = Modifier.fillMaxWidth().testTag("board_find_nearby_gym"),
-                        contentPadding = PaddingValues(horizontal = 0.dp),
+                // The two ways to let the app find the board, as one tidy block: same icon column, same text
+                // column, one line each (they used to be two loose links, one flush left, one centred).
+                if (onFindNearbyGym != null || onFindViaBluetooth != null) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Icon(Icons.Default.MyLocation, null, Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.board_find_nearby_gym), modifier = Modifier.weight(1f))
+                        Column {
+                            onFindNearbyGym?.let { find ->
+                                BoardFinderRow(Icons.Default.MyLocation, stringResource(R.string.board_find_nearby_gym), "board_find_nearby_gym", find)
+                            }
+                            if (onFindNearbyGym != null && onFindViaBluetooth != null) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            }
+                            onFindViaBluetooth?.let { find ->
+                                BoardFinderRow(Icons.Default.Bluetooth, stringResource(R.string.setup_bluetooth_find), "setup_connect", find) {
+                                    com.cruxcoach.android.ui.common.InfoButton(
+                                        stringResource(R.string.setup_bluetooth_find), stringResource(R.string.setup_bluetooth_info))
+                                }
+                            }
+                        }
                     }
                 }
-                onFindViaBluetooth?.let { find ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = find, modifier = Modifier.weight(1f).testTag("setup_connect"),
-                            contentPadding = PaddingValues(horizontal = 0.dp)) {
-                            Icon(Icons.Default.Bluetooth, null, Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.setup_bluetooth_find))
-                        }
-                        com.cruxcoach.android.ui.common.InfoButton(
-                            stringResource(R.string.setup_bluetooth_find), stringResource(R.string.setup_bluetooth_info))
-                    }
+                if (onFindViaBluetooth != null) {
                     // The search only narrows the family. Say so where the decision happens:
                     // users otherwise assume the board is "found" and confirm the default size.
                     bluetoothResult?.let { result ->
@@ -815,40 +819,75 @@ internal fun BoardImageChoiceRow(
     gymShare: Double? = null,
     flagRareShare: Boolean = true,
 ) {
+    // A compact row: picture, name and share, the radio button at the end. The rows were 160 dp high with the radio
+    // button under the text, so two sizes filled the dialog and the choice read as scattered (owner 2026-11-26).
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp,
+        color = if (selected) OrangeAccent.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp,
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             val shinyVariant = layoutId?.let { ShinyWallVariant.fromBoardSelection(it, brand) }
+            val picture = Modifier.width(BOARD_CHOICE_PICTURE_WIDTH).height(BOARD_CHOICE_PICTURE_HEIGHT)
             ZoomableBoardPreview(
                 brand = brand, sizeId = sizeId, layoutId = layoutId,
-                modifier = Modifier.width(104.dp).height(144.dp),
+                modifier = picture,
                 imageLabel = label,
                 fallback = {
                     if (shinyVariant != null) {
-                        ShinyWallSchematic(shinyVariant, Modifier.width(104.dp).height(144.dp).padding(6.dp))
+                        ShinyWallSchematic(shinyVariant, picture.padding(4.dp))
                     } else {
-                        Box(Modifier.width(104.dp).height(144.dp), contentAlignment = Alignment.Center) {
+                        Box(picture, contentAlignment = Alignment.Center) {
                             Text(stringResource(R.string.board_preview_unavailable), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 },
             )
-            Column(
-                Modifier.weight(1f).heightIn(min = 144.dp)
+            Row(
+                Modifier.weight(1f).heightIn(min = BOARD_CHOICE_PICTURE_HEIGHT)
                     .selectable(selected = selected, onClick = onSelect, role = Role.RadioButton)
-                    .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
-                verticalArrangement = Arrangement.Center,
+                    .padding(start = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                gymShare?.let { GymShareText(it, flagRare = flagRareShare) }
+                Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
+                    Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    gymShare?.let { GymShareText(it, flagRare = flagRareShare) }
+                }
                 RadioButton(selected = selected, onClick = null,
-                    colors = RadioButtonDefaults.colors(selectedColor = OrangeAccent))
+                    colors = RadioButtonDefaults.colors(selectedColor = OrangeAccent),
+                    modifier = Modifier.padding(start = 8.dp, end = 4.dp))
             }
         }
+    }
+}
+
+private val BOARD_CHOICE_PICTURE_WIDTH = 68.dp
+private val BOARD_CHOICE_PICTURE_HEIGHT = 92.dp
+
+/** One way to let the app find the board: icon, label, optional info button; the whole line is the button. */
+@Composable
+private fun BoardFinderRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tag: String,
+    onClick: () -> Unit,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.weight(1f).heightIn(min = 48.dp)
+                .clickable(role = Role.Button, onClick = onClick)
+                .testTag(tag)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f))
+        }
+        trailing?.invoke()
     }
 }
 
