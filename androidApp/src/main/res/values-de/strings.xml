@@ -1677,6 +1677,8 @@
     <string name="board_session_label">Session</string>
     <string name="board_sort_quality_sends">Begehungen × Sterne</string>
     <string name="board_sort_random">Zufällig</string>
+    <!-- A new random order: the button above the list while it is sorted at random, and in the filter -->
+    <string name="board_reshuffle">Neu mischen</string>
     <string name="board_sort_newest">Neueste</string>
     <string name="board_stats_activity">Aktivität</string>
     <string name="board_stats_personal_heatmap">Meine Sends — Heatmap</string>

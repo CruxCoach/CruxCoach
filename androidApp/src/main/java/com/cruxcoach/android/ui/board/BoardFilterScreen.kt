@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
@@ -205,6 +206,16 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 FilterChoiceRow(stringResource(R.string.board_filter_order), state.filter.sortDirection,
                     listOf(SortDirection.DESC to stringResource(R.string.board_filter_sort_desc), SortDirection.ASC to stringResource(R.string.board_filter_sort_asc)),
                     "board_sort_direction", { if (it != state.filter.sortDirection) viewModel.toggleSortDirection() })
+            } else {
+                // A random order has no direction; in its place: a new order.
+                androidx.compose.material3.OutlinedButton(
+                    onClick = viewModel::reshuffle,
+                    modifier = Modifier.padding(horizontal = 16.dp).testTag("board_filter_reshuffle"),
+                ) {
+                    Icon(Icons.Default.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+                    Text(stringResource(R.string.board_reshuffle))
+                }
             }
             HorizontalDivider()
             ListItem(
