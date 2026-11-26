@@ -1,4 +1,4 @@
-# CruxCoach 0.2.5 — Unreleased
+# CruxCoach 0.2.5 — 2026-11-27
 
 This release adds training and nutrition for climbers, statistics that compare your boards, a year in review and Shiny Wall.
 

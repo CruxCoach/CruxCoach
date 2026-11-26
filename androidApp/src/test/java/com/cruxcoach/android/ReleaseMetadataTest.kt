@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 /**
  * The build has to say which release it is.
  *
- * This branch prepares 0.2.4. An earlier attempt shipped an APK identifying as the
+ * This branch prepares 0.2.5. An earlier attempt shipped an APK identifying as the
  * wrong release, which nothing caught because nothing looked. A wrong
  * versionName is not cosmetic: the in-app updater compares it to decide whether
  * an update is available, so a build calling itself the wrong version would
@@ -35,15 +35,15 @@ class ReleaseMetadataTest {
 
     @Test
     fun `the build identifies as this release`() {
-        assertEquals("0.2.4", stringField("versionName"))
-        assertEquals(10, intField("versionCode"))
+        assertEquals("0.2.5", stringField("versionName"))
+        assertEquals(11, intField("versionCode"))
         assertEquals(
-            "0.2.4",
+            "0.2.5",
             BuildConfig.VERSION_NAME.removeSuffix("-dev"),
             "debug builds may carry the configured -dev suffix",
         )
         if (BuildConfig.APKTRACK_FEATURE_TRACK.isEmpty()) {
-            assertEquals(10, BuildConfig.VERSION_CODE)
+            assertEquals(11, BuildConfig.VERSION_CODE)
         }
     }
 
@@ -69,7 +69,7 @@ class ReleaseMetadataTest {
             item != null,
             "a release with no What's New entry is invisible to everyone upgrading into it",
         )
-        assertEquals("release-0.2.4", item.id)
+        assertEquals("release-0.2.5", item.id)
     }
 
     @Test

@@ -18,7 +18,7 @@ import com.cruxcoach.android.ui.whatsnew.Release025WhatsNewDialog
 import com.cruxcoach.android.ui.whatsnew.WhatsNewItems
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -205,7 +205,7 @@ class CommunityJoinTest {
         }
     }
 
-    @Test fun `the 0_2_5 what's new carries the community line and waits for the version bump`() {
+    @Test fun `the 0_2_5 what's new carries the community line and is registered for the upgrade`() {
         compose.setContent { MaterialTheme { Release025WhatsNewDialog(onDismiss = {}) } }
         compose.onNodeWithText("New in 0.2.5").assertIsDisplayed()
         // One line of several: the 0.2.5 dialog collects a line per feature.
@@ -213,6 +213,6 @@ class CommunityJoinTest {
             "• Community on Buzz\u00A0– talk to the developers and test new builds first (Settings → Community).",
             substring = true,
         ).assertIsDisplayed()
-        assertFalse(WhatsNewItems.RELEASE_025 in WhatsNewItems.registry)
+        assertTrue(WhatsNewItems.RELEASE_025 in WhatsNewItems.registry)
     }
 }
