@@ -824,6 +824,9 @@ internal fun BoardImageChoiceRow(
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = if (selected) OrangeAccent.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface,
+        // The tint is no theme colour, so say what stands on it: without this the chosen row took the dialog's
+        // dimmer text colour and read fainter than the rows around it.
+        contentColor = MaterialTheme.colorScheme.onSurface,
         border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp,
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
     ) {
