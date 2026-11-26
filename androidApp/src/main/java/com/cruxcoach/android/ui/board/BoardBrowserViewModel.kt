@@ -1218,6 +1218,13 @@ class BoardBrowserViewModel @Inject constructor(
         searchClimbs(debounceMs = SEARCH_TYPING_DEBOUNCE_MS)
     }
 
+    /** A new random order of the same matches: the list starts again at its top with other climbs. */
+    fun reshuffle() {
+        if (_state.value.filter.sortField != ClimbSortField.RANDOM) return
+        invalidateRandomCache()
+        searchClimbs()
+    }
+
     fun updateSortField(field: ClimbSortField) {
         // Unconditional: a fresh RANDOM pick must re-roll even when RANDOM
         // is already selected, and leaving RANDOM frees the dead shuffle.

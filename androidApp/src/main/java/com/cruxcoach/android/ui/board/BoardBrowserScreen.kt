@@ -588,6 +588,11 @@ fun BoardBrowserScreen(
                 }
             }
 
+            // Random order: say so and offer a new one, right above the list it shuffles.
+            if (state.filter.sortField == ClimbSortField.RANDOM && state.climbs.isNotEmpty()) {
+                RandomOrderBar(onReshuffle = { viewModel.reshuffle() })
+            }
+
             // Active hold filter banner (only shown when filter is active)
             if (state.holdSearch.holdFilterActive) {
                 HoldSearchActionBar(
