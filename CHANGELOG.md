@@ -681,6 +681,10 @@ Built, but switched off in 0.2.5: spray walls and the wall games (Knot among the
 - A climb's page counts your logs on its two logging buttons: "Try (4)" and
   "Top (2)" are your tries and tops of this climb over all days and angles.
   The try that topped counts as the top.
+- Sorted at random, the button above the climb list reads "Shuffle again" and
+  deals a new order (in every other sort it stays "Random" and opens one climb
+  by chance, now with a dice). The same button stands in the filter where the
+  other sorts have their direction. Asked for in the developer chat.
 
 ### Fixed
 - An exercise's record "estimated max" counts the reps you had in reserve, as

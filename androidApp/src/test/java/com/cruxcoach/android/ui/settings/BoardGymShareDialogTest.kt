@@ -80,9 +80,9 @@ class BoardGymShareDialogTest {
     @Test fun `each version shows its share, a rare old one is flagged and a new one may just be new`() {
         val confirmed = mutableListOf<MoonBoardVariant>()
         show(shares, confirmed)
-        assertTrue(compose.onAllNodesWithText("In Gyms:", substring = true).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(compose.onAllNodesWithText("In Hallen:", substring = true).fetchSemanticsNodes().isNotEmpty())
         // Rare: Masters 2019, Mini 2020 and 2010. Few gyms list 2024 and Mini 2025 yet: never called rare.
-        compose.onAllNodesWithText("Selten in Gyms:", substring = true).assertCountEquals(3)
+        compose.onAllNodesWithText("Selten in Hallen:", substring = true).assertCountEquals(3)
         compose.onNodeWithTag("board_gym_share_rare_hint").assertDoesNotExist()
 
         compose.onNodeWithText(mini.displayName).performScrollTo().performClick()
@@ -106,7 +106,7 @@ class BoardGymShareDialogTest {
     @Test fun `without the gym list the picker shows no shares`() {
         show(null)
         compose.onAllNodesWithTag("board_gym_share").assertCountEquals(0)
-        compose.onAllNodesWithText("Selten in Gyms:", substring = true).assertCountEquals(0)
+        compose.onAllNodesWithText("Selten in Hallen:", substring = true).assertCountEquals(0)
     }
 
     private companion object {
