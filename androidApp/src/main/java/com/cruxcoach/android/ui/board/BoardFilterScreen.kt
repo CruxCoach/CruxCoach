@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
@@ -211,7 +212,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                     onClick = viewModel::reshuffle,
                     modifier = Modifier.padding(horizontal = 16.dp).testTag("board_filter_reshuffle"),
                 ) {
-                    Icon(androidx.compose.material.icons.Icons.Default.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
                     androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
                     Text(stringResource(R.string.board_reshuffle))
                 }
