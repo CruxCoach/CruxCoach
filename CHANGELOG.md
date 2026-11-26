@@ -90,7 +90,7 @@ Built, but switched off in 0.2.5: spray walls and the wall games (Knot among the
   gets both feet, a drawn field never lights more holds than the board takes,
   and the number of players stays adjustable when no field fits.
 
-## [0.2.5] - 2026-11-25
+## [0.2.5] - 2026-11-27
 
 ### Added
 - Board size check: not sure which size your Kilter or other Aurora-family board is,
