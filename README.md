@@ -16,7 +16,7 @@ Open-source multi-board climbing and training app for Android.
 [Codeberg](https://codeberg.org/CruxCoach/CruxCoach) is a secondary release mirror: every release
 tag, signed APK and SHA-256 sidecar is mirrored there, but its branches are not kept current.
 
-Browse climbs, control supported LED boards over Bluetooth, play training playlists, import your Kilter or MoonBoard logbook and track your progress — with no mandatory account, no ads and full control over your data.
+Browse climbs, control supported LED boards over Bluetooth, play training playlists, import your Kilter, MoonBoard or Shiny Wall logbook, train and eat for climbing (beta) and track your progress — with no mandatory account, no ads and full control over your data.
 
 ## 📲 Get the app
 
@@ -78,7 +78,7 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 
 ## All Features
 
-- **680,000+ catalogue climbs** across Kilter, MoonBoard, Tension, Grasshopper, Decoy, So iLL and Touchstone, with filters for grade, angle, quality, moves and setter — plus a combinable status filter (*Neu / Versucht / Geschafft*), an *ungraded-only (projects)* mode, ignored climbs and board-fit filtering
+- **680,000+ catalogue climbs** across Kilter, MoonBoard, Shiny Wall, Tension, Grasshopper, Decoy, So iLL and Touchstone, with filters for grade, angle, quality, moves and setter — plus a combinable status filter (*Neu / Versucht / Geschafft*), an *ungraded-only (projects)* mode, ignored climbs and board-fit filtering
 - **Variable climb angle** *(0.2.0+)* — pick the angle to browse, send, or log a climb at across every angle the board physically supports, not only the angles that already have community stats; the original setter's angle is shown as info
 - **MoonBoard support** *(0.2.0+)* — browse and light MoonBoard 2010, 2016, Masters 2017, Masters 2019, Mini 2020, 2024 and Mini 2025; choose mounted hold sets and LED position, and import the official Moon logbook directly from the installed app or from CSV
 - **Quantum Board support** *(0.2.2+, experimental)* — browse and control Quantum walls, inspect controller-reported live layers and filter for climbs with zero or at most one overlap with occupied layers. Not yet tested on a real Quantum board; a lit route may not show as confirmed
@@ -89,12 +89,15 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 - **Playable playlists** *(0.2.2+)* — turn favourites or custom lists into guided sessions with ordering, repeats, rests, one-tap logging and a final summary, or generate a session from your logbook
 - **CruxRelay** *(0.2.2+)* — keep CruxCoach connected to the physical board while compatible board apps send climbs through it
 - **Log ascents** with grade opinions, attempts, and notes
-- **Training & nutrition** *(0.2.5+)* — a suggestion for today from your week plan, morning check-in and recent climbing; guided workouts with an exercise library, performance values and progression; an injury mode and a comeback plan ([intended purpose](#training-aid-not-a-medical-device)); body values and a food diary with barcode, search and on-device photo logging. The data lives in an encrypted database on the phone; injuries, illness pauses and the comeback diary go into an export or backup only when you switch them on
+- **Training & nutrition** *(0.2.5+, beta)* — a suggestion for today from your week plan, morning check-in and recent climbing; guided workouts with an exercise library, performance values and progression; an injury mode and a comeback plan ([intended purpose](#training-aid-not-a-medical-device)); body values and a food diary with barcode, search and on-device photo logging. The data lives in an encrypted database on the phone; injuries, illness pauses and the comeback diary go into an export or backup only when you switch them on
 - **History (*Verlauf*)** *(0.2.0+)* — the climbs you sent to the board, recorded automatically when you push one over Bluetooth; each entry shows which board it was sent on, mirrored sends are flagged, and you can multi-select and delete entries
 - **Hold Search** — tap holds on the Kilter Board to find climbs that use them
 - **Heatmap** — visualize hold popularity by type, sends, or all climbs, with a per-board selector to read the hold heatmap for each board you have logged on
-- **Kilter and MoonBoard logbook import** — Kilter through your account; MoonBoard from the installed app or an official CSV export
-- **Statistics** — grade progression, difficulty trends, favorite angles
+- **Kilter, MoonBoard and Shiny Wall logbook import** — Kilter through your account; Shiny Wall through your Shiny Wall account (*0.2.5+*, read-only: logbook, favourites and lists; the sign-in runs on Google Firebase, Google sign-in accounts can't connect); MoonBoard from the installed app or an official CSV export
+- **Statistics** — grade progression, difficulty trends, favorite angles; *(0.2.5+)* a logbook overview card, tries until the send, boards compared, and a recap of each day or timed session to share as an image
+- **Year in review** *(0.2.5+)* — your climbing year across all boards as pages to tap through, each shareable as an image without your name, problem names or exact dates unless you switch them on; computed on the phone, nothing is uploaded
+- **PaintBox** *(0.2.5+)* — paint pictures on your board's LEDs, every hold a pixel, sent once or live; a photo can become hold colors (contributed by Hugie)
+- **Board size check** *(0.2.5+)* — not sure which Kilter or Aurora-family size your board is? Light a few marked holds and compare
 - **Data exchange** — JSON and CSV ZIP export/import for logbook data, private climb notes, lists/playlists and own climbs; readable Excel export for spreadsheets
 - **Encrypted cloud backup** *(0.1.3+, opt-in)* — your climbing data encrypted on-device, mirrored across the open Nostr network and Blossom storage servers. The maintainer cannot decrypt it; only your CruxCoach Account key can. Survives app uninstall + device transfer.
 - **App-share QR code** — share CruxCoach with nearby climbers by QR
@@ -177,6 +180,7 @@ Currently supported:
 - **Kilter Board** — all sizes and angles (catalogue, BLE send, logbook, climb authoring).
 - **MoonBoard** — 2010, 2016, Masters 2017, Masters 2019, Mini 2020, 2024 and Mini 2025 (catalogue, BLE send, logbook import and CruxCoach-community climb authoring). The 2024 set carries BoardSesh-community problems only for now — no official catalogue yet.
 - **Tension, Grasshopper, Decoy, So iLL, Touchstone** — catalogue browse, render, hold heatmap, BLE send, and CruxCoach-community climb authoring (these share the Aurora protocol with Kilter).
+- **Shiny Wall** *(0.2.5+)* — Standard walls (Mini, Standard, Max, Full, Max Full): catalogue browse with its categories, BLE send, hold heatmap, your own problems, read-only logbook import through your Shiny Wall account.
 - **Quantum Board** *(experimental)* — catalogue browse, BLE send, live-layer readback and overlap-aware filtering. Controller capabilities and the selected model are checked before sending. Not yet tested on a real Quantum board: a lit route may not show as confirmed.
 
 > Primarily tested on the Kilter 12x12 Original layout and MoonBoard 2016. Other sizes/variants should work but are less tested — feedback welcome!
