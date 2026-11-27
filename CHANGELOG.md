@@ -688,6 +688,10 @@ Built, but switched off in 0.2.5: spray walls and the wall games (Knot among the
   other sorts have their direction. Asked for in the developer chat.
 
 ### Fixed
+- The app no longer crashes when a relay sends one more event after a one-shot query
+  has finished (the notification check, the backup lookup and loading a profile). The
+  late event is dropped (crash report from 0.2.4; fixed in #57, missing from this list
+  until after the release).
 - An exercise's record "estimated max" counts the reps you had in reserve, as
   your strength value does: the same set no longer reads "2 × 3.1 kg" in one
   place and "2 × 3 kg" in the other.
