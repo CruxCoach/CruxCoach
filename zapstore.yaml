@@ -1,9 +1,10 @@
 repository: https://github.com/CruxCoach/CruxCoach
 name: CruxCoach
 description: |
-    Browse climbs, control your board — Kilter, MoonBoard and more — via
-    Bluetooth, log ascents, import your Kilter logbook, and track your progress.
-    No third-party cloud services, full control over your data.
+    Browse climbs, control your board — Kilter, MoonBoard, Shiny Wall and more —
+    via Bluetooth, log ascents, import your logbook, train for climbing (beta)
+    and track your progress. No required account, works without Google
+    services, full control over your data.
 summary: Open-source climbing-board app for Kilter, MoonBoard and more
 tags:
     - climbing
