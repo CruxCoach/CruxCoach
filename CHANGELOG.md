@@ -93,6 +93,7 @@ Built, but switched off in 0.2.5: spray walls and the wall games (Knot among the
 ## [0.2.5] - 2026-11-27
 
 ### Added
+- Training & nutrition ships as a beta: the main menu marks it "Beta".
 - Board size check: not sure which size your Kilter or other Aurora-family board is,
   or other holds light up than the app shows? The board picker and the climb's ⋯ menu
   now light a few marked holds for a size, so you can compare with the board and switch
@@ -177,7 +178,7 @@ Built, but switched off in 0.2.5: spray walls and the wall games (Knot among the
 - Year in review: your climbing year across all your boards, imported logbooks
   included, as pages you tap through: volume, boards and angles, your hardest
   send per board, last year over the same span, your rhythm, highlights, the
-  holds you touched on your sends, the hold types you tagged, off-board
+  holds you touched on your sends, off-board
   training and your climber type (one of ten, picked by rules on your own
   numbers, with the rule shown). Every page can be shared as an image drawn
   on the phone, with your name, problem names and exact dates left out unless
@@ -657,7 +658,7 @@ Built, but switched off in 0.2.5: spray walls and the wall games (Knot among the
   shows on the wall at once. "None", the default, keeps the normal colors. The
   two strobes change color at most three times a second, ask once before their
   first use and ask again while Android's "Remove animations" is on. What you
-  send, route playback, wall games and hold
+  send, route playback and hold
   cleaning always come first, automatic disconnect still releases the board on
   time, and an effect ends after 15 minutes on the same climb. For filming,
   "Keep running in other apps" (off by default) keeps it going while another
@@ -757,13 +758,11 @@ Built, but switched off in 0.2.5: spray walls and the wall games (Knot among the
 - After a catalogue import the app frees the temporary database file at once. A Tension
   import left about 180 MB in it until the next write, on a phone with little space left.
 - Encrypted backups have more than one storage server again. `cdn.hzrd149.com`, one of
-  the two servers up to 0.2.4, stopped taking uploads on 10 November 2026. Backups,
-  profile pictures and the photos of public spray walls now go to `nostr.download`,
+  the two servers up to 0.2.4, stopped taking uploads on 10 November 2026. Backups
+  and profile pictures now go to `nostr.download`,
   `blossom.data.haus` and `blossom.yakihonne.com`. A backup that an earlier version
   stored on the old server is still found when you restore, and it is deleted there
   when a newer backup replaces it or when you delete your backup from the servers.
-  The hold model for spray walls now comes from `blossom.cruxcoach.org`,
-  `blossom-01.uid.ovh` and `blossom.yakihonne.com`.
 - Your phone no longer keeps the name "CruxCoach…" in your car or headphones after
   sharing a board with other apps. The phone carries that name only while sharing runs
   on a connected board; when either ends, for whatever reason, its own Bluetooth name
@@ -796,7 +795,7 @@ Built, but switched off in 0.2.5: spray walls and the wall games (Knot among the
   and 32 kg in total on a two-arm pick-up.
 - A tap on a slider with marks no longer lands one mark low: the injury pain could show and
   save 3 with the thumb on 4. This applies to every slider with marks, among them pain, the board
-  filter's grade range, the spray-wall grade and angle, and the climb editor's grade.
+  filter's grade range and the climb editor's grade.
 - Training: a suggested training no longer plans more of an area than the week still allows. One
   legs-and-core day could hold 16 leg sets against a weekly maximum of 10, and the short block after
   climbing could add antagonist sets on every climbing day. In a week with no room left for that kind of

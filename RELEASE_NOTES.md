@@ -3,7 +3,7 @@
 This release adds training and nutrition for climbers, statistics that compare your boards, a year in review and Shiny Wall.
 
 ## Highlights
-- **Training, built for climbers.** A new area in the main menu suggests today's
+- **Training, built for climbers (beta).** A new area in the main menu, marked Beta, suggests today's
   training from your board logbook, your week, your equipment and how you feel,
   and says why. Over 200 exercises with steps and pictograms, a training logger
   that plans loads from your own values, rest and hang timers, and a coach that
