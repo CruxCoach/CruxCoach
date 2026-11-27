@@ -1,10 +1,13 @@
 package com.cruxcoach.android.ui.settings
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -17,9 +20,12 @@ internal fun BoardMismatchFixAction(
     mismatch: BoardConfigurationMismatch,
     onOpenPicker: (BoardConfigurationMismatch) -> Unit,
     compact: Boolean = false,
+    /** On a container (e.g. the error banner) its on-colour, so the label stays readable. */
+    contentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
     TextButton(
         onClick = { onOpenPicker(mismatch) },
+        colors = ButtonDefaults.textButtonColors(contentColor = contentColor),
         contentPadding = if (compact) PaddingValues(0.dp)
         else PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         modifier = Modifier.testTag("board_mismatch_fix_action"),

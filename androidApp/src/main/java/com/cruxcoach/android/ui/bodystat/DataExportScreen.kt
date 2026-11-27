@@ -189,17 +189,12 @@ fun DataExportScreen(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    TextButton(onClick = { viewModel.selectAllExportCategories() }) {
-                        Text(stringResource(R.string.bodystat_all), style = MaterialTheme.typography.labelSmall)
-                    }
-                    TextButton(onClick = { viewModel.deselectAllExportCategories() }) {
-                        Text(stringResource(R.string.bodystat_none), style = MaterialTheme.typography.labelSmall)
-                    }
-                }
+                // "All" leaves the opt-in health data out; the button says so (device test 2026-10-25).
+                ExportSelectionButtons(
+                    healthListed = categoriesFor(state.exportFormat).any { it in OPT_IN_CATEGORIES },
+                    onSelectAll = { viewModel.selectAllExportCategories() },
+                    onSelectNone = { viewModel.deselectAllExportCategories() },
+                )
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -209,18 +204,32 @@ fun DataExportScreen(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(modifier = Modifier.padding(4.dp)) {
-                        VISIBLE_CATEGORIES.forEach { category ->
+                        categoriesFor(state.exportFormat).forEach { category ->
                             CategoryCheckboxRow(
                                 label = category.localizedLabel(),
                                 checked = category in state.exportCategories,
                                 onCheckedChange = { viewModel.toggleExportCategory(category) }
                             )
+                            if (category in OPT_IN_CATEGORIES) {
+                                Text(stringResource(R.string.cb_backup_category_hint), style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 52.dp, bottom = 4.dp))
+                            }
                         }
                     }
                 }
             }
 
-            val exportEnabled = !state.isExporting && state.exportCategories.isNotEmpty()
+            if (state.exportFormat != DataExchangeFormat.JSON) {
+                Text(
+                    stringResource(R.string.export_json_only_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("export_json_only_hint"),
+                )
+            }
+
+            val exportEnabled = !state.isExporting &&
+                state.exportCategories.intersect(categoriesFor(state.exportFormat)).isNotEmpty()
 
             Button(
                 onClick = {
@@ -281,6 +290,28 @@ internal fun dataExportShareIntent(share: ExportShare): Intent =
         clipData = ClipData.newRawUri("CruxCoach export", share.uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
+
+/**
+ * "All" (or "All except health data") and "None" above the category list: side by side when they fit, else "None"
+ * on the next line. In a Row, "Keine" broke into single letters beside "Alle außer Gesundheitsdaten" at 320 dp and
+ * the largest font (RC1 walk).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun ExportSelectionButtons(healthListed: Boolean, onSelectAll: () -> Unit, onSelectNone: () -> Unit) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        TextButton(onClick = onSelectAll, modifier = Modifier.testTag("export_select_all")) {
+            Text(stringResource(if (healthListed) R.string.export_select_all_but_health else R.string.bodystat_all),
+                style = MaterialTheme.typography.labelSmall)
+        }
+        TextButton(onClick = onSelectNone, modifier = Modifier.testTag("export_select_none")) {
+            Text(stringResource(R.string.bodystat_none), style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
 
 @Composable
 internal fun CategoryCheckboxRow(

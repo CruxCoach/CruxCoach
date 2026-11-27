@@ -1,0 +1,8 @@
+Here is what someone ate, in their own words:
+<<<{meal}>>>
+List each food and drink they mention, at most 8 items. Do not add foods they did not mention.
+For every item give:
+- name_de: a short generic German name of the food as used in German food composition tables, followed by the preparation in German when it is mentioned.
+- name_en: the same food in English.
+- grams: the amount eaten in grams. Convert the amounts they give: millilitres of a drink count as grams; turn slices, pieces, spoons, cups, glasses, bowls and plates into typical weights. When no amount is given, use one typical portion.
+Answer with JSON only.

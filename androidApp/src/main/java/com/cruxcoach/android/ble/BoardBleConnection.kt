@@ -17,26 +17,30 @@ import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
+import com.cruxcoach.domain.board.ShinyWallFrameEncoder
+import com.cruxcoach.domain.board.ShinyWallVariant
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.QuantumBoardPacketEncoder
 import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.board.QuantumBoardBroadcastParser
 import com.cruxcoach.domain.board.QuantumBroadcast
 import com.cruxcoach.domain.board.QuantumActivePlayer
+import com.cruxcoach.domain.board.QuantumCommand
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 enum class ConnectionState {
@@ -70,6 +74,8 @@ data class QuantumControllerState(
      * confirm the freshness of a mutation precondition. */
     val routeListRevision: Long = 0,
     val lastFailure: QuantumCommandFailure? = null,
+    /** Command the controller refused with [lastFailure], when it named one. */
+    val lastFailedCommand: QuantumCommand? = null,
     /** True only after a controller broadcast supplied real state. */
     val authoritative: Boolean = false,
     val syncStatus: QuantumControllerSyncStatus = QuantumControllerSyncStatus.UNSYNCED,
@@ -207,11 +213,22 @@ internal data class QuantumControllerMetadata(
     val model: QuantumBoardModel,
     val columns: Int,
     val rows: Int,
-)
+    /** Seconds after which the controller turns a played route off; 0 = none named. */
+    val autoOffSeconds: Int = 0,
+) {
+    /** Whether the reported grid is the one this app knows for [model]. The
+     * sizes come from product data and only the XL's was seen on a board, so
+     * a difference is logged, never a reason to refuse the link: the type
+     * byte names the model. */
+    val sizeMatchesModel: Boolean get() = columns == model.columns && rows == model.rows
 
-/** Strict decoder for eWalls' 41-byte fff5 controller record. The controller
- * type byte and dimensions must agree before they can fence model-scoped
- * writes; unknown firmware records deliberately leave the link non-writable. */
+    /** Minutes a route played on this controller stays lit. */
+    val playMinutes: Int get() = QuantumBoardPacketEncoder.playMinutes(autoOffSeconds)
+}
+
+/** Decoder for the controller's 41-byte fff5 record. The type byte must name
+ * a known model before it can fence model-scoped writes; an unknown type
+ * deliberately leaves the link non-writable. */
 internal fun parseQuantumControllerMetadata(bytes: ByteArray): QuantumControllerMetadata? {
     if (bytes.size != 41) return null
     val model = when (bytes[34].toInt() and 0xff) {
@@ -222,10 +239,8 @@ internal fun parseQuantumControllerMetadata(bytes: ByteArray): QuantumController
         4 -> QuantumBoardModel.L
         else -> return null
     }
-    val columns = ((bytes[35].toInt() and 0xff) shl 8) or (bytes[36].toInt() and 0xff)
-    val rows = ((bytes[37].toInt() and 0xff) shl 8) or (bytes[38].toInt() and 0xff)
-    if (columns != model.columns || rows != model.rows) return null
-    return QuantumControllerMetadata(model, columns, rows)
+    fun u16(offset: Int) = ((bytes[offset].toInt() and 0xff) shl 8) or (bytes[offset + 1].toInt() and 0xff)
+    return QuantumControllerMetadata(model, columns = u16(35), rows = u16(37), autoOffSeconds = u16(39))
 }
 
 internal fun isScopedQuantumUserId(
@@ -251,7 +266,7 @@ internal fun quantumNotificationFrameSize(bytes: ByteArray): Int {
             if (bytes.size < 4) QUANTUM_NOTIFICATION_NEED_MORE
             else {
                 val players = bytes[2].toInt() and 0xff
-                if (players > BoardLayerManager.MAX_LAYER_IDENTITIES || bytes[3].toInt() != 0) {
+                if (players > QuantumBoardBroadcastParser.MAX_PLAYERS || bytes[3].toInt() != 0) {
                     QUANTUM_NOTIFICATION_INVALID
                 }
                 else 4 + players * QuantumBoardBroadcastParser.PLAYER_BYTES
@@ -283,6 +298,15 @@ internal class QuantumNotificationAccumulator {
 
     fun consume(bytes: ByteArray): List<RecoveredQuantumNotification> = synchronized(buffer) {
         val crossedBoundary = buffer.isNotEmpty()
+        if (!crossedBoundary) {
+            // One notification is one answer. A complete one may carry bytes
+            // past the frame (a CRC, padding): they belong to it, not to the
+            // next frame.
+            val size = QuantumBoardBroadcastParser.expectedFrameSize(bytes)
+            if (size != null && bytes.size >= size) {
+                return@synchronized listOf(RecoveredQuantumNotification(bytes.copyOf(), crossedCallbackBoundary = false))
+            }
+        }
         buffer += bytes.toList()
         buildList {
             while (buffer.isNotEmpty()) {
@@ -309,6 +333,28 @@ internal class QuantumNotificationAccumulator {
         }
     }
 }
+
+internal fun quantumCommandFailure(code: Int): QuantumCommandFailure = when (code) {
+    5 -> QuantumCommandFailure.ROUTE_IN_USE
+    6 -> QuantumCommandFailure.SPOT_UNAVAILABLE
+    7 -> QuantumCommandFailure.COLOR_TAKEN
+    8 -> QuantumCommandFailure.USER_ID_IN_USE
+    9 -> QuantumCommandFailure.BOARD_FULL
+    10 -> QuantumCommandFailure.ROUTESETTER_MODE
+    11 -> QuantumCommandFailure.DIODE_MISSING
+    254 -> QuantumCommandFailure.ACK_TIMEOUT
+    else -> QuantumCommandFailure.REFUSED
+}
+
+/** The refusal in the controller's answer to [command], or null. fff4 keeps
+ * the last answer, so another command's refusal is no answer to this one. */
+internal fun quantumAnswerFailure(
+    answer: QuantumBroadcast?,
+    command: QuantumCommand,
+): QuantumCommandFailure? =
+    (answer as? QuantumBroadcast.Exception)
+        ?.takeIf { it.failedCommand == command }
+        ?.let { quantumCommandFailure(it.code) }
 
 internal fun quantumPlayersMatch(
     expected: List<QuantumActivePlayer>,
@@ -378,6 +424,30 @@ internal fun genericBoardClearAllowed(connectedBrand: BoardBrand?): Boolean =
 internal fun moonBoardCommandAllowed(connectedBrand: BoardBrand?): Boolean =
     connectedBrand == BoardBrand.MOONBOARD
 
+internal fun shinyWallCommandAllowed(connectedBrand: BoardBrand?): Boolean =
+    connectedBrand == BoardBrand.SHINYWALL
+
+/** Aurora packets (climbs, raw chunks, animations) only go to links that can
+ *  take them. A Shiny Wall would read them as garbage text. */
+internal fun auroraPacketsAllowed(connectedBrand: BoardBrand?): Boolean =
+    connectedBrand != BoardBrand.QUANTUM && connectedBrand != BoardBrand.SHINYWALL
+
+/** First characteristic with [uuid] in any of [services] (Shiny Wall has no fixed service). */
+internal fun findCharacteristicInServices(
+    services: List<BluetoothGattService>,
+    uuid: java.util.UUID,
+): BluetoothGattCharacteristic? = services.firstNotNullOfOrNull { it.getCharacteristic(uuid) }
+
+/** Pause before a Shiny Wall write that starts a message (clear, route), and
+ *  between the chunks of one message: the controller's own app waits 100 ms
+ *  before a message's first chunk and 50 ms between chunks, always writing
+ *  with response. */
+internal const val SHINY_WALL_MESSAGE_GAP_MS = 100L
+internal const val SHINY_WALL_CHUNK_GAP_MS = 50L
+
+internal fun shinyWallGapBeforeMs(chunk: ByteArray): Long =
+    if (ShinyWallFrameEncoder.startsMessage(chunk)) SHINY_WALL_MESSAGE_GAP_MS else SHINY_WALL_CHUNK_GAP_MS
+
 internal fun quantumRefreshFailureRequiresDisconnect(
     currentGattMatches: Boolean,
     connectedBrand: BoardBrand?,
@@ -408,6 +478,7 @@ internal fun auroraWritePacingMs(
     if (connectedBrand != null &&
         connectedBrand != BoardBrand.QUANTUM &&
         connectedBrand != BoardBrand.MOONBOARD &&
+        connectedBrand != BoardBrand.SHINYWALL &&
         ((characteristicProperties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) == 0 ||
             !advertisesSerial)
     ) {
@@ -416,32 +487,39 @@ internal fun auroraWritePacingMs(
         0L
     }
 
-internal fun isQuantumProjectionConfirmed(
-    state: QuantumControllerState,
-    playersBefore: List<QuantumActivePlayer>,
-    routeId: String,
-    userId: String,
-    color: Int,
-): Boolean {
-    if (!state.authoritative || state.lastFailure != null) return false
-    val nonTargetBefore = playersBefore.filterNot { it.userId.equals(userId, ignoreCase = true) }
-    val nonTargetAfter = state.players.filterNot { it.userId.equals(userId, ignoreCase = true) }
-    return quantumPlayersMatch(nonTargetBefore, nonTargetAfter) && state.players.any {
-        it.userId.equals(userId, ignoreCase = true) &&
-            it.routeId.equals(routeId, ignoreCase = true) &&
-            it.color == (color and 0xffffff)
-    }
+/**
+ * Outcome of one attempt to push a frame nobody asked for — an LED animation
+ * frame, see [BoardBleConnection.sendAnimationLeds].
+ *
+ * The distinction that matters is between a link that is *busy* and a link that
+ * is *gone*. Background traffic has to give way to a deliberate send without
+ * concluding that the board went away, so a caller needs to be able to tell a
+ * retry-later from an error.
+ */
+enum class FrameSendResult {
+    /** Written. */
+    SENT,
+
+    /**
+     * Not written and nothing is wrong: someone else is mid-send, the link is not
+     * up, hold cleaning owns the wall, the wall no longer shows the climb the frame
+     * was made from, or an API-2 box would show the frame dark.
+     */
+    DEFERRED,
+
+    /** The write itself failed. */
+    FAILED,
 }
 
-internal fun isQuantumScopedRemovalConfirmed(
-    state: QuantumControllerState,
-    playersBefore: List<QuantumActivePlayer>,
-    userId: String,
-): Boolean {
-    if (!state.authoritative || state.lastFailure != null) return false
-    val nonTargetBefore = playersBefore.filterNot { it.userId.equals(userId, ignoreCase = true) }
-    return state.players.none { it.userId.equals(userId, ignoreCase = true) } &&
-        quantumPlayersMatch(nonTargetBefore, state.players)
+/**
+ * The outcome of one write to the board: whether it went through, and the [BoardBleConnection.boardWrites]
+ * count of its last attempt, or null when nothing was written. A failed write may still have changed
+ * what the board shows.
+ */
+data class BoardWrite(val done: Boolean, val write: Long?) {
+    companion object {
+        val NONE = BoardWrite(false, null)
+    }
 }
 
 /**
@@ -488,7 +566,12 @@ class BoardBleConnection(
         const val DELAY_SCAN_SETTLE_MS = 500L
         const val DELAY_PRE_DISCOVERY_LEGACY_MS = 300L
         const val QUANTUM_MTU_TIMEOUT_MS = 3_000L
-        const val QUANTUM_MUTATION_SETTLE_MS = 250L
+        /** Pause between fff4 reads while a Quantum command waits for its answer. */
+        const val QUANTUM_ANSWER_SETTLE_MS = 250L
+        /** How long a Quantum command waits for its answer; silence is no refusal. */
+        const val QUANTUM_ANSWER_TIMEOUT_MS = 1_000L
+        /** Pause between fff4 reads while a route list request waits for its answer. */
+        const val QUANTUM_ROUTE_LIST_READ_INTERVAL_MS = 250L
         const val DEFAULT_ATT_MTU = 23
         const val SERVICE_DISCOVERY_CALLBACK_FALLBACK_MS = 3_500L
         /**
@@ -500,6 +583,8 @@ class BoardBleConnection(
          * UART bridge one short connection interval between fragments.
          */
         const val MOONBOARD_UART_INTER_CHUNK_DELAY_MS = 100L
+        /** How long an idle release may wait to put the static colours back. */
+        const val IDLE_RESTORE_TIMEOUT_MS = 3_000L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -524,6 +609,22 @@ class BoardBleConnection(
     val connectedQuantumModel: StateFlow<QuantumBoardModel?> =
         _connectedQuantumModel.asStateFlow()
 
+    /** The last route played on Quantum, and whether the route list read
+     * right after it named it. */
+    private data class QuantumPlay(val routeId: String, val userId: String, val color: Int, val listed: Boolean)
+
+    @Volatile
+    private var lastQuantumPlay: QuantumPlay? = null
+
+    /** Last value read from fff4, to tell a new answer from the one before. */
+    private var lastQuantumFff4: ByteArray? = null
+
+    /** Minutes a route played on the connected Quantum controller stays lit,
+     * from its fff5 auto-off time. */
+    @Volatile
+    var quantumPlayMinutes: Int = QuantumBoardPacketEncoder.DEFAULT_PLAY_MINUTES
+        private set
+
     // Localized reason (string-res id) why the last connect attempt was torn
     // down at service discovery — currently only the unsupported RedBear-UART
     // MoonBoard LED-kit generation. Survives the disconnect (so the sheet can
@@ -535,11 +636,25 @@ class BoardBleConnection(
     private var gatt: BluetoothGatt? = null
     private var serviceDiscoveryGatt: BluetoothGatt? = null
     private var serviceDiscoveryHandledGatt: BluetoothGatt? = null
-    private var quantumMtuGatt: BluetoothGatt? = null
-    private var quantumMtu: Int = DEFAULT_ATT_MTU
+    private var mtuRequestGatt: BluetoothGatt? = null
+    private var negotiatedMtu: Int = DEFAULT_ATT_MTU
+    /** What this link last put on a Shiny Wall (variant + state vector), so
+     *  editor and game updates can send only the holds that change. Null
+     *  whenever the wall's state is unknown: new link, clear, cleaning, or a
+     *  failed write. */
+    @Volatile private var shinyWallShown: Pair<ShinyWallVariant, IntArray>? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     /** Default gap between chunks for this link; see [auroraWritePacingMs]. */
     private var writePacingMs = 0L
+    /** Completed [writeChunks] calls; with [animationFrameWrite] it tells whether
+     *  the wall shows an LED-animation frame. Written under [writeMutex]. */
+    private var writeCount = 0L
+    /** [writeCount] right after the last animation frame went out. */
+    private var animationFrameWrite = -1L
+    private val _boardWrites = MutableStateFlow(0L)
+    /** Started [writeChunks] calls, failed ones included: once it moves on, the board may show
+     *  something other than the frame written at an earlier count. Written under [writeMutex]. */
+    val boardWrites: StateFlow<Long> = _boardWrites.asStateFlow()
     private var encoder: BoardPacketEncoder = BoardPacketEncoder(3)
 
     private val cleaningStorage = BoardCleaningStorage(context)
@@ -673,6 +788,19 @@ class BoardBleConnection(
     // more than once (e.g. startQueue + promoteToHost) and release once.
     private val keepAliveOwners = mutableSetOf<String>()
     private val keepAliveLock = Any()
+    private val automaticProjectionPauseOwners = mutableSetOf<String>()
+
+    /** A manual editor may be visible above a still-alive climb-detail ViewModel. */
+    val automaticProjectionPaused: Boolean
+        get() = synchronized(keepAliveLock) { automaticProjectionPauseOwners.isNotEmpty() }
+
+    fun pauseAutomaticProjection(owner: String) {
+        synchronized(keepAliveLock) { automaticProjectionPauseOwners.add(owner) }
+    }
+
+    fun resumeAutomaticProjection(owner: String) {
+        synchronized(keepAliveLock) { automaticProjectionPauseOwners.remove(owner) }
+    }
     private val _keepAliveActive = MutableStateFlow(false)
     /** True while a session or the relay owns the physical board connection. */
     val keepAliveActive: StateFlow<Boolean> = _keepAliveActive.asStateFlow()
@@ -707,8 +835,36 @@ class BoardBleConnection(
     fun hasOtherKeepAliveOwners(owner: String): Boolean =
         synchronized(keepAliveLock) { keepAliveOwners.any { it != owner } }
 
+    fun isKeptAliveBy(owner: String): Boolean =
+        synchronized(keepAliveLock) { owner in keepAliveOwners }
+
     private fun isKeepAliveHeld(): Boolean =
         synchronized(keepAliveLock) { keepAliveOwners.isNotEmpty() }
+
+    /**
+     * The board, layout and size the board-size check confirmed on this link: the user saw the
+     * connected board light that size's holds. [BoardSwitchLinkPolicy] keeps the link when it is
+     * saved, also after the check has closed: the board picker saves it on its own Confirm. Only
+     * for this link: every disconnect and every new connection attempt drops it.
+     */
+    internal val sizeConfirmedOnBoard: ActiveBoardSelection?
+        get() {
+            val noted = sizeConfirmation ?: return null
+            return noted.selection.takeIf { isLinkUp() && noted.address == currentBoard?.address }
+        }
+
+    private class SizeConfirmation(val address: String?, val selection: ActiveBoardSelection)
+
+    @Volatile
+    private var sizeConfirmation: SizeConfirmation? = null
+
+    internal fun noteSizeConfirmed(selection: ActiveBoardSelection) {
+        // A link that dropped meanwhile must not hand it to the next one.
+        sizeConfirmation = if (isLinkUp()) SizeConfirmation(currentBoard?.address, selection) else null
+    }
+
+    private fun isLinkUp(): Boolean =
+        _connectionState.value.let { it == ConnectionState.CONNECTED || it == ConnectionState.SENDING }
 
     /**
      * Records what a completed advertising probe saw while we hold GATT.
@@ -801,6 +957,7 @@ class BoardBleConnection(
     // Remember last sent climb for live color preview
     private var lastHolds: List<BoardHold>? = null
     private var lastPlacementToLed: Map<Int, Int>? = null
+    private var lastClimbUuid: String? = null
     private var lastSendBoardAddress: String? = null
     private var lastSendBoardBrand: BoardBrand? = null
 
@@ -817,7 +974,26 @@ class BoardBleConnection(
         quantumMetadataReadDeferred = null
         quantumRouteListRequestActive = false
         quantumNotificationAccumulator.reset()
+        lastQuantumFff4 = null
     }
+
+    private val _litFrame = MutableStateFlow<LitFrame?>(null)
+    /** Numbers [LitFrame.sendId]; written under [writeMutex]. */
+    private var litFrameSends = 0L
+
+    /**
+     * What is lit on the wall right now, resolved to (LED, role, colour) —
+     * updated by every successful [sendClimb], and nulled by a failed one, by
+     * [clearBoard], by disconnect and by every send whose content the LED
+     * animations do not know (relayed or easter frames, MoonBoard, Shiny Wall).
+     *
+     * [lastHolds] exists to re-send a climb with new colours; this exists so the
+     * LED animations can derive frames without re-resolving role colours, and so
+     * an animation loop ends by itself when the wall goes dark. Set on
+     * *success* only: after a failed write the wall's state is unknown and
+     * animating on top of it would compound the error.
+     */
+    val litFrame: StateFlow<LitFrame?> = _litFrame.asStateFlow()
 
     private fun resetIdleTimer() {
         disconnectJob?.cancel()
@@ -849,7 +1025,30 @@ class BoardBleConnection(
         if (arm) {
             disconnectJob = scope.launch {
                 delay(seconds * 1_000L)
+                restoreStaticBeforeIdleRelease()
                 disconnect()
+            }
+        }
+    }
+
+    /**
+     * An Aurora controller keeps showing the last frame after the link drops. When
+     * that frame is an LED-animation frame (dimmed, or in shifted colours), put the
+     * climb's own colours back first, so the next climber does not find a wall
+     * frozen mid-effect. A send that comes in meanwhile cancels the idle release
+     * as usual.
+     */
+    internal suspend fun restoreStaticBeforeIdleRelease() {
+        withTimeoutOrNull(IDLE_RESTORE_TIMEOUT_MS) {
+            writeMutex.withLock {
+                val frame = _litFrame.value ?: return@withLock
+                if (animationFrameWrite != writeCount ||
+                    _connectionState.value != ConnectionState.CONNECTED ||
+                    cleaningState.value.active
+                ) return@withLock
+                withContext(NonCancellable) {
+                    writeChunks(encoder.encodeClimb(frame.staticFrame()))
+                }
             }
         }
     }
@@ -881,6 +1080,8 @@ class BoardBleConnection(
                 (currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE)
                     ?: currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD))
                     ?.getCharacteristic(BoardBleUuids.QUANTUM_WRITE_CHAR)
+            } else if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
+                findCharacteristicInServices(currentGatt.services, BoardBleUuids.SHINY_WALL_WRITE_CHAR)
             } else {
                 currentGatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
                     ?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
@@ -897,7 +1098,7 @@ class BoardBleConnection(
         if (_connectionState.value != ConnectionState.CONNECTING ||
             gatt !== currentGatt || isGattClosed(currentGatt) || writeCharacteristic == null
         ) return
-        quantumMtuGatt = null
+        mtuRequestGatt = null
         if (_connectedBoardBrand.value != BoardBrand.QUANTUM) {
             markGattReady(currentGatt)
             return
@@ -921,6 +1122,15 @@ class BoardBleConnection(
                 if (gatt !== currentGatt || isGattClosed(currentGatt)) {
                     return@quantumGattSetupSucceeded false
                 }
+                if (!metadata.sizeMatchesModel) {
+                    Log.w(
+                        TAG,
+                        "Quantum fff5 reports ${metadata.columns}x${metadata.rows} for ${metadata.model}, " +
+                            "expected ${metadata.model.columns}x${metadata.model.rows}; using the type byte",
+                    )
+                }
+                Log.i(TAG, "Quantum ${metadata.model}: auto-off ${metadata.autoOffSeconds} s, play ${metadata.playMinutes} min")
+                quantumPlayMinutes = metadata.playMinutes
                 _connectedQuantumModel.value = metadata.model
                 val notificationsReady = enableQuantumNotifications(currentGatt)
                 notificationsReady && gatt === currentGatt && !isGattClosed(currentGatt)
@@ -1148,11 +1358,15 @@ class BoardBleConnection(
             if (serviceRecheckGatt === gatt) {
                 serviceRecheckGatt = null
                 if (this@BoardBleConnection.gatt !== gatt || isGattClosed(gatt)) return
+                val shinyWrite = if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
+                    findCharacteristicInServices(gatt.services, BoardBleUuids.SHINY_WALL_WRITE_CHAR)
+                } else null
                 val stillThere = status == BluetoothGatt.GATT_SUCCESS && (
                     gatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
                         ?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR) != null ||
                         gatt.getService(BoardBleUuids.QUANTUM_SERVICE) != null ||
-                        gatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD) != null
+                        gatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD) != null ||
+                        shinyWrite != null
                     )
                 if (stillThere) {
                     Log.i(TAG, "Service change re-check: board service still present")
@@ -1160,6 +1374,10 @@ class BoardBleConnection(
                     gatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
                         ?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
                         ?.let { writeCharacteristic = it }
+                    shinyWrite?.let {
+                        it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                        writeCharacteristic = it
+                    }
                 } else {
                     dropAfterServiceLoss("status=$status")
                 }
@@ -1190,6 +1408,12 @@ class BoardBleConnection(
                         // discards those partial protocol frames.
                         it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
                     }
+                } else if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
+                    findCharacteristicInServices(gatt.services, BoardBleUuids.SHINY_WALL_WRITE_CHAR)?.also {
+                        // Always with response, like the controller's own app.
+                        it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                        Log.i(TAG, "Shiny Wall write characteristic in ${it.service?.uuid} properties=${it.properties}")
+                    }
                 } else service?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
                 writePacingMs = writeCharacteristic?.let {
                     auroraWritePacingMs(
@@ -1209,18 +1433,23 @@ class BoardBleConnection(
                     Log.i(TAG, "Pacing chunks by ${writePacingMs}ms with response (properties=${writeCharacteristic?.properties}, serial=${currentBoard?.serial?.isNotBlank() == true})")
                 }
                 if (writeCharacteristic != null) {
-                    if (_connectedBoardBrand.value == BoardBrand.QUANTUM && Build.VERSION.SDK_INT >= 21) {
+                    // Shiny Wall negotiates a larger MTU too, so a state vector
+                    // goes out in a few writes instead of dozens.
+                    if ((_connectedBoardBrand.value == BoardBrand.QUANTUM ||
+                            _connectedBoardBrand.value == BoardBrand.SHINYWALL) &&
+                        Build.VERSION.SDK_INT >= 21
+                    ) {
                         // Match eWalls 2.0.14: finish service retrieval first,
                         // then negotiate MTU, then register notifications. The
                         // previous concurrent discoverServices/requestMtu pair
                         // made Nokia Android 10 populate services internally
                         // without delivering onServicesDiscovered.
-                        quantumMtuGatt = gatt
+                        mtuRequestGatt = gatt
                         val queued = gatt.requestMtu(512)
                         Log.d(TAG, "requestMtu after services queued=$queued")
                         if (queued) {
                             mainHandler.postDelayed({
-                                if (quantumMtuGatt === gatt) {
+                                if (mtuRequestGatt === gatt) {
                                     Log.w(TAG, "MTU callback timeout; continuing with negotiated/default MTU")
                                     finishGattSetup(gatt)
                                 }
@@ -1232,7 +1461,7 @@ class BoardBleConnection(
                         finishGattSetup(gatt)
                     }
                 } else {
-                    Log.w(TAG, "DATA_TRANSFER_CHAR not found in service")
+                    Log.w(TAG, "Write characteristic not found (brand=${_connectedBoardBrand.value})")
                     // Pre-2017 MoonBoard LED kits speak the RedBear UART
                     // service instead of the Nordic UART we implement. Flag
                     // it so the UI can show an honest "this MoonBoard
@@ -1275,8 +1504,8 @@ class BoardBleConnection(
 
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             Log.d(TAG, "onMtuChanged mtu=$mtu status=$status")
-            if (quantumMtuGatt === gatt) {
-                quantumMtu = if (status == BluetoothGatt.GATT_SUCCESS) mtu else DEFAULT_ATT_MTU
+            if (mtuRequestGatt === gatt) {
+                negotiatedMtu = if (status == BluetoothGatt.GATT_SUCCESS) mtu else DEFAULT_ATT_MTU
                 finishGattSetup(gatt)
             }
         }
@@ -1436,28 +1665,24 @@ class BoardBleConnection(
                 current.copy(
                     revision = revision,
                     lastFailure = quantumFailure(broadcast.code),
+                    lastFailedCommand = broadcast.failedCommand,
                 )
             is QuantumBroadcast.BoardLit, null -> Unit
         }
         return evidence
     }
 
-    private fun quantumFailure(code: Int): QuantumCommandFailure = when (code) {
-        5 -> QuantumCommandFailure.ROUTE_IN_USE
-        6 -> QuantumCommandFailure.SPOT_UNAVAILABLE
-        7 -> QuantumCommandFailure.COLOR_TAKEN
-        8 -> QuantumCommandFailure.USER_ID_IN_USE
-        9 -> QuantumCommandFailure.BOARD_FULL
-        10 -> QuantumCommandFailure.ROUTESETTER_MODE
-        11 -> QuantumCommandFailure.DIODE_MISSING
-        254 -> QuantumCommandFailure.ACK_TIMEOUT
-        else -> QuantumCommandFailure.REFUSED
-    }
+    private fun quantumFailure(code: Int): QuantumCommandFailure = quantumCommandFailure(code)
 
     /** Finalize state after disconnect callback (or error). */
     private fun finalizeDisconnect(status: Int) {
+        // Nothing is lit any more, whatever kind of disconnect this was: an
+        // animation still holding the old frame would keep pushing colours at a
+        // board that is gone (and, on reconnect, at the wrong board).
+        _litFrame.value = null
         val wasQuantum = _connectedBoardBrand.value == BoardBrand.QUANTUM
         cancelQuantumGattOperations()
+        shinyWallShown = null
         if (userDisconnecting) {
             closeSafetyJob?.cancel()
             closeSafetyJob = null
@@ -1469,6 +1694,7 @@ class BoardBleConnection(
         Log.d(TAG, "Remote/error disconnect (status=0x${status.toString(16)})")
         if (wasQuantum) markQuantumStateStale()
         _connectionState.value = ConnectionState.DISCONNECTED
+        sizeConfirmation = null
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null
         _connectedQuantumModel.value = null
@@ -1538,9 +1764,11 @@ class BoardBleConnection(
         cancelQuantumGattOperations()
         quantumStateReadUsable = true
         _connectedQuantumModel.value = null
+        shinyWallShown = null
         attemptBudget = maxAttempts.coerceIn(1, MAX_CONNECT_ATTEMPTS)
         userDisconnecting = false
         _connectionState.value = ConnectionState.CONNECTING
+        sizeConfirmation = null
         if (board.boardBrand == BoardBrand.QUANTUM) {
             quantumNotificationAccumulator.reset()
             val previousQuantumState = _quantumControllerState.value
@@ -1555,12 +1783,7 @@ class BoardBleConnection(
         // Fresh attempt — drop any failure reason from the previous one.
         _connectFailureReason.value = null
         currentBoard = board
-        cleaning.attach(
-            BoardCleaningStorage.key(board),
-            if (board.boardBrand.usesAuroraProtocol)
-                BoardPacketEncoder.cleaningHoldLimit(board.apiLevel, BoardPacketEncoder.ledsPerHoldFor(board.boardBrand))
-            else Int.MAX_VALUE,
-        )
+        attachCleaning(board)
         _connectedBoardDescriptor.value = board
         connectAttempt = 1
         // FEAT-031: ledsPerHold (Kilter = 2, other Aurora boards = 1) feeds the
@@ -1649,7 +1872,7 @@ class BoardBleConnection(
     @SuppressLint("MissingPermission")
     private fun startGattAttempt(board: DiscoveredBoard) {
         _connectedQuantumModel.value = null
-        quantumMtu = DEFAULT_ATT_MTU
+        negotiatedMtu = DEFAULT_ATT_MTU
 
         // Abort if state changed during the wait
         if (_connectionState.value != ConnectionState.CONNECTING) {
@@ -1698,6 +1921,7 @@ class BoardBleConnection(
                     _connectFailureReason.value = R.string.board_ble_connect_failed_hint
                 }
                 _connectionState.value = ConnectionState.DISCONNECTED
+                sizeConfirmation = null
                 _connectedBoardName.value = null
                 _connectedBoardBrand.value = null
                 _connectedQuantumModel.value = null
@@ -1712,7 +1936,7 @@ class BoardBleConnection(
         gatt = newGatt
         serviceDiscoveryGatt = null
         serviceDiscoveryHandledGatt = null
-        quantumMtuGatt = null
+        mtuRequestGatt = null
 
         // Per-attempt timeout: a hung CONNECTING is torn down and retried
         // quietly; only the final attempt surfaces the failure.
@@ -1774,7 +1998,9 @@ class BoardBleConnection(
 
     /**
      * Write multiple BLE chunks with flow control.
-     * Each chunk waits for the previous write to complete.
+     * Each chunk waits for the previous write to complete. A Shiny Wall link
+     * paces its writes like the controller's own app ([shinyWallGapBeforeMs])
+     * instead of [interChunkDelayMs].
      */
     @SuppressLint("MissingPermission")
     private suspend fun writeChunks(
@@ -1783,6 +2009,18 @@ class BoardBleConnection(
     ): Boolean {
         val characteristic = writeCharacteristic ?: return false
         val currentGatt = gatt ?: return false
+        _boardWrites.value++
+        if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
+            for ((i, chunk) in chunks.withIndex()) {
+                delay(shinyWallGapBeforeMs(chunk))
+                if (!writeChunk(currentGatt, characteristic, chunk)) {
+                    Log.w(TAG, "Shiny Wall write failed at chunk $i/${chunks.size}")
+                    return false
+                }
+            }
+            writeCount++
+            return true
+        }
 
         for ((i, chunk) in chunks.withIndex()) {
             val success = writeChunk(currentGatt, characteristic, chunk)
@@ -1794,12 +2032,15 @@ class BoardBleConnection(
                 delay(interChunkDelayMs)
             }
         }
+        writeCount++
         return true
     }
 
     /**
      * Send a climb's holds to the connected board, lighting up the LEDs.
      * Uses mutex to prevent concurrent sends and callback-based flow control.
+     * [climbUuid] names the climb in [litFrame]; senders that light no single
+     * climb leave it out.
      */
     suspend fun sendClimb(
         holds: List<BoardHold>,
@@ -1811,12 +2052,19 @@ class BoardBleConnection(
         expectedQuantumPlayers: List<QuantumActivePlayer>? = null,
         expectedQuantumBoard: BoardLayerBoardIdentity? = null,
         expectedBrand: BoardBrand? = null,
+        climbUuid: String? = null,
     ): Boolean = writeMutex.withLock {
         if (cleaningState.value.active) return false
         val cleaningTicket = cleaning.ticket()
         if (_connectionState.value != ConnectionState.CONNECTED) return false
         if (!boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)) {
             Log.w(TAG, "Refusing projection for $expectedBrand on ${_connectedBoardBrand.value}")
+            return false
+        }
+        if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
+            // Shiny Wall climbs go through sendShinyWallClimb; Aurora LED packets
+            // would reach its text parser as garbage.
+            Log.w(TAG, "Refusing an LED-map projection on a Shiny Wall")
             return false
         }
         val quantumPlayersBefore = if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
@@ -1864,15 +2112,16 @@ class BoardBleConnection(
         if (_connectedBoardBrand.value == BoardBrand.QUANTUM &&
             !hasConfirmableQuantumDiodeCount(holds)
         ) {
-            // Route-list readback cannot prove append/atomicity across multiple
-            // ACTIVATE_WALL frames. Fail closed until captured hardware evidence
-            // establishes that contract.
+            // One play frame holds 92 diodes. Whether a second frame for the
+            // same route adds to the first or replaces it is not known from a
+            // real board, so larger routes are refused.
             Log.w(TAG, "Refusing unverified multi-frame Quantum activation")
             return false
         }
 
         lastHolds = holds
         lastPlacementToLed = placementToLed
+        lastClimbUuid = climbUuid
         lastSendBoardAddress = currentBoard?.address
         lastSendBoardBrand = _connectedBoardBrand.value
 
@@ -1892,51 +2141,65 @@ class BoardBleConnection(
             }
             if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
                 val mapped = holds.mapNotNull { placementToLed[it.placementId] }
-                // Mirror eWalls 2.0.14's route transition: a Quantum
-                // controller keeps per-user route ownership and rejects a
-                // second ACTIVATE_WALL until that user's previous route is
-                // released. This is deliberately TURN_OFF_USER (not ALL), so
-                // other climbers sharing a capable controller are untouched.
-                val transition = QuantumBoardPacketEncoder.replaceUserRoute(
+                // A player's route is one BOARD_SWIPE in one colour that stays
+                // lit for the controller's own auto-off time. It needs no
+                // TURN_OFF_USER first: a new route for the same user takes the
+                // old one's place, and other users keep theirs. ACTIVATE_WALL
+                // with an open-ended duration is the route-building path; the
+                // real XL left such routes out of its route list.
+                val frame = QuantumBoardPacketEncoder.play(
                     routeId = routeId ?: QuantumBoardPacketEncoder.ZERO_UUID,
                     userId = quantumUserId,
                     diodes = mapped,
                     color = quantumColor and 0xffffff,
+                    minutes = quantumPlayMinutes,
                 )
                 _quantumControllerState.value = _quantumControllerState.value.copy(lastFailure = null)
-                if (!writeQuantumFrames(transition.take(1), expectedQuantumBoard)) return false
-                delay(50)
-                if (!writeQuantumFrames(transition.drop(1), expectedQuantumBoard)) return false
-                // The acknowledged ATT write only proves transport delivery.
-                // Real XL firmware updates its active-player roster shortly
-                // afterwards, so do not snapshot the old list immediately.
-                delay(QUANTUM_MUTATION_SETTLE_MS)
-                if (!requestQuantumRouteListLocked(expectedQuantumBoard)) return false
-                val snapshot = _quantumControllerState.value
-                return isQuantumProjectionConfirmed(
-                    state = snapshot,
-                    playersBefore = quantumPlayersBefore,
+                // A stale partial notification must not swallow a notified refusal.
+                quantumNotificationAccumulator.reset()
+                if (!writeQuantumFrames(listOf(frame), expectedQuantumBoard)) return false
+                // The board's answer comes before anything else is sent, so a
+                // refusal (colour or hold taken, board full) reaches the user.
+                if (readQuantumAnswerLocked(QuantumCommand.BOARD_SWIPE) != null) return false
+                // Acknowledged and not refused: the route is sent. The route
+                // list only adds whether the controller names it.
+                val listAnswered = requestQuantumRouteListLocked(expectedQuantumBoard, answering = QuantumCommand.BOARD_SWIPE)
+                // A refusal that came late, in fff4 or fff1 while the list was read, still counts.
+                if (quantumRefusalOf(QuantumCommand.BOARD_SWIPE) != null) return false
+                val play = QuantumPlay(
                     routeId = routeId ?: QuantumBoardPacketEncoder.ZERO_UUID,
                     userId = quantumUserId,
-                    color = quantumColor,
+                    color = quantumColor and 0xffffff,
+                    listed = false,
+                )
+                lastQuantumPlay = play.copy(
+                    listed = listAnswered && _quantumControllerState.value.players.any { play.matches(it) },
+                )
+                return true
+            }
+            // Resolve each hold's colour by canonical role CLASS, not raw
+            // code. A climb authored on an Aurora board carries the editor's
+            // Kilter-style codes (12-15) while the board's colour map is keyed by
+            // its native codes (1-4), so a raw-id lookup would miss and fall back
+            // to the wrong palette. roleClass folds 1-4 / 12-15 / 42-44 onto the
+            // same role, so authored and catalogue climbs light identically in
+            // the board's own colours.
+            //
+            // The resolution happens once and feeds both the packet and
+            // [_litFrame], so what the LED animations move is exactly what the
+            // board was sent — per-board catalogue colours included.
+            val byClass = roleColors?.entries?.associate { HoldRole.roleClass(it.key) to it.value }
+            val litLeds = holds.mapNotNull { hold ->
+                val led = placementToLed[hold.placementId] ?: return@mapNotNull null
+                val roleClass = HoldRole.roleClass(hold.roleId)
+                LitLed(
+                    position = led,
+                    roleClass = roleClass,
+                    baseColor = byClass?.get(roleClass)
+                        ?: BoardPacketEncoder.roleToColor(hold.roleId),
                 )
             }
-            val holdPairs = if (roleColors != null) {
-                // Resolve each hold's colour by canonical role CLASS, not raw
-                // code. A climb authored on an Aurora board carries the editor's
-                // Kilter-style codes (12-15) while the board's colour map is
-                // keyed by its native codes (1-4), so a raw-id lookup would miss
-                // and fall back to the wrong palette. roleClass folds 1-4 /
-                // 12-15 / 42-44 onto the same role, so authored and catalogue
-                // climbs light identically in the board's own colours.
-                val byClass = roleColors.entries.associate { HoldRole.roleClass(it.key) to it.value }
-                holds.mapNotNull { hold ->
-                    val led = placementToLed[hold.placementId] ?: return@mapNotNull null
-                    led to (byClass[HoldRole.roleClass(hold.roleId)] ?: BoardPacketEncoder.roleToColor(hold.roleId))
-                }
-            } else {
-                encoder.holdPairs(holds, placementToLed)
-            }
+            val holdPairs = litLeds.map { it.position to it.baseColor }
             if (encoder.litNothing(holdPairs)) {
                 Log.w(TAG, "Refusing an API-2 frame of ${holdPairs.size} holds: the 18 W budget would light none of them")
                 return false
@@ -1944,6 +2207,9 @@ class BoardBleConnection(
             val chunks = encoder.encodeClimb(holdPairs)
 
             val success = writeChunks(chunks)
+            // After a failed write the wall's state is unknown; animating the
+            // previous climb on top of it would only add to the confusion.
+            _litFrame.value = if (success) litLeds.ifEmpty { null }?.let { LitFrame(it, ++litFrameSends, climbUuid) } else null
             if (success) cleaning.projected(cleaningTicket, chunks)
             return success
         } finally {
@@ -1967,42 +2233,44 @@ class BoardBleConnection(
                     expectedQuantumBoard,
                 )
             ) return false
-            val writes = quantumGattWrites(frame, quantumMtu)
+            val writes = quantumGattWrites(frame, negotiatedMtu)
             if (writes == null) {
                 Log.w(
                     TAG,
                     "Quantum frame does not fit negotiated ATT payload: " +
-                        "frame=${frame.size} mtu=$quantumMtu",
+                        "frame=${frame.size} mtu=$negotiatedMtu",
                 )
                 return false
             }
             // The CRC terminates one protocol frame and the controller parses
             // one such frame per fff2 characteristic write. Do not fragment a
             // frame into otherwise successful but semantically invalid writes.
-            if (!writeChunks(writes)) return false
+            // A started write waits for its own callback even if the caller
+            // leaves, so a late callback cannot acknowledge the next command.
+            if (!withContext(NonCancellable) { writeChunks(writes) }) return false
             if (index != frames.lastIndex) delay(100)
         }
         return true
     }
 
+    /** One fff4 read, or null when fff4 is unusable on this link. A read
+     * that times out or fails retires fff4 for the rest of the link. */
     @SuppressLint("MissingPermission")
-    private suspend fun readQuantumStateLocked(
-        explicitRouteListResponse: Boolean = false,
-    ): QuantumControllerEvidence {
-        if (!quantumStateReadUsable) return QuantumControllerEvidence.UNSUPPORTED
-        val currentGatt = gatt ?: return QuantumControllerEvidence.UNSUPPORTED
+    private suspend fun readQuantumFff4Locked(): ByteArray? {
+        if (!quantumStateReadUsable) return null
+        val currentGatt = gatt ?: return null
         val service = currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE)
             ?: currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD)
-            ?: return QuantumControllerEvidence.UNSUPPORTED
+            ?: return null
         val stateCharacteristic = service.getCharacteristic(BoardBleUuids.QUANTUM_STATE_CHAR)
-            ?: return QuantumControllerEvidence.UNSUPPORTED
+            ?: return null
         val deferred = CompletableDeferred<QuantumGattRead>()
         quantumReadDeferred = deferred
         val queued = currentGatt.readCharacteristic(stateCharacteristic)
         if (!queued) {
             quantumReadDeferred = null
             quantumStateReadUsable = false
-            return QuantumControllerEvidence.UNSUPPORTED
+            return null
         }
         val result = withTimeoutOrNull(WRITE_TIMEOUT_MS) { deferred.await() }
         if (quantumReadDeferred === deferred) quantumReadDeferred = null
@@ -2013,14 +2281,26 @@ class BoardBleConnection(
             // separate callback and remains safe to use on the current link.
             quantumStateReadUsable = false
             Log.w(TAG, "Quantum fff4 read timed out; using explicit route-list requests")
-            return QuantumControllerEvidence.UNSUPPORTED
+            return null
         }
         if (result.status != BluetoothGatt.GATT_SUCCESS) {
             quantumStateReadUsable = false
             Log.w(TAG, "Quantum fff4 read failed with status=${result.status}; using explicit route-list requests")
-            return QuantumControllerEvidence.UNSUPPORTED
+            return null
         }
-        val broadcast = result.value?.let(QuantumBoardBroadcastParser::parse)
+        result.value?.let { lastQuantumFff4 = it.copyOf() }
+        return result.value
+    }
+
+    /** [refusalOf]: the command written just before this read's route list
+     * request; a refusal of it found in fff4 still counts as its answer. */
+    private suspend fun readQuantumStateLocked(
+        explicitRouteListResponse: Boolean = false,
+        refusalOf: QuantumCommand? = null,
+    ): QuantumControllerEvidence {
+        val value = readQuantumFff4Locked() ?: return QuantumControllerEvidence.UNSUPPORTED
+        val broadcast = QuantumBoardBroadcastParser.parse(value)
+        if (refusalOf != null) recordQuantumRefusal(refusalOf, broadcast)
         val evidence = classifyQuantumFff4Evidence(broadcast)
         if (quantumFff4PublishesSnapshot(broadcast)) {
             // An fff4 route list may be used for periodic observation, but it
@@ -2036,8 +2316,53 @@ class BoardBleConnection(
         return evidence
     }
 
+    /**
+     * The controller's answer to the [command] just written, read before
+     * anything else is sent: the real XL leaves it in fff4, so fff4 is read
+     * until it changes, for up to [QUANTUM_ANSWER_TIMEOUT_MS]; other firmware
+     * may notify it on fff1. Returns the refusal it reports, which also stays
+     * in [QuantumControllerState.lastFailure], or null. Silence is no refusal.
+     */
+    private suspend fun readQuantumAnswerLocked(command: QuantumCommand): QuantumCommandFailure? {
+        val before = lastQuantumFff4
+        var waitedMs = 0L
+        while (waitedMs < QUANTUM_ANSWER_TIMEOUT_MS) {
+            delay(QUANTUM_ANSWER_SETTLE_MS)
+            waitedMs += QUANTUM_ANSWER_SETTLE_MS
+            quantumRefusalOf(command)?.let { return it }
+            val value = readQuantumFff4Locked() ?: continue
+            if (before != null && value.contentEquals(before)) continue
+            return recordQuantumRefusal(command, QuantumBoardBroadcastParser.parse(value))
+        }
+        return null
+    }
+
+    private fun recordQuantumRefusal(command: QuantumCommand, answer: QuantumBroadcast?): QuantumCommandFailure? {
+        val failure = quantumAnswerFailure(answer, command) ?: return null
+        _quantumControllerState.value = _quantumControllerState.value.copy(
+            lastFailure = failure,
+            lastFailedCommand = command,
+        )
+        Log.w(TAG, "Quantum controller refused ${command.name}: $failure")
+        return failure
+    }
+
+    /** A refusal of [command] the controller notified on fff1. */
+    private fun quantumRefusalOf(command: QuantumCommand): QuantumCommandFailure? =
+        _quantumControllerState.value.takeIf { it.lastFailedCommand == command }?.lastFailure
+
+    /**
+     * Ask for the controller's route list and wait for the answer, read from
+     * fff4 every [QUANTUM_ROUTE_LIST_READ_INTERVAL_MS] or notified on fff1,
+     * for up to [QUANTUM_CONFIRM_TIMEOUT_MS]. Without an answer the link is
+     * retired, so a late one cannot confirm a later request. [answering]: the
+     * command written just before, whose refusal may still reach fff4 while the
+     * list is read; never set for a precondition list, where an old refusal
+     * would block the next send.
+     */
     private suspend fun requestQuantumRouteListLocked(
         expectedQuantumBoard: BoardLayerBoardIdentity? = null,
+        answering: QuantumCommand? = null,
     ): Boolean {
         if (expectedQuantumBoard != null &&
             !quantumBoardWriteFenceMatches(
@@ -2059,28 +2384,28 @@ class BoardBleConnection(
             // Real Quantum XL controllers acknowledge the write transport but
             // do not emit an fff1 notification for REQUEST_USER_ROUTE_LIST.
             // They publish the requested complete 0x47 snapshot through fff4
-            // instead. Read it under the same GATT/write mutex and generation;
-            // notification-only controllers remain supported by the wait
-            // below (including a notification arriving during this read).
-            delay(50)
-            if (hasFreshExplicitQuantumRouteList(before, _quantumControllerState.value)) {
-                return true
+            // instead, a moment later: read it again until it is the list,
+            // under the same GATT/write mutex and generation. Notification-only
+            // controllers answer through fff1 in the meantime.
+            var waitedMs = 0L
+            while (waitedMs < QUANTUM_CONFIRM_TIMEOUT_MS) {
+                delay(QUANTUM_ROUTE_LIST_READ_INTERVAL_MS)
+                waitedMs += QUANTUM_ROUTE_LIST_READ_INTERVAL_MS
+                if (hasFreshExplicitQuantumRouteList(before, _quantumControllerState.value)) return true
+                // Stop on a refusal of the list itself, or of [answering]: that
+                // send has failed and needs no list. Any other refusal (a late
+                // TURN_OFF_USER answer) must not cost the list a removal decides by.
+                val state = _quantumControllerState.value
+                if (state.lastFailure != null && (state.lastFailedCommand == null ||
+                        state.lastFailedCommand == QuantumCommand.REQUEST_USER_ROUTE_LIST ||
+                        state.lastFailedCommand == answering)
+                ) return false
+                readQuantumStateLocked(explicitRouteListResponse = true, refusalOf = answering)
+                if (hasFreshExplicitQuantumRouteList(before, _quantumControllerState.value)) return true
             }
-            readQuantumStateLocked(explicitRouteListResponse = true)
-            val afterRead = _quantumControllerState.value
-            if (hasFreshExplicitQuantumRouteList(before, afterRead)) return true
-            val state = awaitQuantumState(before.revision) { snapshot ->
-                snapshot.lastFailure != null ||
-                    snapshot.routeListRevision > before.routeListRevision
-            }
-            if (state == null) {
-                // Neither the serialized fff4 read nor fff1 produced the
-                // requested 0x47 snapshot. Retire the GATT so a late response
-                // can never confirm a later request.
-                disconnect()
-                return false
-            }
-            return hasFreshExplicitQuantumRouteList(before, state)
+            // Neither fff4 nor fff1 produced the requested 0x47 snapshot.
+            disconnect()
+            return false
         } finally {
             quantumRouteListRequestActive = false
             quantumNotificationAccumulator.reset()
@@ -2119,6 +2444,28 @@ class BoardBleConnection(
         return refreshed
     }
 
+    /**
+     * For a route the controller just accepted: null when the route list read
+     * right after it named it, else until when it is taken to be lit without
+     * being listed (now + [quantumPlayMinutes]). See [BoardClimbLayer.unlistedUntilElapsedMs].
+     */
+    fun quantumUnlistedUntil(
+        routeId: String,
+        userId: String,
+        color: Int,
+        nowElapsedMs: Long = SystemClock.elapsedRealtime(),
+    ): Long? {
+        val play = lastQuantumPlay
+        val listed = play != null && play.listed &&
+            play.matches(QuantumActivePlayer(routeId, userId, 0, color and 0xffffff))
+        return if (listed) null else nowElapsedMs + quantumPlayMinutes * 60_000L
+    }
+
+    private fun QuantumPlay.matches(player: QuantumActivePlayer): Boolean =
+        player.userId.equals(userId, ignoreCase = true) &&
+            player.routeId.equals(routeId, ignoreCase = true) &&
+            (player.color and 0xffffff) == color
+
     /** Refresh immediately when a connected app returns after its snapshot aged out. */
     fun refreshQuantumStateOnForeground(
         nowElapsedMs: Long = SystemClock.elapsedRealtime(),
@@ -2137,10 +2484,17 @@ class BoardBleConnection(
         scope.launch { refreshQuantumState() }
     }
 
-    /** Remove exactly one installation-owned Quantum layer, never all users. */
+    /**
+     * Turn off exactly one installation-owned Quantum identity, never all
+     * users. TURN_OFF_USER always goes out, also when the route list does not
+     * name the identity: a played route can be lit without being listed.
+     * Done when the route list read afterwards does not name the identity,
+     * even if the controller refused: an identity without a route (a picture
+     * past its play time) has nothing to turn off. Without a list, done when
+     * acknowledged and not refused.
+     */
     suspend fun removeQuantumLayer(
         userId: String,
-        expectedRouteId: String? = null,
         expectedQuantumBoard: BoardLayerBoardIdentity? = null,
     ): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED ||
@@ -2154,33 +2508,35 @@ class BoardBleConnection(
         ) return false
         // Never allow the protocol's anonymous sentinel to become a deletion
         // target. Installation layer identities are stable, non-zero UUIDs.
-        if (!isScopedQuantumUserId(userId, ownsQuantumUserId) || expectedRouteId == null) return false
-        // A retained wall can change through another eWalls client while our
-        // rack is open. Refresh immediately before the scoped command; absence
-        // is already the desired result and must not produce a speculative write.
-        if (!requestQuantumRouteListLocked(expectedQuantumBoard)) return false
-        val currentPlayer = _quantumControllerState.value.players.firstOrNull {
-            it.userId.equals(userId, ignoreCase = true)
-        } ?: return true
-        val playersBefore = _quantumControllerState.value.players
-        if (!currentPlayer.routeId.equals(expectedRouteId, ignoreCase = true)) return false
+        if (!isScopedQuantumUserId(userId, ownsQuantumUserId)) return false
         _connectionState.value = ConnectionState.SENDING
         disconnectJob?.cancel()
         try {
             _quantumControllerState.value = _quantumControllerState.value.copy(lastFailure = null)
+            quantumNotificationAccumulator.reset()
             if (!writeQuantumFrames(
                     listOf(QuantumBoardPacketEncoder.turnOffUser(userId)),
                     expectedQuantumBoard,
                 )
             ) return false
-            // Confirmation is a fresh complete snapshot, not an optimistic
-            // local deletion or a delta copied over an older player list.
-            if (!requestQuantumRouteListLocked(expectedQuantumBoard)) return false
-            return isQuantumScopedRemovalConfirmed(
-                state = _quantumControllerState.value,
-                playersBefore = playersBefore,
-                userId = userId,
-            )
+            val refused = readQuantumAnswerLocked(QuantumCommand.TURN_OFF_BY_USER)
+            // The list decides, so a refusal still in fff4 while it is read (the
+            // XL publishes the list a moment later) is no reason to stop reading.
+            val listAnswered = requestQuantumRouteListLocked(expectedQuantumBoard)
+            val refusal = refused ?: quantumRefusalOf(QuantumCommand.TURN_OFF_BY_USER)
+            val off = if (listAnswered) {
+                _quantumControllerState.value.players.none { it.userId.equals(userId, ignoreCase = true) }
+            } else {
+                refusal == null
+            }
+            if (!off && refusal != null) {
+                // The list request cleared it; the user should see the board's reason.
+                _quantumControllerState.value = _quantumControllerState.value.copy(
+                    lastFailure = refusal,
+                    lastFailedCommand = QuantumCommand.TURN_OFF_BY_USER,
+                )
+            }
+            return off
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
@@ -2189,11 +2545,19 @@ class BoardBleConnection(
         }
     }
 
-    private suspend fun awaitQuantumState(
-        afterRevision: Long,
-        predicate: (QuantumControllerState) -> Boolean,
-    ): QuantumControllerState? = withTimeoutOrNull(QUANTUM_CONFIRM_TIMEOUT_MS) {
-        quantumControllerState.first { it.revision > afterRevision && predicate(it) }
+    /** Cleaning for [board], with as many holds per section as its controller takes at once. */
+    internal fun attachCleaning(board: DiscoveredBoard) {
+        if (board.boardBrand == BoardBrand.MOONBOARD) {
+            // One cleaning frame carries one LED per hold; sections fill it up to the box's limit.
+            cleaning.attach(BoardCleaningStorage.key(board), MoonBoardFrameEncoder.MAX_FRAME_LEDS) {
+                MoonBoardFrameEncoder.fitsController(MoonBoardFrameEncoder.encodeCleaning(it))
+            }
+        } else cleaning.attach(
+            BoardCleaningStorage.key(board),
+            if (board.boardBrand.usesAuroraProtocol)
+                BoardPacketEncoder.cleaningHoldLimit(board.apiLevel, BoardPacketEncoder.ledsPerHoldFor(board.boardBrand))
+            else Int.MAX_VALUE,
+        )
     }
 
     /** Cleaning owns the projection until explicitly finished. Both operations
@@ -2203,6 +2567,7 @@ class BoardBleConnection(
     suspend fun startCleaning(expectedAddress: String): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED ||
             currentBoard?.address != expectedAddress || !cleaningState.value.available) return false
+        shinyWallShown = null
         disconnectJob?.cancel()
         try {
             cleaning.start(
@@ -2210,6 +2575,10 @@ class BoardBleConnection(
                     if (_connectedBoardBrand.value == BoardBrand.MOONBOARD) {
                         MoonBoardFrameEncoder.encodeCleaning(positions).toList()
                             .chunked(BoardPacketEncoder.BLE_MTU).map { it.toByteArray() }
+                    } else if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
+                        // Shiny Wall cleaning positions are placement ids, which
+                        // carry the variant; the holds light in the hand colour.
+                        ShinyWallFrameEncoder.highlightWrites(positions, negotiatedMtu).orEmpty()
                     } else {
                         encoder.encodeClimb(positions.sorted().map { it to BoardPacketEncoder.COLOR_CLEANING })
                     }
@@ -2223,12 +2592,16 @@ class BoardBleConnection(
 
     suspend fun finishCleaning(expectedAddress: String, markCleaned: Boolean): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED || currentBoard?.address != expectedAddress) return false
+        shinyWallShown = null
         try {
             cleaning.finish(
                 markCleaned = markCleaned,
                 clear = {
-                    if (_connectedBoardBrand.value == BoardBrand.MOONBOARD) listOf("l##".encodeToByteArray())
-                    else encoder.encodeClear()
+                    when (_connectedBoardBrand.value) {
+                        BoardBrand.MOONBOARD -> listOf("l##".encodeToByteArray())
+                        BoardBrand.SHINYWALL -> ShinyWallFrameEncoder.clearWrites(negotiatedMtu)
+                        else -> encoder.encodeClear()
+                    }
                 },
                 write = { writeCleaningChunks(it) },
             )
@@ -2239,11 +2612,26 @@ class BoardBleConnection(
 
     // Aurora keeps the link's pacing: a cleaning frame is the longest write a
     // write-only Kilter-built box gets.
-    private suspend fun writeCleaningChunks(chunks: List<ByteArray>): Boolean = writeChunks(
-        chunks,
-        interChunkDelayMs = if (_connectedBoardBrand.value == BoardBrand.MOONBOARD)
-            MOONBOARD_UART_INTER_CHUNK_DELAY_MS else writePacingMs,
-    )
+    private suspend fun writeCleaningChunks(chunks: List<ByteArray>): Boolean {
+        if (_connectedBoardBrand.value == BoardBrand.MOONBOARD &&
+            moonBoardFrameRefused(chunks.fold(ByteArray(0)) { frame, chunk -> frame + chunk })
+        ) return false
+        return writeChunks(
+            chunks,
+            interChunkDelayMs = when (_connectedBoardBrand.value) {
+                BoardBrand.MOONBOARD -> MOONBOARD_UART_INTER_CHUNK_DELAY_MS
+                else -> writePacingMs
+            },
+        )
+    }
+
+    /** The one check before every MoonBoard frame this phone builds: a frame the box
+     *  can't take whole is not sent ([MoonBoardFrameEncoder.fitsController]). */
+    private fun moonBoardFrameRefused(frame: ByteArray): Boolean {
+        if (MoonBoardFrameEncoder.fitsController(frame)) return false
+        Log.w(TAG, "Refusing a MoonBoard frame of ${MoonBoardFrameEncoder.ledCount(frame)} LEDs and ${frame.size} bytes")
+        return true
+    }
 
     suspend fun resendWithColors(roleColors: Map<Int, Int>): Boolean {
         val holds = lastHolds ?: return false
@@ -2251,7 +2639,7 @@ class BoardBleConnection(
         if (lastSendBoardBrand != _connectedBoardBrand.value ||
             lastSendBoardAddress?.equals(currentBoard?.address, ignoreCase = true) != true
         ) return false
-        return sendClimb(holds, ledMap, roleColors)
+        return sendClimb(holds, ledMap, roleColors, climbUuid = lastClimbUuid)
     }
 
     suspend fun sendRawChunks(
@@ -2261,10 +2649,12 @@ class BoardBleConnection(
         if (cleaningState.value.active) return false
         val ticket = cleaning.ticket()
         if (_connectionState.value != ConnectionState.CONNECTED ||
-            _connectedBoardBrand.value == BoardBrand.QUANTUM ||
+            !auroraPacketsAllowed(_connectedBoardBrand.value) ||
             !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
         ) return false
         val success = writeChunks(chunks)
+        // Relayed bytes are not a climb the LED animation knows.
+        _litFrame.value = null
         if (success) cleaning.forgetProjection(ticket)
         return success
     }
@@ -2273,26 +2663,112 @@ class BoardBleConnection(
      * Encode [leds] ((position, colourByte) pairs) with the CONNECTED board's
      * encoder — the apiLevel/ledsPerHold configured in [connect] — and write
      * them. Used by the easter animation so an @2 legacy board gets v2
-     * packets instead of frames from a hardcoded API-3 encoder.
+     * packets instead of frames from a hardcoded API-3 encoder, and by PaintBox.
+     *
+     * @param maxPowerW a lower @2 power budget for this frame (headroom), or
+     *   null for the board's full budget.
      */
     suspend fun sendRawLeds(
         leds: List<Pair<Int, Int>>,
         expectedBrand: BoardBrand? = null,
-    ): Boolean = writeMutex.withLock {
-        if (cleaningState.value.active) return false
+        maxPowerW: Double? = null,
+    ): Boolean = sendRawFrame(leds, expectedBrand, maxPowerW, userSend = true).done
+
+    /**
+     * [sendRawLeds] that also tells which [boardWrites] count its write had.
+     *
+     * @param userSend a send the user sees (PaintBox, the easter animation): the link shows
+     *   [ConnectionState.SENDING] meanwhile and the idle timer starts again. The board-size
+     *   check leaves both alone: its sheet lights again whenever the link turns ready.
+     */
+    suspend fun sendRawFrame(
+        leds: List<Pair<Int, Int>>,
+        expectedBrand: BoardBrand? = null,
+        maxPowerW: Double? = null,
+        userSend: Boolean = false,
+    ): BoardWrite = writeMutex.withLock {
+        if (cleaningState.value.active) return BoardWrite.NONE
         val ticket = cleaning.ticket()
         if (_connectionState.value != ConnectionState.CONNECTED ||
-            _connectedBoardBrand.value == BoardBrand.QUANTUM ||
+            !auroraPacketsAllowed(_connectedBoardBrand.value) ||
             !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
-        ) return false
-        if (encoder.litNothing(leds)) {
-            Log.w(TAG, "Refusing an API-2 frame of ${leds.size} LEDs: the 18 W budget would light none of them")
-            return false
+        ) return BoardWrite.NONE
+        val frameEncoder = maxPowerW?.let(encoder::withMaxPower) ?: encoder
+        if (frameEncoder.litNothing(leds)) {
+            Log.w(TAG, "Refusing an API-2 frame of ${leds.size} LEDs: the power budget would light none of them")
+            return BoardWrite.NONE
         }
-        val chunks = encoder.encodeClimb(leds)
-        val success = writeChunks(chunks)
-        if (success) cleaning.projected(ticket, chunks)
-        return success
+        if (userSend) {
+            _connectionState.value = ConnectionState.SENDING
+            disconnectJob?.cancel()
+        }
+        try {
+            val chunks = frameEncoder.encodeClimb(leds)
+            val before = _boardWrites.value
+            // A frame that has started is finished even if the caller leaves: a
+            // torn Aurora packet would garble the next send (see sendAnimationLeds).
+            val success = withContext(NonCancellable) { writeChunks(chunks) }
+            // The easter frames replace whatever climb was lit.
+            _litFrame.value = null
+            if (success) cleaning.projected(ticket, chunks)
+            // Read under the lock: the next writer's count must not pass for this one.
+            return BoardWrite(success, _boardWrites.value.takeIf { it != before })
+        } finally {
+            if (userSend && _connectionState.value == ConnectionState.SENDING) {
+                _connectionState.value = ConnectionState.CONNECTED
+                resetIdleTimer()
+            }
+        }
+    }
+
+    /**
+     * Push one LED-animation frame made from [basedOn], the lit frame the caller
+     * read. Background traffic, so it gives way instead of fighting:
+     *
+     * - [FrameSendResult.DEFERRED] instead of a write when the link is busy with a
+     *   user send ([ConnectionState.SENDING]), when hold cleaning owns the wall,
+     *   when the connected board is not [expectedBrand] or speaks no Aurora
+     *   packets, when [basedOn] is no longer what the wall shows (a climb sent or
+     *   the wall cleared while this frame waited for [writeMutex] — writing it
+     *   would repaint a climb the user has moved on from), or when an API-2 box
+     *   would show the frame dark under its 18 W budget.
+     * - The idle-disconnect timer is left alone: an animation frame is not a
+     *   climb, so the board is still released on schedule after the last real
+     *   send. [restoreStaticBeforeIdleRelease] puts the climb's own colours back
+     *   before it goes.
+     * - A frame that has started is finished even if the caller is cancelled: a
+     *   torn Aurora packet, or a write callback arriving after its waiter left,
+     *   would garble the next send.
+     *
+     * The connection state is left alone: an animation frame is not a
+     * user-visible send.
+     */
+    suspend fun sendAnimationLeds(
+        basedOn: LitFrame,
+        leds: List<Pair<Int, Int>>,
+        expectedBrand: BoardBrand? = null,
+    ): FrameSendResult {
+        if (!animationFrameAllowed(basedOn, expectedBrand)) return FrameSendResult.DEFERRED
+        return writeMutex.withLock {
+            if (!animationFrameAllowed(basedOn, expectedBrand)) return@withLock FrameSendResult.DEFERRED
+            if (encoder.litNothing(leds)) return@withLock FrameSendResult.DEFERRED
+            val written = withContext(NonCancellable) { writeChunks(encoder.encodeClimb(leds)) }
+            if (written) {
+                animationFrameWrite = writeCount
+                FrameSendResult.SENT
+            } else {
+                FrameSendResult.FAILED
+            }
+        }
+    }
+
+    private fun animationFrameAllowed(basedOn: LitFrame, expectedBrand: BoardBrand?): Boolean {
+        val brand = _connectedBoardBrand.value
+        return _connectionState.value == ConnectionState.CONNECTED &&
+            !cleaningState.value.active &&
+            _litFrame.value === basedOn &&
+            brand?.usesAuroraProtocol == true &&
+            boardScopedCommandAllowed(brand, expectedBrand)
     }
 
     /**
@@ -2321,20 +2797,26 @@ class BoardBleConnection(
         if (_connectionState.value != ConnectionState.CONNECTED ||
             !moonBoardCommandAllowed(_connectedBoardBrand.value)
         ) return false
+        val payload = MoonBoardFrameEncoder.encode(frames, variant, ledMode)
+        if (moonBoardFrameRefused(payload)) return false
 
         _connectionState.value = ConnectionState.SENDING
         // Park any pending idle-disconnect so it can't fire mid-send.
         // Re-armed from the finally below once we flip back to CONNECTED.
         disconnectJob?.cancel()
         try {
-            val payload = MoonBoardFrameEncoder.encode(frames, variant, ledMode)
             val chunks = payload.toList()
                 .chunked(BoardPacketEncoder.BLE_MTU)
                 .map { it.toByteArray() }
-            val success = writeChunks(
-                chunks,
-                interChunkDelayMs = MOONBOARD_UART_INTER_CHUNK_DELAY_MS,
-            )
+            // A full wall takes seconds over the UART pacing. Leaving meanwhile must
+            // not cut the `l#…#` frame short: the box would read the next send into it.
+            val success = withContext(NonCancellable) {
+                writeChunks(
+                    chunks,
+                    interChunkDelayMs = MOONBOARD_UART_INTER_CHUNK_DELAY_MS,
+                )
+            }
+            _litFrame.value = null
             if (success) cleaning.projected(cleaningTicket, chunks)
             return success
         } finally {
@@ -2348,22 +2830,107 @@ class BoardBleConnection(
         }
     }
 
+    /**
+     * Shows a climb on the connected Shiny Wall: the clear, then one state
+     * vector with a code for every physical hold of [variant], as the
+     * controller's own app sends it. Refuses holds that do not belong to
+     * [variant] instead of lighting a shifted or partial route.
+     *
+     * @param holds the climb's holds; placement ids carry the variant
+     *   ([ShinyWallVariant.placementId]).
+     */
+    suspend fun sendShinyWallClimb(
+        holds: List<BoardHold>,
+        variant: ShinyWallVariant,
+    ): Boolean = writeMutex.withLock { writeShinyWallLocked(holds, variant, incremental = false) }
+
+    /**
+     * Updates the connected Shiny Wall to show [holds], sending only the holds
+     * that differ from what this link last showed (`*<role><hold>/….`), so the
+     * wall does not go dark in between — for the editor's live preview and
+     * the wall games. Falls back to the full route when the wall's state is
+     * unknown or many holds change.
+     */
+    suspend fun updateShinyWallHolds(
+        holds: List<BoardHold>,
+        variant: ShinyWallVariant,
+    ): Boolean = writeMutex.withLock { writeShinyWallLocked(holds, variant, incremental = true) }
+
+    private suspend fun writeShinyWallLocked(
+        holds: List<BoardHold>,
+        variant: ShinyWallVariant,
+        incremental: Boolean,
+    ): Boolean {
+        if (cleaningState.value.active) return false
+        val cleaningTicket = cleaning.ticket()
+        if (_connectionState.value != ConnectionState.CONNECTED ||
+            !shinyWallCommandAllowed(_connectedBoardBrand.value)
+        ) return false
+        val target = ShinyWallFrameEncoder.stateVector(holds, variant)
+        val fullWrites = ShinyWallFrameEncoder.routeWrites(holds, variant, negotiatedMtu)
+        if (target == null || fullWrites == null) {
+            Log.w(TAG, "Refusing Shiny Wall route: ${holds.size} holds do not all belong to ${variant.code}")
+            return false
+        }
+        val shown = shinyWallShown?.takeIf { incremental && it.first == variant }?.second
+        val writes = if (shown != null) {
+            val changed = target.indices.count { shown[it] != target[it] }
+            if (changed == 0) return true
+            if (changed <= ShinyWallFrameEncoder.MAX_CHANGES_PER_MESSAGE) {
+                ShinyWallFrameEncoder.chunks(ShinyWallFrameEncoder.encodeChanges(shown, target)!!, negotiatedMtu)
+            } else fullWrites
+        } else fullWrites
+
+        _connectionState.value = ConnectionState.SENDING
+        // Park any pending idle-disconnect so it can't fire mid-send.
+        // Re-armed from the finally below once we flip back to CONNECTED.
+        disconnectJob?.cancel()
+        try {
+            val success = writeChunks(writes)
+            Log.i(TAG, "Shiny Wall ${if (writes === fullWrites) "route" else "changes"} ${variant.code}: ${holds.size} holds, ${writes.size} writes, mtu=$negotiatedMtu ok=$success")
+            shinyWallShown = if (success) variant to target else null
+            _litFrame.value = null
+            // Restoring after hold cleaning always replays the complete route.
+            if (success) cleaning.projected(cleaningTicket, fullWrites)
+            return success
+        } finally {
+            if (_connectionState.value == ConnectionState.SENDING) {
+                _connectionState.value = ConnectionState.CONNECTED
+            }
+            resetIdleTimer()
+        }
+    }
+
     /** Generic single-projection clear. Quantum is intentionally excluded:
      * its global command removes every eWalls user, so only the distinctly
      * named explicit API below may authorize it. [expectedBrand] fences
      * long-running producers such as Kilter animations across board swaps. */
-    suspend fun clearBoard(expectedBrand: BoardBrand? = null): Boolean = writeMutex.withLock {
-        if (cleaningState.value.active) return false
+    suspend fun clearBoard(expectedBrand: BoardBrand? = null): Boolean = clearBoardWrite(expectedBrand).done
+
+    /**
+     * [clearBoard] that also tells which [boardWrites] count its last write had. With [ifLastWrite]
+     * it clears only while that is still the last count, checked under the write lock: a frame
+     * written since is someone else's and stays.
+     */
+    suspend fun clearBoardWrite(
+        expectedBrand: BoardBrand? = null,
+        ifLastWrite: Long? = null,
+    ): BoardWrite = writeMutex.withLock {
+        if (ifLastWrite != null && _boardWrites.value != ifLastWrite) return BoardWrite.NONE
+        if (cleaningState.value.active) return BoardWrite.NONE
         val connectedBrand = _connectedBoardBrand.value
         if (_connectionState.value != ConnectionState.CONNECTED ||
             !boardScopedCommandAllowed(connectedBrand, expectedBrand) ||
             !genericBoardClearAllowed(connectedBrand)
-        ) return false
+        ) return BoardWrite.NONE
 
-        return clearConnectedBoardLocked(
+        val before = _boardWrites.value
+        val cleared = clearConnectedBoardLocked(
             allowQuantumGlobalClear = false,
             expectedQuantumBoard = null,
         )
+        // Read under the lock: the next writer's count must not pass for this one.
+        return BoardWrite(cleared, _boardWrites.value.takeIf { it != before })
     }
 
     /** Deliberate global Quantum clear. Callers must put this behind an
@@ -2391,6 +2958,7 @@ class BoardBleConnection(
         allowQuantumGlobalClear: Boolean,
         expectedQuantumBoard: BoardLayerBoardIdentity?,
     ): Boolean {
+        shinyWallShown = null
         _connectionState.value = ConnectionState.SENDING
         // Park any pending idle-disconnect so it can't fire mid-send.
         // Re-armed from the finally below once we flip back to CONNECTED.
@@ -2415,11 +2983,18 @@ class BoardBleConnection(
                 return _quantumControllerState.value.players.isEmpty()
             }
             val ticket = cleaning.ticket()
-            val chunks = if (_connectedBoardBrand.value == BoardBrand.MOONBOARD) {
-                listOf(MoonBoardFrameEncoder.encodeCleaning(emptySet()))
-            } else encoder.encodeClear()
+            val chunks = when (_connectedBoardBrand.value) {
+                BoardBrand.MOONBOARD -> listOf(MoonBoardFrameEncoder.encodeCleaning(emptySet()))
+                BoardBrand.SHINYWALL -> ShinyWallFrameEncoder.clearWrites(negotiatedMtu)
+                else -> encoder.encodeClear()
+            }
             val success = writeChunks(chunks)
-            if (success) cleaning.projected(ticket, chunks)
+            if (success) {
+                cleaning.projected(ticket, chunks)
+                // Nothing is lit any more — an LED animation watching this must
+                // stop rather than re-light the last climb.
+                _litFrame.value = null
+            }
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
@@ -2479,13 +3054,18 @@ class BoardBleConnection(
         cleaning.attach(null)
         _connectedBoardDescriptor.value = null
         _connectionState.value = ConnectionState.DISCONNECTED
+        sizeConfirmation = null
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null
+        // Cleared here rather than only in the disconnect callback: with no GATT
+        // object left there is no callback to wait for, and an animation loop must
+        // stop seeing a lit board the moment the user pulls the plug.
+        _litFrame.value = null
         _connectedQuantumModel.value = null
         serviceDiscoveryGatt = null
         serviceDiscoveryHandledGatt = null
-        quantumMtuGatt = null
-        quantumMtu = DEFAULT_ATT_MTU
+        mtuRequestGatt = null
+        negotiatedMtu = DEFAULT_ATT_MTU
 
         if (activeGatt != null) {
             userDisconnecting = true

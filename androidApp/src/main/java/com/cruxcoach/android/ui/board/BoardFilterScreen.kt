@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
@@ -61,6 +62,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.InfoText
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.WarningYellow
 import com.cruxcoach.domain.board.QuantumOverlapFilter
@@ -98,7 +100,12 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
         if (state.filter.ungradedOnly) add(stringResource(R.string.board_filter_ungraded_only))
         if (state.filter.originFilter != OriginFilter.ALL) add(stringResource(R.string.board_filter_origin))
         if (state.filter.climbTypeFilter != ClimbTypeFilter.BOULDER) add(stringResource(R.string.board_filter_type))
-        if (state.filter.quantumRuleMask != 0L) add(stringResource(R.string.board_filter_quantum_rules))
+        if (state.filter.quantumRuleMask != 0L) {
+            add(stringResource(
+                if (activeBrand == BoardBrand.SHINYWALL) R.string.board_filter_shinywall_tags
+                else R.string.board_filter_quantum_rules
+            ))
+        }
         if (state.filter.quantumOverlapFilter.active) add(stringResource(R.string.board_filter_quantum_overlap_title))
     }
     val compactReset = LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale > 1.3f
@@ -143,8 +150,8 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 }
 
                 fun toUnifiedIndex(sliderPos: Float): Int {
-                    if (frenchMode) return sliderPos.toInt()
-                    return vScaleIndices.getOrElse(sliderPos.toInt()) { vScaleIndices.last() }
+                    if (frenchMode) return sliderPos.roundToInt()
+                    return vScaleIndices.getOrElse(sliderPos.roundToInt()) { vScaleIndices.last() }
                 }
 
                 val minLabel = GradeDisplayHelper.formatByIndex(
@@ -199,6 +206,16 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 FilterChoiceRow(stringResource(R.string.board_filter_order), state.filter.sortDirection,
                     listOf(SortDirection.DESC to stringResource(R.string.board_filter_sort_desc), SortDirection.ASC to stringResource(R.string.board_filter_sort_asc)),
                     "board_sort_direction", { if (it != state.filter.sortDirection) viewModel.toggleSortDirection() })
+            } else {
+                // A random order has no direction; in its place: a new order.
+                androidx.compose.material3.OutlinedButton(
+                    onClick = viewModel::reshuffle,
+                    modifier = Modifier.padding(horizontal = 16.dp).testTag("board_filter_reshuffle"),
+                ) {
+                    Icon(Icons.Default.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+                    Text(stringResource(R.string.board_reshuffle))
+                }
             }
             HorizontalDivider()
             ListItem(
@@ -231,7 +248,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 FilterSwitchRow(stringResource(R.string.board_filter_my_climbs), state.filter.myClimbsOnly, viewModel::updateMyClimbsFilter, "board_filter_my_climbs")
                 if (activeBrand.supportsBenchmarkFilter) FilterSwitchRow(stringResource(R.string.board_filter_benchmarks_only), state.filter.benchmarkOnly, viewModel::updateBenchmarkFilter, "board_filter_benchmark", enabled = !state.filter.ungradedOnly)
                 Text(stringResource(R.string.board_filter_min_ascents, state.filter.minAscensionists), style = MaterialTheme.typography.titleMedium)
-                Slider(value = state.filter.minAscensionists.toFloat(), onValueChange = { viewModel.setMinAscensionists(it.toInt()) },
+                Slider(value = state.filter.minAscensionists.toFloat(), onValueChange = { viewModel.setMinAscensionists(it.roundToInt()) },
                     onValueChangeFinished = { viewModel.commitFilterChange() }, valueRange = 0f..50f, steps = 49,
                     enabled = !state.filter.myClimbsOnly && !state.filter.ungradedOnly)
                 if (activeBrand.supportsClimbTypeFilter) FilterChoiceRow(stringResource(R.string.board_filter_type), state.filter.climbTypeFilter,
@@ -240,7 +257,11 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 val originOptions = buildList {
                     add(OriginFilter.ALL to stringResource(R.string.board_filter_all))
                     add(OriginFilter.CRUXCOACH to stringResource(R.string.board_filter_origin_cruxcoach))
-                    add(OriginFilter.KILTER to stringResource(if (activeBrand == BoardBrand.QUANTUM) R.string.board_filter_origin_quantum else R.string.board_filter_origin_kilter))
+                    add(OriginFilter.KILTER to stringResource(when (activeBrand) {
+                        BoardBrand.QUANTUM -> R.string.board_filter_origin_quantum
+                        BoardBrand.SHINYWALL -> R.string.board_filter_origin_shinywall
+                        else -> R.string.board_filter_origin_kilter
+                    }))
                     if (activeBrand.supportsBoardSeshOrigin) add(OriginFilter.BOARDSESH to stringResource(R.string.board_filter_origin_boardsesh))
                 }
                 FilterChoiceRow(stringResource(R.string.board_filter_origin), state.filter.originFilter, originOptions, "board_filter_origin", viewModel::updateOriginFilter)
@@ -267,8 +288,8 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                                 onClick = { viewModel.toggleQuantumRuleFilter(rule) },
                                 label = { Text(label, style = MaterialTheme.typography.bodyLarge) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                                    selectedLabelColor = OrangeAccent
+                                    selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                                    selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
                                 ),
                                 modifier = Modifier.heightIn(min = 48.dp)
                             )
@@ -300,8 +321,8 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                                     state.quantumLayers.available,
                                 label = { Text(label, style = MaterialTheme.typography.bodyLarge) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                                    selectedLabelColor = OrangeAccent,
+                                    selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                                    selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer,
                                 ),
                                 modifier = Modifier
                                     .heightIn(min = 48.dp)
@@ -329,9 +350,38 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                         modifier = Modifier.testTag("board_filter_quantum_overlap_hint"),
                     )
                 }
+                if (activeBrand == BoardBrand.SHINYWALL) {
+                    ShinyWallTagFilter(state.filter.quantumRuleMask, viewModel::toggleShinyWallTagFilter)
+                }
 
 
             }
+        }
+    }
+}
+
+/** Shiny Wall's route categories; a route matches when it has every selected one. */
+@Composable
+internal fun ShinyWallTagFilter(selectedMask: Long, onToggle: (com.cruxcoach.domain.board.ShinyWallTag) -> Unit) {
+    Text(
+        stringResource(R.string.board_filter_shinywall_tags),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold
+    )
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        com.cruxcoach.domain.board.ShinyWallTag.entries.forEach { tag ->
+            FilterChip(
+                selected = (selectedMask and tag.bit) != 0L,
+                onClick = { onToggle(tag) },
+                label = { Text(stringResource(shinyWallTagLabel(tag)), style = MaterialTheme.typography.bodyLarge) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                    selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
+                ),
+            )
         }
     }
 }
@@ -403,4 +453,15 @@ private fun FilterTermInfoDialog(onDismiss: () -> Unit) {
 @Composable
 private fun FilterTermEntry(termRes: Int, descriptionRes: Int) {
     InfoText(stringResource(termRes) + "\n" + stringResource(descriptionRes))
+}
+
+/** Label of a Shiny Wall category or foot rule (shared by the filter and the detail screen). */
+internal fun shinyWallTagLabel(tag: com.cruxcoach.domain.board.ShinyWallTag): Int = when (tag) {
+    com.cruxcoach.domain.board.ShinyWallTag.TECHNICAL -> R.string.board_shinywall_tag_technical
+    com.cruxcoach.domain.board.ShinyWallTag.PHYSICAL -> R.string.board_shinywall_tag_physical
+    com.cruxcoach.domain.board.ShinyWallTag.CRIMPY -> R.string.board_shinywall_tag_crimpy
+    com.cruxcoach.domain.board.ShinyWallTag.ENDURANCE -> R.string.board_shinywall_tag_endurance
+    com.cruxcoach.domain.board.ShinyWallTag.CRUXY -> R.string.board_shinywall_tag_cruxy
+    com.cruxcoach.domain.board.ShinyWallTag.ONLY_HANDS -> R.string.board_shinywall_tag_only_hands
+    com.cruxcoach.domain.board.ShinyWallTag.OPEN_FEET -> R.string.board_shinywall_tag_open_feet
 }

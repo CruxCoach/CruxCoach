@@ -63,6 +63,17 @@ private val boardGradeScaleMigrationV1 = object : DataMigration<Preferences> {
 internal fun remapOldGradeIndexToV1(old: Int): Int =
     (old + if (old >= 2) 2 else 1).coerceIn(0, 24)
 
+/** Bound for [PreferenceKeys.SHINY_VARIANT_HINT_ANSWERED]: past it the set starts
+ *  over, which at worst asks about an old controller once more. */
+internal const val MAX_ANSWERED_SHINY_VARIANT_HINTS = 32
+
+internal fun rememberAnsweredShinyVariantHint(answered: Set<String>, controllerName: String): Set<String> =
+    when {
+        controllerName in answered -> answered
+        answered.size >= MAX_ANSWERED_SHINY_VARIANT_HINTS -> setOf(controllerName)
+        else -> answered + controllerName
+    }
+
 /**
  * Per-key DataStore keys — preferences that belong to a specific Nostr identity.
  * These are stored in a separate DataStore file per pubkey prefix.
@@ -309,6 +320,11 @@ object PreferenceKeys {
     val BOARD_LAYOUT_ID = intPreferencesKey("board_layout_id")
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
     val BOARD_DOWNLOAD_BRANDS = stringSetPreferencesKey("board_download_brands")
+    /** Advertised names of Shiny Wall controllers whose variant suggestion the
+     *  user already answered; a name only hints a variant, so it is asked once. */
+    val SHINY_VARIANT_HINT_ANSWERED = stringSetPreferencesKey("shiny_variant_hint_answered")
+    /** Years whose year-in-review card the user closed (#64); the review itself stays in the statistics. */
+    val YEAR_REVIEW_HIDDEN_YEARS = stringSetPreferencesKey("year_review_hidden_years")
     val BOARD_BRAND = stringPreferencesKey("board_brand")
     val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
     val CLIMB_HISTORY_RETENTION_DAYS = intPreferencesKey("climb_history_retention_days")
@@ -333,6 +349,17 @@ object PreferenceKeys {
     // exactly once — see migrateToManualSendDefaultIfNeeded).
     val MANUAL_SEND_DEFAULT_MIGRATED = booleanPreferencesKey("manual_send_default_migrated_v022")
 
+    /**
+     * Selected LED animation id — see `com.cruxcoach.android.led.LedAnimationRegistry`.
+     * Unknown or absent means "none": static colours, existing behaviour.
+     */
+    val LED_ANIMATION = stringPreferencesKey("led_animation")
+    /** Keep a running LED effect going while another app is open. Off by default. */
+    val LED_ANIMATION_IN_BACKGROUND = booleanPreferencesKey("led_animation_in_background")
+    /** The flashing-light notice was confirmed once; it is not asked again. */
+    val LED_STROBE_NOTICE_SEEN = booleanPreferencesKey("led_strobe_notice_seen")
+    /** PaintBox explained once why a picture is shown dimmer. */
+    val PAINTBOX_DIM_HINT_SEEN = booleanPreferencesKey("paintbox_dim_hint_seen")
     val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
     // Seconds-precision successor to BLE_AUTO_DISCONNECT_MINUTES. Read
     // by bleAutoDisconnectSeconds, which transparently migrates the
@@ -401,6 +428,8 @@ object PreferenceKeys {
     val BOARD_MIN_ASCENSIONISTS = intPreferencesKey("board_min_ascensionists")
     val BOARD_SORT_FIELD = stringPreferencesKey("board_sort_field")
     val BOARD_SORT_DIRECTION = stringPreferencesKey("board_sort_direction")
+    /** Knot (#154): the safety hint was shown before a first game. */
+    val KNOT_SAFETY_SEEN = booleanPreferencesKey("knot_safety_seen")
     val BOARD_STATUS_FILTER = stringPreferencesKey("board_status_filter")
     val BOARD_CLIMB_TYPE = stringPreferencesKey("board_climb_type")
     val BOARD_BENCHMARK_ONLY = booleanPreferencesKey("board_benchmark_only")
@@ -434,6 +463,8 @@ object PreferenceKeys {
     val LAST_CLIMB_PROJECTION_SURVIVES_DISCONNECT =
         booleanPreferencesKey("last_climb_projection_survives_disconnect")
     val CRASH_REPORT_OPT_IN = booleanPreferencesKey("crash_report_opt_in")
+    // "Already a member" on the community hint after a report: hides it for good. Stays on the phone.
+    val COMMUNITY_REPORT_HINT_OFF = booleanPreferencesKey("community_report_hint_off")
     val LAST_ANNOUNCEMENT_CHECK = stringPreferencesKey("last_announcement_check")
     val ANNOUNCEMENTS_ENABLED = booleanPreferencesKey("announcements_enabled")
     val ANNOUNCEMENT_CAT_RELEASE = booleanPreferencesKey("announcement_cat_release")
@@ -575,6 +606,31 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS] =
                 (decodeBoardDownloadBrands(prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS]) - brands)
                     .map { it.wireValue }.toSet()
+        }
+    }
+
+    /** Shiny Wall controllers whose variant suggestion was answered (device-wide). */
+    val shinyVariantHintAnswered: Flow<Set<String>> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.SHINY_VARIANT_HINT_ANSWERED].orEmpty()
+    }
+
+    suspend fun markShinyVariantHintAnswered(controllerName: String) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.SHINY_VARIANT_HINT_ANSWERED] = rememberAnsweredShinyVariantHint(
+                prefs[PreferenceKeys.SHINY_VARIANT_HINT_ANSWERED].orEmpty(),
+                controllerName,
+            )
+        }
+    }
+
+    /** Years whose year-in-review card was closed. */
+    val yearReviewHiddenYears: Flow<Set<Int>> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.YEAR_REVIEW_HIDDEN_YEARS].orEmpty().mapNotNull { it.toIntOrNull() }.toSet()
+    }
+
+    suspend fun hideYearReviewCard(year: Int) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.YEAR_REVIEW_HIDDEN_YEARS] = prefs[PreferenceKeys.YEAR_REVIEW_HIDDEN_YEARS].orEmpty() + year.toString()
         }
     }
 
@@ -1138,6 +1194,57 @@ class UserPreferences(
     }
 
     /**
+     * The selected LED animation id. Collected directly by `LedAnimationEngine`,
+     * so switching animations takes effect while a climb is lit — no restart.
+     *
+     * Deliberately a plain string rather than an enum: the animation list is a
+     * registry the settings screen renders, and a value from a newer (or older,
+     * after an animation was removed) build must degrade to static colours
+     * instead of failing to parse.
+     */
+    val ledAnimation: Flow<String> = dataStore.data.map { prefs ->
+        // "none" == static colours. The id belongs to
+        // com.cruxcoach.android.led.LedAnimationRegistry; anything unknown
+        // resolves to the same thing there, so a removed animation degrades
+        // quietly instead of lighting nothing.
+        prefs[PreferenceKeys.LED_ANIMATION] ?: "none"
+    }
+
+    suspend fun setLedAnimation(id: String) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.LED_ANIMATION] = id
+        }
+    }
+
+    /**
+     * Keep a running LED effect going in other apps (to film the climb). Off by
+     * default: it keeps the board connection while the phone is in a pocket.
+     */
+    val ledAnimationInBackground: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.LED_ANIMATION_IN_BACKGROUND] ?: false
+    }
+
+    suspend fun setLedAnimationInBackground(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[PreferenceKeys.LED_ANIMATION_IN_BACKGROUND] = enabled }
+    }
+
+    val ledStrobeNoticeSeen: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.LED_STROBE_NOTICE_SEEN] ?: false
+    }
+
+    suspend fun setLedStrobeNoticeSeen() {
+        dataStore.edit { prefs -> prefs[PreferenceKeys.LED_STROBE_NOTICE_SEEN] = true }
+    }
+
+    val paintBoxDimHintSeen: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.PAINTBOX_DIM_HINT_SEEN] ?: false
+    }
+
+    suspend fun setPaintBoxDimHintSeen() {
+        dataStore.edit { prefs -> prefs[PreferenceKeys.PAINTBOX_DIM_HINT_SEEN] = true }
+    }
+
+    /**
      * BLE idle-disconnect timeout in seconds. New storage key since
      * 0.1.3; old installs had whole-minute granularity under
      * [PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES]. The fallback read
@@ -1415,6 +1522,11 @@ class UserPreferences(
 
     // Board browser filter persistence
     val boardAngle: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_ANGLE] ?: 40 }
+    val knotSafetySeen: Flow<Boolean> = dataStore.data.map { it[PreferenceKeys.KNOT_SAFETY_SEEN] ?: false }
+
+    suspend fun setKnotSafetySeen() {
+        dataStore.edit { it[PreferenceKeys.KNOT_SAFETY_SEEN] = true }
+    }
     val boardMinGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MIN_GRADE] ?: 0 }
     val boardMaxGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MAX_GRADE] ?: 16 }
     val boardMinAscensionists: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MIN_ASCENSIONISTS] ?: 0 }
@@ -1508,8 +1620,11 @@ class UserPreferences(
         // upgrading users discover and enable this prerequisite manually.
         it[PreferenceKeys.NEARBY_CLIMB_SHARING] ?: true
     }
+    /** Whether nearby users may ask this phone to release the board. Until it is
+     * set, it follows [nearbyClimbSharing], whose text promises that they can ask;
+     * the sharing switch sets both. A request is always a question, never a disconnect. */
     val allowRemoteDisconnect: Flow<Boolean> = dataStore.data.map {
-        it[PreferenceKeys.ALLOW_REMOTE_DISCONNECT] ?: false
+        it[PreferenceKeys.ALLOW_REMOTE_DISCONNECT] ?: it[PreferenceKeys.NEARBY_CLIMB_SHARING] ?: true
     }
 
     suspend fun setNearbyClimbSharing(enabled: Boolean) {
@@ -1605,6 +1720,14 @@ class UserPreferences(
 
     suspend fun setCrashReportOptIn(enabled: Boolean) {
         dataStore.edit { it[PreferenceKeys.CRASH_REPORT_OPT_IN] = enabled }
+    }
+
+    val communityReportHintOff: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.COMMUNITY_REPORT_HINT_OFF] ?: false
+    }
+
+    suspend fun setCommunityReportHintOff() {
+        dataStore.edit { it[PreferenceKeys.COMMUNITY_REPORT_HINT_OFF] = true }
     }
 
     val lastAnnouncementCheck: Flow<Long?> = dataStore.data.map {

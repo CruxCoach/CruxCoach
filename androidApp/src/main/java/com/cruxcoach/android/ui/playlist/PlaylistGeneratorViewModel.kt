@@ -169,7 +169,13 @@ class PlaylistGeneratorViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
     private val personalBoardRepo: PersonalBoardRepository,
     private val userPreferences: UserPreferences,
+    savedStateHandle: androidx.lifecycle.SavedStateHandle,
 ) : ViewModel() {
+
+    /** Preset from the training coach's board-day suggestion (route args); null for the plain generator. */
+    private val presetType: GeneratorType? = savedStateHandle.get<String>("type")
+        ?.let { t -> GeneratorType.entries.firstOrNull { it.name == t } }
+    private val presetMinutes: Int? = savedStateHandle.get<String>("minutes")?.toIntOrNull()
 
     private val _state = MutableStateFlow(PlaylistGeneratorState())
     val state = _state.asStateFlow()
@@ -215,6 +221,9 @@ class PlaylistGeneratorViewModel @Inject constructor(
                     } else ClimbTypeFilter.BOULDER,
                 )
             }
+            // The coach's board session: same wizard, its type and length chosen.
+            presetType?.let { setType(it) }
+            presetMinutes?.let { setDuration(it) }
             refreshPlan()
 
             refreshProfile(++profileRequest)

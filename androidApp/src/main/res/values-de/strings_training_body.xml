@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Körper-Tracking (FEAT-067). -->
+<resources>
+    <string name="trb_trend_info_text">Dein Gewicht schwankt von Tag zu Tag um 1–2\u00A0kg, vor allem durch Wasser, Salz, Essen und Training. Der Trend glättet diese Schwankungen – jede Messung zieht ihn nur ein Zehntel mit –, so siehst du, was sich wirklich verändert. Lücken sind kein Problem, gelegentliches Wiegen reicht.</string>
+    <string name="trb_tile_trend">Trend</string>
+    <string name="trb_tile_rate">Pro Woche</string>
+    <string name="trb_tile_entries">Messungen</string>
+    <string name="trb_direction_up">leicht steigend</string>
+    <string name="trb_direction_flat">stabil</string>
+    <string name="trb_direction_down">leicht fallend</string>
+    <string name="trb_direction_unknown">noch zu wenige Messungen</string>
+    <string name="trb_range_1m">1M</string>
+    <string name="trb_range_3m">3M</string>
+    <string name="trb_range_6m">6M</string>
+    <string name="trb_range_1y">1J</string>
+    <string name="trb_range_all">Alle</string>
+    <string name="trb_chart_description">Gewichtstrend vom %1$s bis %2$s, von %3$s auf %4$s.</string>
+    <string name="trb_chart_description_hidden">Gewichtstrend vom %1$s bis %2$s: %3$s.</string>
+    <string name="trb_no_weight">Noch kein Gewicht eingetragen. Tipp auf +, um zu starten – gelegentliches Wiegen reicht.</string>
+    <string name="trb_measurements">Messwerte</string>
+    <string name="trb_add_measurement">Messwert</string>
+    <string name="trb_delta">%1$s zum Vorwert</string>
+    <string name="trb_no_measurements">Noch keine Messwerte.</string>
+    <string name="trb_ape_index">Ape-Index</string>
+    <string name="trb_ape_info_text">Spannweite minus Körpergröße. Ein positiver Wert heißt: Deine Arme reichen weiter, als du groß bist – das hilft bei weiten Zügen. Er beschreibt deinen Körperbau, kein Trainingsziel. Trag Größe und Spannweite einmal ein.</string>
+    <string name="trb_ape_missing">Trag Größe und Spannweite ein, um deinen Ape-Index zu sehen.</string>
+    <string name="trb_strength_title">Kraft zu Gewicht</string>
+    <string name="trb_strength_info_text">Gezeigt wird die beste Last pro Trainingstag in Prozent deines Körpergewichts: beim Hängen Körpergewicht plus Zusatzlast, beim Blockheben das gehobene Gewicht, bei Klimmzügen mit Zusatzgewicht das geschätzte Maximum. Jeder Satz merkt sich das Körpergewicht seines Tages.</string>
+    <string name="trb_strength_empty">Noch keine Kraftwerte. Trag ein, was du in einer Übung schaffst, oder mach einen kurzen Test: Das ist der erste Punkt.</string>
+    <string name="trb_strength_best">Bestwert: %1$d\u00A0%%</string>
+    <string name="trb_strength_chart_description">Kraft zu Gewicht im Verlauf</string>
+    <string name="trb_recent">Letzte Einträge</string>
+    <string name="trb_legacy_badge">aus älterer Version</string>
+    <string name="trb_hidden_value">ausgeblendet</string>
+    <string name="trb_dialog_add_title">Messwert eintragen</string>
+    <string name="trb_dialog_edit_title">Messwert bearbeiten</string>
+    <string name="trb_field_metric">Messgröße</string>
+    <string name="trb_field_value">Wert (%1$s)</string>
+    <string name="trb_field_date">Datum: %1$s</string>
+    <string name="trb_value_invalid">Bitte gib einen plausiblen Wert ein.</string>
+    <string name="trb_deleted">Eintrag gelöscht</string>
+    <string name="trb_undo">Rückgängig</string>
+    <string name="trb_settings_hint">Einheiten und das Ausblenden von Zahlen findest du in den Trainingseinstellungen.</string>
+
+    <!-- Waistline-Import -->
+    <string name="trb_import_action">Aus Waistline importieren</string>
+    <string name="trb_import_title">Aus Waistline importieren</string>
+    <string name="trb_import_format_json">Waistline-Datenbank-Backup (JSON)</string>
+    <string name="trb_import_format_csv">Waistline-Tagebuch-Export (CSV)</string>
+    <string name="trb_import_range">%1$s – %2$s</string>
+    <string name="trb_import_found">Gefundene Werte</string>
+    <plurals name="trb_import_skipped">
+        <item quantity="one">%d Wert übersprungen (unlesbar oder unplausibel)</item>
+        <item quantity="other">%d Werte übersprungen (unlesbar oder unplausibel)</item>
+    </plurals>
+    <string name="trb_import_date_order">Datumsreihenfolge</string>
+    <string name="trb_import_date_order_hint">Die Daten in dieser Datei können Tag/Monat oder Monat/Tag sein. Prüf, ob der Zeitraum oben stimmt.</string>
+    <string name="trb_import_day_month">Tag/Monat</string>
+    <string name="trb_import_month_day">Monat/Tag</string>
+    <plurals name="trb_import_conflicts">
+        <item quantity="one">%d Wert fällt auf einen Tag, an dem hier schon ein Eintrag steht.</item>
+        <item quantity="other">%d Werte fallen auf Tage, an denen hier schon ein Eintrag steht.</item>
+    </plurals>
+    <string name="trb_import_overwrite">Vorhandene Werte überschreiben</string>
+    <string name="trb_import_confirm">Importieren</string>
+    <plurals name="trb_import_done">
+        <item quantity="one">%d Wert importiert</item>
+        <item quantity="other">%d Werte importiert</item>
+    </plurals>
+    <plurals name="trb_import_kept">
+        <item quantity="one">%d vorhandener Wert behalten</item>
+        <item quantity="other">%d vorhandene Werte behalten</item>
+    </plurals>
+    <string name="trb_import_empty">In dieser Datei wurden keine Körperdaten gefunden. Exportiere in Waistline unter Einstellungen → Import/Export: „Datenbank exportieren“ (JSON) oder „Tagebuch exportieren“ (CSV).</string>
+    <string name="trb_import_failed">Die Datei konnte nicht gelesen werden.</string>
+    <string name="trb_import_too_large">Die Datei ist zu groß (max. 20 MB).</string>
+    <string name="trb_waistline_badge">Waistline</string>
+
+    <!-- Messrunde -->
+    <string name="trb_round_title">Messrunde</string>
+    <string name="trb_round_card_text">Gewicht, Taille, Arme … mehrere Werte auf einmal eintragen.</string>
+    <string name="trb_round_text">Jedes Feld ist freiwillig – trag ein, was du heute gemessen hast.</string>
+    <string name="trb_round_action">Starten</string>
+    <string name="trb_round_last">zuletzt %1$s</string>
+    <plurals name="trb_round_saved">
+        <item quantity="one">%d Wert gespeichert</item>
+        <item quantity="other">%d Werte gespeichert</item>
+    </plurals>
+</resources>

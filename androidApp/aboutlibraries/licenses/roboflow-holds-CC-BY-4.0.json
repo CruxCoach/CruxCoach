@@ -1,0 +1,7 @@
+{
+  "hash": "roboflow-holds-CC-BY-4.0",
+  "name": "Creative Commons Attribution 4.0 (hold training data)",
+  "url": "https://creativecommons.org/licenses/by/4.0/legalcode",
+  "spdxId": "CC-BY-4.0",
+  "content": "The hold model was trained on \"Climbing Holds and Volumes\" v14 by blackcreed-xpgxh on Roboflow Universe (https://universe.roboflow.com/blackcreed-xpgxh/climbing-holds-and-volumes), licensed under the Creative Commons Attribution 4.0 International licence (https://creativecommons.org/licenses/by/4.0/). CruxCoach ships none of its images."
+}

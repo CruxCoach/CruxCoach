@@ -27,6 +27,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.*
 import android.Manifest
 import android.content.pm.PackageManager
@@ -65,6 +69,11 @@ import com.cruxcoach.android.ui.dashboard.DashboardScreen
 import com.cruxcoach.android.ui.plan.SessionDetailScreen
 import com.cruxcoach.android.ui.plan.WeekOverviewScreen
 import com.cruxcoach.android.ui.exercises.ExerciseLibraryScreen
+import com.cruxcoach.android.ui.training.trainingGraph
+import com.cruxcoach.android.spraywall.SprayWallFeature
+import com.cruxcoach.android.ui.spraywall.SprayWallMenuViewModel
+import com.cruxcoach.android.ui.spraywall.SprayWallRoutes
+import com.cruxcoach.android.ui.spraywall.sprayWallGraph
 import com.cruxcoach.android.ui.onboarding.OnboardingScreen
 import com.cruxcoach.android.ui.navigation.StartViewModel
 import com.cruxcoach.android.ui.whatsnew.WhatsNewHost
@@ -120,6 +129,7 @@ import com.cruxcoach.android.ui.settings.KeyImportScreen
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.payment.ui.PaymentViewModel
 import com.cruxcoach.android.util.PerfLogger
+import com.cruxcoach.android.ui.training.openTrainingArea
 
 object Routes {
     const val ONBOARDING = "onboarding"
@@ -134,6 +144,7 @@ object Routes {
     const val BOARD_BROWSER = "board_browser"
     const val BOARD_FILTER = "board_filter"
     const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}?author={author}"
+    const val PAINTBOX = "paintbox"
     const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}&editUuid={editUuid}"
     fun climbCreator(forkUuid: String? = null, editUuid: String? = null): String {
         val qs = buildList {
@@ -143,15 +154,25 @@ object Routes {
         return if (qs.isEmpty()) "climb_creator" else "climb_creator?${qs.joinToString("&")}"
     }
     const val BOARD_LOGBOOK = "board_logbook"
+    /** The year in review (#64) of one year. */
+    const val YEAR_REVIEW = "year_review/{year}"
+    fun yearReview(year: Int) = "year_review/$year"
     const val BOARD_SYNC = "board_sync"
     const val BOARD_LISTS = "board_lists"
     const val BOARD_LOGBOOK_HISTORY = "board_logbook_history"
     const val BOARD_LIST_DETAIL = "board_list_detail/{listId}"
     const val PLAYLIST_DETAIL = "playlist_detail/{listId}"
     const val PLAYLIST_GENERATOR = "playlist_generator"
+    /** The generator with an optional preset (FEAT-071: the coach's board session); the bare route still works. */
+    const val PLAYLIST_GENERATOR_PATTERN = "playlist_generator?type={type}&minutes={minutes}"
+    fun playlistGenerator(type: String? = null, minutes: Int? = null): String {
+        val q = listOfNotNull(type?.let { "type=$it" }, minutes?.let { "minutes=$it" })
+        return if (q.isEmpty()) PLAYLIST_GENERATOR else PLAYLIST_GENERATOR + "?" + q.joinToString("&")
+    }
     const val PLAYLIST_IMPORT = "playlist_import/{payload}"
     const val PLAYLIST_PLAYER = "playlist_player"
     const val BOARD_MAP = "board_map"
+    const val BOARD_GAMES = "board_games?climbUuid={climbUuid}&angle={angle}"
     const val BODY_STAT = "body_stat"
     const val DATA_IMPORT = "data_import"
     const val DATA_EXPORT = "data_export"
@@ -161,6 +182,8 @@ object Routes {
     const val PROFILE_ASSESSMENT = "profile_assessment"
     const val APP_SHARE = "app_share"
     const val LICENSES = "licenses"
+    const val HOLD_TYPE_REVIEW = "hold_type_review"
+    const val HOLD_TYPE_CHECK = "hold_type_check"
     const val ASSESSMENT = "assessment"
     const val DEV_CHAT = "dev_chat"
     const val BUG_REPORT = "bug_report?title={title}&description={description}&kilterDiagnostics={kilterDiagnostics}"
@@ -174,6 +197,8 @@ object Routes {
     const val BACKUP_SETTINGS = "backup_settings"
     /** Settings opened on "Bugs & feature requests" (reply notifications). */
     const val SUPPORT_SETTINGS = "support_settings"
+    /** Settings opened on the board catalogues (wall games without hold positions, PaintBox without a board). */
+    const val CATALOGUE_SETTINGS = "catalogue_settings"
     const val NOSTR_PROFILE = "nostr_profile"
     const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
     fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
@@ -186,6 +211,10 @@ object Routes {
         "post_workout/$sessionId/$durationMin/$completedCount"
     fun boardClimbDetail(climbUuid: String, angle: Int) = "board_climb_detail/$climbUuid/$angle"
     fun boardListDetail(listId: Long) = "board_list_detail/$listId"
+    /** Wall games; with a climb, endurance and traverse start from it. */
+    fun boardGames(climbUuid: String? = null, angle: Int? = null): String =
+        if (climbUuid == null) "board_games"
+        else "board_games?climbUuid=${android.net.Uri.encode(climbUuid)}&angle=${angle ?: -1}"
     fun playlistDetail(listId: Long) = "playlist_detail/$listId"
     fun messageThread(eventId: String) = "message_thread/$eventId"
     fun bugReport(title: String = "", description: String = "", attachKilterDiagnostics: Boolean = false): String {
@@ -217,7 +246,7 @@ private val bottomBarRoutes = emptySet<String>()
 private val wakeLockRoutes = setOf(
     Routes.BOARD_BROWSER, Routes.BOARD_CLIMB_DETAIL, Routes.BOARD_LOGBOOK,
     Routes.BOARD_LISTS, Routes.BOARD_LIST_DETAIL, Routes.BOARD_SYNC,
-    Routes.PLAYLIST_DETAIL, Routes.PLAYLIST_PLAYER,
+    Routes.PLAYLIST_DETAIL, Routes.PLAYLIST_PLAYER, Routes.BOARD_GAMES,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -292,6 +321,15 @@ fun CruxCoachNavHost(
             route.startsWith("message_thread/") ||
             route.startsWith("playlist_import/") ->
                 navController.navigate(route) { launchSingleTop = true }
+            // Training reminder: back to the training area's Today, never a second one on the stack.
+            route == com.cruxcoach.android.ui.training.TrainingRoutes.TODAY ->
+                navController.openTrainingArea(route)
+            route == com.cruxcoach.android.ui.training.TrainingRoutes.BODY -> {
+                // Body reminder: the body screen above Today, so Back leads into the training area.
+                val today = com.cruxcoach.android.ui.training.TrainingRoutes.TODAY
+                if (runCatching { navController.getBackStackEntry(today) }.isFailure) navController.navigate(today)
+                navController.navigate(route) { launchSingleTop = true }
+            }
             route.startsWith("board_sync") -> {
                 // Deep link: board_sync?localDbUrl=http://...
                 val localDbUrl = android.net.Uri.parse("nav://$route")
@@ -366,7 +404,7 @@ fun CruxCoachNavHost(
                 // boundary surfaces a reported error UI instead.
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "Onboarding",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     OnboardingScreen(
                         onComplete = {
@@ -422,7 +460,7 @@ fun CruxCoachNavHost(
                     onNavigateToSession = { sessionId ->
                         navController.navigate(Routes.sessionDetail(sessionId))
                     },
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.goBack() }
                 )
             }
 
@@ -433,7 +471,7 @@ fun CruxCoachNavHost(
                     onStartWorkout = {
                         navController.navigate(Routes.activeWorkout(sessionId))
                     },
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))
                     }
@@ -470,7 +508,7 @@ fun CruxCoachNavHost(
 
             composable(Routes.CLIMB_LOG) {
                 ClimbLogScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToBodyStat = { navController.navigate(Routes.BODY_STAT) },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))
@@ -480,13 +518,13 @@ fun CruxCoachNavHost(
 
             composable(Routes.BODY_STAT) {
                 BodyStatScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.goBack() }
                 )
             }
 
             composable(Routes.DATA_IMPORT) {
                 DataImportScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))
                     }
@@ -495,7 +533,7 @@ fun CruxCoachNavHost(
 
             composable(Routes.DATA_EXPORT) {
                 DataExportScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))
                     }
@@ -505,10 +543,10 @@ fun CruxCoachNavHost(
             composable(Routes.AURORA_MIGRATION) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "AuroraMigration",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     com.cruxcoach.android.ui.aurora.AuroraMigrationScreen(
-                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateBack = { navController.goBack() },
                     )
                 }
             }
@@ -516,10 +554,10 @@ fun CruxCoachNavHost(
             composable(Routes.MOONBOARD_CSV_IMPORT) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "MoonBoardCsvImport",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     com.cruxcoach.android.ui.moonboard.MoonBoardCsvImportScreen(
-                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateBack = { navController.goBack() },
                         onNavigateToBugReport = { title, desc ->
                             navController.navigate(Routes.bugReport(title, desc))
                         },
@@ -529,7 +567,7 @@ fun CruxCoachNavHost(
 
             composable(Routes.STATS) {
                 StatsScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))
                     }
@@ -538,9 +576,15 @@ fun CruxCoachNavHost(
 
             composable(Routes.EXERCISE_LIBRARY) {
                 ExerciseLibraryScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.goBack() }
                 )
             }
+
+            // Training, body and fueling (FEAT-066..068)
+            trainingGraph(navController)
+
+            // Spray walls: the climber's own photographed wall (FEAT-078)
+            sprayWallGraph(navController)
 
             composable(
                 Routes.BOARD_BROWSER,
@@ -555,6 +599,8 @@ fun CruxCoachNavHost(
                 val (_, browserTourStep) = rememberBrowserTour()
                 val drawerState = rememberDrawerState(DrawerValue.Closed)
                 val drawerScope = rememberCoroutineScope()
+                val sprayWallMenu: SprayWallMenuViewModel = hiltViewModel()
+                val sprayWallsInMenu by sprayWallMenu.inMenu.collectAsStateWithLifecycle()
                 // The drawer sheet only takes Back when it is handed the drawer
                 // state; without this, Back with the menu open left the app.
                 BackHandler(enabled = drawerState.isOpen) {
@@ -562,12 +608,16 @@ fun CruxCoachNavHost(
                 }
                 ModalNavigationDrawer(
                     drawerState = drawerState,
-                    gesturesEnabled = browserTourStep in listOf(TourStep.INACTIVE, TourStep.DONE),
+                    gesturesEnabled = menuGesturesEnabled(drawerState.isOpen, browserTourStep),
                     drawerContent = {
-                        BrowserMainDrawer() { route ->
+                        BrowserMainDrawer(sprayWalls = sprayWallsInMenu) { route ->
                             drawerScope.launch { drawerState.close() }
-                            if (route != Routes.BOARD_BROWSER) {
-                                navController.navigate(route) { launchSingleTop = true }
+                            when {
+                                route == Routes.BOARD_BROWSER -> Unit
+                                // Training & nutrition: the area opens at Today; Nutrition is one of its tabs.
+                                route == com.cruxcoach.android.ui.training.TrainingRoutes.TODAY ->
+                                    navController.openTrainingArea(route)
+                                else -> navController.navigate(route) { launchSingleTop = true }
                             }
                         }
                     },
@@ -587,6 +637,32 @@ fun CruxCoachNavHost(
                         onNavigateToSetter = { pubkey ->
                             navController.navigate(Routes.setterDetail(pubkey))
                         },
+                        onOpenYearReview = { year -> navController.navigate(Routes.yearReview(year)) },
+                    )
+                }
+            }
+
+            composable(
+                Routes.BOARD_GAMES,
+                arguments = listOf(
+                    navArgument("climbUuid") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("angle") {
+                        type = NavType.IntType
+                        defaultValue = -1
+                    },
+                ),
+            ) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "WallGames",
+                    onNavigateBack = { navController.goBack() },
+                ) {
+                    com.cruxcoach.android.ui.board.games.WallGamesScreen(
+                        onNavigateBack = { navController.goBack() },
+                        onOpenCatalogues = { navController.navigate(Routes.CATALOGUE_SETTINGS) },
                     )
                 }
             }
@@ -594,10 +670,10 @@ fun CruxCoachNavHost(
             composable(Routes.BOARD_MAP) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "BoardMap",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     MapScreen(
-                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateBack = { navController.goBack() },
                         onNavigateToBoardBrowser = {
                             // popBackStack lands the user on the BoardBrowser
                             // already on the back stack. The browser's
@@ -606,6 +682,8 @@ fun CruxCoachNavHost(
                             navController.popBackStack(Routes.BOARD_BROWSER, false)
                         },
                         onNavigateToBoardSync = { navController.navigate(Routes.BOARD_SYNC) },
+                        onOpenSprayWall = { navController.navigate(SprayWallRoutes.wall(it)) { launchSingleTop = true } },
+                        onNewSprayWall = { navController.navigate(SprayWallRoutes.new(it)) { launchSingleTop = true } },
                     )
                 }
             }
@@ -627,18 +705,18 @@ fun CruxCoachNavHost(
             ) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "ClimbEditor",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     com.cruxcoach.android.ui.board.creator.ClimbEditorScreen(
-                        onBack = { navController.popBackStack() },
-                        onPublished = { uuid -> navController.popBackStack() },
+                        onBack = { navController.goBack() },
+                        onPublished = { uuid -> navController.goBack() },
                         onNavigateToBoardBrowser = {
                             if (!navController.popBackStack(Routes.BOARD_BROWSER, false)) {
                                 navController.navigate(Routes.BOARD_BROWSER) { launchSingleTop = true }
                             }
                         },
                         onNavigateToKilterSettings = {
-                            navController.popBackStack()
+                            navController.goBack()
                             navController.navigate(Routes.SETTINGS)
                         },
                         onNavigateToNostrProfile = {
@@ -655,7 +733,7 @@ fun CruxCoachNavHost(
                 val sharedVm: BoardBrowserViewModel = hiltViewModel(parentEntry)
                 BoardFilterScreen(
                     viewModel = sharedVm,
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.goBack() }
                 )
             }
 
@@ -665,8 +743,16 @@ fun CruxCoachNavHost(
                         navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                     },
                     onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.goBack() },
+                    onOpenYearReview = { year -> navController.navigate(Routes.yearReview(year)) },
                 )
+            }
+
+            composable(
+                Routes.YEAR_REVIEW,
+                arguments = listOf(navArgument(com.cruxcoach.android.ui.yearreview.YearReviewViewModel.ARG_YEAR) { type = NavType.IntType }),
+            ) {
+                com.cruxcoach.android.ui.yearreview.YearReviewScreen(onClose = { navController.goBack() })
             }
 
             composable(
@@ -685,7 +771,7 @@ fun CruxCoachNavHost(
                 BoardClimbDetailScreen(
                     onNavigateBack = {
                         PerfLogger.navStart("BoardClimbDetail", "BoardBrowser(back)")
-                        navController.popBackStack()
+                        navController.goBack()
                     },
                     onNavigateToBoardBrowser = {
                         if (!navController.popBackStack(Routes.BOARD_BROWSER, false)) {
@@ -709,20 +795,23 @@ fun CruxCoachNavHost(
                     onNavigateToSetter = { pubkey ->
                         navController.navigate(Routes.setterDetail(pubkey))
                     },
+                    onNavigateToGames = { uuid, angle ->
+                        navController.navigate(Routes.boardGames(uuid, angle))
+                    },
                 )
             }
 
             composable(Routes.BOARD_SYNC) {
                 BoardSyncScreen(
-                    // popBackStack instead of navigate-to-BoardBrowser: the
+                    // Back instead of navigate-to-BoardBrowser: the
                     // BoardSync screen is reached from two very different
                     // places — Settings (where "Go to browser" makes sense
                     // but isn't critical) and the Onboarding Step 1 (where
                     // a hard jump to BoardBrowser would silently skip the
-                    // remaining onboarding steps). Unconditional popBackStack
+                    // remaining onboarding steps). Going back unconditionally
                     // returns the user to whichever screen launched them.
-                    onSyncComplete = { navController.popBackStack() },
-                    onNavigateBack = { navController.popBackStack() },
+                    onSyncComplete = { navController.goBack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))
                     }
@@ -731,7 +820,7 @@ fun CruxCoachNavHost(
 
             composable(Routes.BOARD_LISTS) {
                 BoardListsScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToListDetail = { listId ->
                         navController.navigate(Routes.boardListDetail(listId))
                     },
@@ -754,7 +843,7 @@ fun CruxCoachNavHost(
 
             composable(Routes.BOARD_LOGBOOK_HISTORY) {
                 BoardClimbHistoryScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToClimb = { uuid, angle ->
                         navController.navigate(Routes.boardClimbDetail(uuid, angle))
                     },
@@ -763,7 +852,7 @@ fun CruxCoachNavHost(
 
             composable(Routes.BOARD_LIST_DETAIL) {
                 BoardListDetailScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToClimb = { climbUuid, angle ->
                         navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                     },
@@ -781,10 +870,10 @@ fun CruxCoachNavHost(
             composable(Routes.PLAYLIST_DETAIL) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "PlaylistDetail",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     com.cruxcoach.android.ui.playlist.PlaylistDetailScreen(
-                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateBack = { navController.goBack() },
                         onNavigateToClimb = { climbUuid, angle ->
                             navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                         },
@@ -806,7 +895,7 @@ fun CruxCoachNavHost(
             composable(Routes.PLAYLIST_PLAYER) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "PlaylistPlayer",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     val playerViewModel:
                         com.cruxcoach.android.ui.playlist.PlaylistPlayerViewModel = hiltViewModel()
@@ -832,7 +921,7 @@ fun CruxCoachNavHost(
                         }
                     }
                     com.cruxcoach.android.ui.playlist.PlaylistPlayerScreen(
-                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateBack = { navController.goBack() },
                         onNavigateToClimb = { climbUuid, angle ->
                             navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                         },
@@ -862,7 +951,7 @@ fun CruxCoachNavHost(
             composable(Routes.PLAYLIST_IMPORT) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "PlaylistImport",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     com.cruxcoach.android.ui.playlist.PlaylistImportScreen(
                         onImported = { listId ->
@@ -872,18 +961,24 @@ fun CruxCoachNavHost(
                                 popUpTo(Routes.PLAYLIST_IMPORT) { inclusive = true }
                             }
                         },
-                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateBack = { navController.goBack() },
                     )
                 }
             }
 
-            composable(Routes.PLAYLIST_GENERATOR) {
+            composable(
+                Routes.PLAYLIST_GENERATOR_PATTERN,
+                arguments = listOf(
+                    navArgument("type") { type = NavType.StringType; nullable = true; defaultValue = null },
+                    navArgument("minutes") { type = NavType.StringType; nullable = true; defaultValue = null },
+                ),
+            ) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "PlaylistGenerator",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     com.cruxcoach.android.ui.playlist.PlaylistGeneratorScreen(
-                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateBack = { navController.goBack() },
                         onNavigateToPlaylist = { listId ->
                             navController.navigate(Routes.boardListDetail(listId)) {
                                 // Generator is a one-shot wizard: leaving it on the
@@ -895,7 +990,14 @@ fun CruxCoachNavHost(
                 }
             }
 
-            listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS, Routes.SUPPORT_SETTINGS).forEach { settingsRoute ->
+            composable(Routes.PAINTBOX) {
+                com.cruxcoach.android.ui.paintbox.PaintBoxScreen(
+                    onBack = { navController.goBack() },
+                    onDownloadBoards = { navController.navigate(Routes.CATALOGUE_SETTINGS) },
+                )
+            }
+
+            listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS, Routes.SUPPORT_SETTINGS, Routes.CATALOGUE_SETTINGS).forEach { settingsRoute ->
                 composable(settingsRoute) {
                     var showPaymentSheet by remember { mutableStateOf(false) }
                     val paymentViewModel: PaymentViewModel = hiltViewModel()
@@ -906,12 +1008,16 @@ fun CruxCoachNavHost(
                         startPage = when (settingsRoute) {
                             Routes.BACKUP_SETTINGS -> SettingsPage.BACKUP
                             Routes.SUPPORT_SETTINGS -> SettingsPage.SUPPORT
+                            Routes.CATALOGUE_SETTINGS -> SettingsPage.CATALOGUES
                             else -> null
                         },
-                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateBack = { navController.goBack() },
                         onNavigateToProfile = { navController.navigate(Routes.PROFILE_ASSESSMENT) },
                         onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
                         onNavigateToLicenses = { navController.navigate(Routes.LICENSES) },
+                        onNavigateToHoldTypeReview = { navController.navigate(Routes.HOLD_TYPE_REVIEW) },
+                        onNavigateToHoldTypeCheck = { navController.navigate(Routes.HOLD_TYPE_CHECK) },
+                        onNavigateToPaintBox = { navController.navigate(Routes.PAINTBOX) },
                         onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
                         onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
                         onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
@@ -932,6 +1038,9 @@ fun CruxCoachNavHost(
                         onNavigateToCrashReports = { navController.navigate(Routes.CRASH_REPORT_LIST) },
                         onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
                         onNavigateToNostrProfile = { navController.navigate(Routes.NOSTR_PROFILE) },
+                        onNavigateToTrainingSettings = {
+                            navController.navigate(com.cruxcoach.android.ui.training.TrainingRoutes.ATHLETE_SETTINGS) { launchSingleTop = true }
+                        },
                         onDonateClick = {
                             paymentViewModel.initForDonation(NostrConfig.DEV_PUBKEY)
                             showPaymentSheet = true
@@ -951,18 +1060,26 @@ fun CruxCoachNavHost(
 
             composable(Routes.PROFILE_ASSESSMENT) {
                 ProfileAssessmentScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToAssessment = { navController.navigate(Routes.ASSESSMENT) }
                 )
             }
 
             composable(Routes.LICENSES) {
-                LicensesScreen(onNavigateBack = { navController.popBackStack() })
+                LicensesScreen(onNavigateBack = { navController.goBack() })
+            }
+
+            // #63: hold-type review and label check, reachable only from the settings of test builds.
+            composable(Routes.HOLD_TYPE_REVIEW) {
+                com.cruxcoach.android.ui.holdtypes.HoldReviewScreen(onNavigateBack = { navController.goBack() })
+            }
+            composable(Routes.HOLD_TYPE_CHECK) {
+                com.cruxcoach.android.ui.holdtypes.HoldCheckScreen(onNavigateBack = { navController.goBack() })
             }
 
             composable(Routes.APP_SHARE) {
                 AppShareScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))
                     }
@@ -971,14 +1088,14 @@ fun CruxCoachNavHost(
 
             composable(Routes.ASSESSMENT) {
                 AssessmentScreen(
-                    onSave = { navController.popBackStack() },
-                    onNavigateBack = { navController.popBackStack() }
+                    onSave = { navController.goBack() },
+                    onNavigateBack = { navController.goBack() }
                 )
             }
 
             composable(Routes.DEV_CHAT) {
                 DevChatScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.goBack() }
                 )
             }
 
@@ -986,7 +1103,7 @@ fun CruxCoachNavHost(
                 val initialTitle = backStackEntry.arguments?.getString("title") ?: ""
                 val initialDescription = backStackEntry.arguments?.getString("description") ?: ""
                 BugReportScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     initialTitle = initialTitle,
                     initialDescription = initialDescription,
                     initialAttachDiagnostics = backStackEntry.arguments?.getString("kilterDiagnostics") == "1",
@@ -995,7 +1112,7 @@ fun CruxCoachNavHost(
 
             composable(Routes.BUG_REPORT_LIST) {
                 BugReportListScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToThread = { eventId ->
                         navController.navigate(Routes.messageThread(eventId))
                     },
@@ -1005,13 +1122,13 @@ fun CruxCoachNavHost(
 
             composable(Routes.FEATURE_REQUEST) {
                 FeatureRequestScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.goBack() }
                 )
             }
 
             composable(Routes.FEATURE_REQUEST_LIST) {
                 FeatureRequestListScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToThread = { eventId ->
                         navController.navigate(Routes.messageThread(eventId))
                     },
@@ -1021,13 +1138,13 @@ fun CruxCoachNavHost(
 
             composable(Routes.ANNOUNCEMENTS) {
                 AnnouncementsScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.goBack() }
                 )
             }
 
             composable(Routes.CRASH_REPORT_LIST) {
                 CrashReportListScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToThread = { eventId ->
                         navController.navigate(Routes.messageThread(eventId))
                     }
@@ -1038,13 +1155,13 @@ fun CruxCoachNavHost(
                 val eventId = backStackEntry.arguments?.getString("eventId") ?: ""
                 MessageThreadScreen(
                     eventId = eventId,
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.goBack() }
                 )
             }
 
             composable(Routes.KEY_MANAGEMENT) {
                 KeyManagementScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                     onNavigateToImport = { navController.navigate(Routes.KEY_IMPORT) },
                     onNavigateToBackup = { navController.navigate(Routes.BACKUP_SETTINGS) }
                 )
@@ -1052,17 +1169,17 @@ fun CruxCoachNavHost(
 
             composable(Routes.KEY_IMPORT) {
                 KeyImportScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.goBack() }
                 )
             }
 
             composable(Routes.NOSTR_PROFILE) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "NostrProfile",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     com.cruxcoach.android.ui.settings.NostrProfileScreen(
-                        onNavigateBack = { navController.popBackStack() }
+                        onNavigateBack = { navController.goBack() }
                     )
                 }
             }
@@ -1075,10 +1192,10 @@ fun CruxCoachNavHost(
             ) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "SetterDetail",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     com.cruxcoach.android.ui.community.SetterDetailScreen(
-                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateBack = { navController.goBack() },
                         onClimbClick = { uuid, angle ->
                             navController.navigate(Routes.boardClimbDetail(uuid, angle))
                         },
@@ -1089,10 +1206,10 @@ fun CruxCoachNavHost(
             composable(Routes.SETTERS_LIST) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "SettersList",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     com.cruxcoach.android.ui.community.SettersListScreen(
-                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateBack = { navController.goBack() },
                         onSetterClick = { pubkey ->
                             navController.navigate(Routes.setterDetail(pubkey))
                         },
@@ -1103,10 +1220,10 @@ fun CruxCoachNavHost(
             composable(Routes.MY_KILTER_CLIMBS) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "MyKilterClimbs",
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = { navController.goBack() },
                 ) {
                     com.cruxcoach.android.ui.community.MyKilterClimbsScreen(
-                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateBack = { navController.goBack() },
                         onClimbClick = { uuid, angle ->
                             navController.navigate(Routes.boardClimbDetail(uuid, angle))
                         },
@@ -1131,8 +1248,16 @@ fun CruxCoachNavHost(
     } // CompositionLocalProvider
 }
 
+/**
+ * [sprayWalls]: whether their entry is there ([SprayWallFeature.inMenu]). [wallGames]: the same for the wall games
+ * ([com.cruxcoach.android.ui.board.games.WallGamesFeature]).
+ */
 @Composable
-internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
+internal fun BrowserMainDrawer(
+    sprayWalls: Boolean = SprayWallFeature.enabled,
+    wallGames: Boolean = com.cruxcoach.android.ui.board.games.WallGamesFeature.enabled,
+    onSelect: (String) -> Unit,
+) {
     val (tour, _) = rememberBrowserTour()
     ModalDrawerSheet {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -1143,11 +1268,43 @@ internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
             val entries = listOf(
                 Triple(Routes.BOARD_BROWSER, com.cruxcoach.android.R.string.board_browser_nav_board, "menu_board"),
                 Triple(Routes.BOARD_MAP, com.cruxcoach.android.R.string.main_menu_board_map, "menu_board_map"),
-            )
+                // One entry for training and nutrition (owner 2026-10-10): both lead into the same area,
+                // whose tab bar (Today, Training, Nutrition, Progress) organises the rest.
+                Triple(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY, com.cruxcoach.android.R.string.tr_nav_training_nutrition, "menu_today"),
+                Triple(Routes.boardGames(), com.cruxcoach.android.R.string.wall_games_title, "menu_wall_games").takeIf { wallGames },
+                Triple(SprayWallRoutes.LIST, com.cruxcoach.android.R.string.spray_walls_title, "menu_spray_walls").takeIf { sprayWalls },
+            ).filterNotNull()
             entries.forEach { (route, label, tag) ->
                 NavigationDrawerItem(
-                    icon = { Icon(if (route == Routes.BOARD_MAP) Icons.Default.Map else Icons.Default.DeveloperBoard, null) },
+                    icon = {
+                        Icon(when (route) {
+                            Routes.BOARD_MAP -> Icons.Default.Map
+                            com.cruxcoach.android.ui.training.TrainingRoutes.TODAY -> Icons.Default.FitnessCenter
+                            Routes.BOARD_BROWSER -> Icons.Default.DeveloperBoard
+                            Routes.boardGames() -> Icons.Default.SportsEsports
+                            SprayWallRoutes.LIST -> Icons.Default.Wallpaper
+                            else -> Icons.Default.FitnessCenter
+                        }, null)
+                    },
                     label = { Text(stringResource(label)) }, selected = route == Routes.BOARD_BROWSER,
+                    // Training and nutrition ship as a beta in 0.2.5 (owner 2026-11-26): the menu says so.
+                    badge = if (route == com.cruxcoach.android.ui.training.TrainingRoutes.TODAY) {
+                        {
+                            Surface(
+                                color = com.cruxcoach.android.ui.theme.OrangeAccent.copy(alpha = 0.16f),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                                modifier = Modifier.testTag("menu_today_beta"),
+                            ) {
+                                Text(
+                                    stringResource(com.cruxcoach.android.R.string.main_menu_beta),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    color = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.onBrandAccentContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                    } else null,
                     onClick = { onSelect(route) },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).testTag(tag),
                 )

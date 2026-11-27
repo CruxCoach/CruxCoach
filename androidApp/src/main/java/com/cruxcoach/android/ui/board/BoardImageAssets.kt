@@ -48,8 +48,15 @@ internal fun boardImageCandidatePaths(
     }
 }
 
+/**
+ * Size of hold markers in pixels per board unit. A Shiny Wall hold is a whole
+ * grid cell (20 units) wide, so its rings are drawn twice as large to circle
+ * the photographed hold instead of sitting on its bolt.
+ */
 internal fun boardMarkerScale(
-    @Suppress("UNUSED_PARAMETER") brand: BoardBrand,
+    brand: BoardBrand,
     xScale: Float,
     @Suppress("UNUSED_PARAMETER") boardWidth: Float,
-): Float = xScale
+): Float = if (brand == BoardBrand.SHINYWALL) xScale * SHINYWALL_MARKER_FACTOR else xScale
+
+internal const val SHINYWALL_MARKER_FACTOR = 2f

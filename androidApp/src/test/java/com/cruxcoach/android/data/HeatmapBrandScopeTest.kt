@@ -137,6 +137,12 @@ class HeatmapBrandScopeTest {
 
         val gh = repo.getAllFramesForHeatmapAllAngles(1, "grasshopper", 0.0, 100.0, 0, ClimbTypeFilter.ALL)
         assertEquals(listOf("g1"), gh.map { it.uuid })
+
+        // The streamed read for the logbook heatmap hands over the same decoded frames, row by row.
+        val streamed = mutableListOf<String>()
+        repo.forEachFramesForHeatmapAllAngles(1, "kilter", 0.0, 100.0, 0, ClimbTypeFilter.ALL) { streamed += it }
+        assertEquals(kil.map { it.frames }, streamed)
+        assertEquals(listOf("p100r12p101r13"), streamed)
     }
 
     @Test

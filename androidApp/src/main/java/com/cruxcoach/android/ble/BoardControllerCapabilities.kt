@@ -19,6 +19,7 @@ internal object BoardConnectionOwner {
     const val SESSION = "session"
     const val RELAY = "relay"
     const val BOARD_MESH = "board-mesh"
+    const val SIZE_CHECK = "size-check"
 }
 
 /** What happens to the LEDs after the final controller connection closes. */
@@ -84,7 +85,7 @@ internal object BoardControllerProfiles {
             } else {
                 BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT
             },
-            relaySupported = brand?.isInteractive == true &&
+            relaySupported = brand?.isInteractive == true && brand != BoardBrand.SHINYWALL &&
                 capacity == BoardConnectionCapacity.SINGLE,
         )
     }

@@ -107,6 +107,12 @@ class BoardImageAssetsTest {
     }
 
     @Test
+    fun shinyWallMarkersCircleAWholeCellHold() {
+        // Ring radius 4 units * 2 = 8 of a 20-unit cell: around the photographed hold.
+        assertEquals(6f, boardMarkerScale(BoardBrand.SHINYWALL, 3f, 240f))
+    }
+
+    @Test
     fun collidingSizeIdsAcrossBrandsResolveToDistinctPaths() {
         // Kilter size 7 and (a hypothetical) Tension size 7 must not alias.
         assertNotEquals(

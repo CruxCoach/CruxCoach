@@ -1,0 +1,463 @@
+package com.cruxcoach.android.ui.training.today
+
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Terrain
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.R
+import com.cruxcoach.android.athlete.AthleteService
+import com.cruxcoach.android.ui.training.EmptyHint
+import com.cruxcoach.android.ui.training.TrainingScaffold
+import com.cruxcoach.android.ui.training.body.shortLabel
+import com.cruxcoach.athlete.model.ClimbIntensity
+import com.cruxcoach.athlete.model.ClimbingDayEntry
+import com.cruxcoach.athlete.model.ClimbingDayKind
+import com.cruxcoach.athlete.model.ClimbingDaySource
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.minus
+import javax.inject.Inject
+
+data class ClimbingDayFormState(
+    val loading: Boolean = true,
+    val today: LocalDate? = null,
+    val day: LocalDate? = null,
+    val kind: ClimbingDayKind = ClimbingDayKind.GYM_BOULDER,
+    val minutes: Int = 90,
+    val intensity: ClimbIntensity = ClimbIntensity.VOLUME,
+    val note: String = "",
+    val existing: ClimbingDayEntry? = null,
+    /** Minutes of a synced session the board logbook already counts (audit W3); 0 = no overlap. */
+    val coveredMinutes: Int = 0,
+    /** The athlete counts the synced session in full anyway (extra climbing the logbook does not know). */
+    val countAnyway: Boolean = false,
+)
+
+@HiltViewModel
+class ClimbingDayViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
+    private val _state = MutableStateFlow(ClimbingDayFormState())
+    val state: StateFlow<ClimbingDayFormState> = _state.asStateFlow()
+    private val _done = Channel<Unit>(Channel.CONFLATED)
+    val done = _done.receiveAsFlow()
+    /** A deleted entry, for the host's "Rückgängig" (device test D45). */
+    private val _deleted = Channel<AthleteService.DeletedClimb>(Channel.CONFLATED)
+    val deleted = _deleted.receiveAsFlow()
+    private var loadedFor: String? = "\u0000"
+
+    fun load(editId: String?) {
+        if (loadedFor == editId) return
+        loadedFor = editId
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val today = service.today()
+            val existing = editId?.let { service.repo.climbingDay(it) }
+            val overlap = existing?.takeIf { it.source == ClimbingDaySource.HEALTH_CONNECT }?.let { service.boardOverlap(it.id) }
+            _state.value = if (existing != null) ClimbingDayFormState(
+                loading = false, today = today, day = runCatching { LocalDate.parse(existing.day) }.getOrDefault(today),
+                kind = existing.kind, minutes = existing.minutes, intensity = existing.intensity,
+                note = existing.note.orEmpty(), existing = existing,
+                coveredMinutes = overlap?.coveredMinutes ?: 0, countAnyway = overlap?.countAnyway ?: false,
+            ) else ClimbingDayFormState(loading = false, today = today, day = today)
+        }
+    }
+
+    fun setDay(d: LocalDate) = _state.update { it.copy(day = d) }
+    fun setKind(k: ClimbingDayKind) = _state.update { it.copy(kind = k) }
+    fun setMinutes(m: Int) = _state.update { it.copy(minutes = m.coerceIn(5, 600)) }
+    fun setIntensity(i: ClimbIntensity) = _state.update { it.copy(intensity = i) }
+    fun setNote(n: String) = _state.update { it.copy(note = n.take(300)) }
+    fun setCountAnyway(on: Boolean) = _state.update { it.copy(countAnyway = on) }
+
+    fun save() {
+        val s = _state.value
+        val day = s.day ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            // The choice first: the entry's write below makes the list re-read both.
+            s.existing?.takeIf { it.source == ClimbingDaySource.HEALTH_CONNECT && s.coveredMinutes > 0 }
+                ?.let { service.saveBoardOverlap(it.id, countAnyway = s.countAnyway) }
+            service.saveClimbingDay(
+                ClimbingDayEntry(
+                    id = s.existing?.id ?: service.repo.newId(),
+                    day = day.toString(),
+                    kind = s.kind,
+                    minutes = s.minutes,
+                    intensity = s.intensity,
+                    source = s.existing?.source ?: ClimbingDaySource.MANUAL,
+                    externalId = s.existing?.externalId,
+                    note = s.note.trim().ifEmpty { null },
+                ),
+            )
+            _done.send(Unit)
+        }
+    }
+
+    fun delete() {
+        val id = _state.value.existing?.id ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            service.deleteClimbingDayForUndo(id)?.let { _deleted.send(it) }
+            _done.send(Unit)
+        }
+    }
+}
+
+@Composable
+fun climbingDayKindLabel(k: ClimbingDayKind): String = stringResource(when (k) {
+    ClimbingDayKind.GYM_BOULDER -> R.string.trl_kind_gym_boulder
+    ClimbingDayKind.GYM_ROPE -> R.string.trl_kind_gym_rope
+    ClimbingDayKind.OUTDOOR -> R.string.trl_kind_outdoor
+    ClimbingDayKind.OTHER_BOARD -> R.string.trl_kind_other_board
+    ClimbingDayKind.OTHER -> R.string.trl_kind_other
+})
+
+@Composable
+fun climbIntensityLabel(i: ClimbIntensity): String = stringResource(when (i) {
+    ClimbIntensity.LIGHT -> R.string.trl_intensity_light
+    ClimbIntensity.VOLUME -> R.string.trl_intensity_volume
+    ClimbIntensity.HARD -> R.string.trl_intensity_hard
+    ClimbIntensity.LIMIT -> R.string.trl_intensity_limit
+})
+
+@Composable
+fun climbIntensityHint(i: ClimbIntensity): String = stringResource(when (i) {
+    ClimbIntensity.LIGHT -> R.string.trl_intensity_light_hint
+    ClimbIntensity.VOLUME -> R.string.trl_intensity_volume_hint
+    ClimbIntensity.HARD -> R.string.trl_intensity_hard_hint
+    ClimbIntensity.LIMIT -> R.string.trl_intensity_limit_hint
+})
+
+/**
+ * Logs climbing outside the board app — gym, rock, another board — in a few
+ * taps, so finger-load rules, streak, stats and fueling know about it.
+ * [editId] edits an existing entry (manual or from Health Connect).
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun ClimbingDaySheet(
+    onDismiss: () -> Unit,
+    editId: String? = null,
+    viewModel: ClimbingDayViewModel = hiltViewModel(key = "climbing-day-${editId ?: "new"}"),
+    /** While editing: log another climbing session instead (today's entry opened from Today's tile, device test D30). */
+    onAddAnother: (() -> Unit)? = null,
+    /** The entry was deleted: the host offers "Rückgängig" (device test D45). */
+    onDeleted: (AthleteService.DeletedClimb) -> Unit = {},
+    /** A new entry opens on yesterday ("Gestern geklettert?" under a finger suggestion). */
+    startYesterday: Boolean = false,
+) {
+    LaunchedEffect(editId) { viewModel.load(editId) }
+    val loaded by viewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(loaded.loading) {
+        val today = loaded.today
+        if (startYesterday && editId == null && !loaded.loading && today != null) viewModel.setDay(today.minus(DatePeriod(days = 1)))
+    }
+    LaunchedEffect(Unit) { viewModel.deleted.collect { onDeleted(it) } }
+    LaunchedEffect(Unit) { viewModel.done.collect { onDismiss() } }
+    val s by viewModel.state.collectAsStateWithLifecycle()
+    var picking by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("climbing_day_sheet")) {
+        val today = s.today
+        val day = s.day
+        if (s.loading || today == null || day == null) {
+            Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            return@ModalBottomSheet
+        }
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(stringResource(if (s.existing != null) R.string.trl_day_edit_title else R.string.trl_day_title),
+                style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.trl_day_intro), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            // Day
+            val yesterday = today.minus(DatePeriod(days = 1))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = day == today, onClick = { viewModel.setDay(today) },
+                    label = { Text(stringResource(R.string.trl_day_today)) }, modifier = Modifier.testTag("climbing_day_today"))
+                FilterChip(selected = day == yesterday, onClick = { viewModel.setDay(yesterday) },
+                    label = { Text(stringResource(R.string.trl_day_yesterday)) }, modifier = Modifier.testTag("climbing_day_yesterday"))
+                FilterChip(selected = day != today && day != yesterday, onClick = { picking = true },
+                    label = { Text(if (day != today && day != yesterday) day.shortLabel() else stringResource(R.string.trl_day_pick)) },
+                    modifier = Modifier.testTag("climbing_day_pick"))
+            }
+
+            // Kind
+            Text(stringResource(R.string.trl_day_kind), style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ClimbingDayKind.entries.forEach { k ->
+                    FilterChip(selected = s.kind == k, onClick = { viewModel.setKind(k) }, label = { Text(climbingDayKindLabel(k)) },
+                        modifier = Modifier.testTag("climbing_day_kind_${k.name.lowercase()}"))
+                }
+            }
+
+            // Minutes: one control (device test 2026-10-10 found a stepper and chips for the same value).
+            // A duration that is not a chip (a watch import, an edited day) stays as it is and shows as its own chip.
+            Text(stringResource(R.string.trl_day_minutes), style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("climbing_day_minutes")) {
+                (listOf(30, 45, 60, 90, 120, 180) + listOf(s.minutes)).distinct().sorted().forEach { m ->
+                    FilterChip(selected = s.minutes == m, onClick = { viewModel.setMinutes(m) },
+                        leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(s.minutes == m),
+                        label = { Text(stringResource(R.string.trl_day_minutes_value, m)) },
+                        modifier = Modifier.testTag("climbing_day_minutes_$m"))
+                }
+            }
+
+            // Intensity
+            Text(stringResource(R.string.trl_day_intensity), style = MaterialTheme.typography.labelLarge)
+            Column {
+                ClimbIntensity.entries.forEach { i ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .selectable(selected = s.intensity == i, role = Role.RadioButton, onClick = { viewModel.setIntensity(i) })
+                            .padding(vertical = 6.dp)
+                            .testTag("climbing_day_intensity_${i.name.lowercase()}"),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = s.intensity == i, onClick = null)
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(climbIntensityLabel(i), style = MaterialTheme.typography.bodyLarge)
+                            Text(climbIntensityHint(i), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = s.note, onValueChange = viewModel::setNote,
+                label = { Text(stringResource(R.string.trl_day_note)) },
+                modifier = Modifier.fillMaxWidth().testTag("climbing_day_note"),
+            )
+            if (s.existing?.source == ClimbingDaySource.HEALTH_CONNECT) {
+                Text(stringResource(R.string.trl_day_from_health), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (s.coveredMinutes > 0) BoardOverlapChoice(s, viewModel::setCountAnyway)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (s.existing != null) {
+                    OutlinedButton(onClick = viewModel::delete, modifier = Modifier.testTag("climbing_day_delete")) {
+                        Text(stringResource(R.string.action_delete))
+                    }
+                }
+                Button(onClick = viewModel::save, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("climbing_day_save")) {
+                    Text(stringResource(R.string.action_save))
+                }
+            }
+            if (s.existing != null && onAddAnother != null) {
+                TextButton(onClick = onAddAnother, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("climbing_day_add_another")) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.trl_day_add_another))
+                }
+            }
+        }
+    }
+    if (picking && s.today != null && s.day != null) {
+        PastDayPicker(s.day!!, s.today!!, onPick = { viewModel.setDay(it); picking = false }, onDismiss = { picking = false })
+    }
+}
+
+/**
+ * A synced session the board logbook already counts (audit W3): says so with its minutes, and lets the
+ * athlete count it anyway – for climbing the logbook does not know.
+ */
+@Composable
+private fun BoardOverlapChoice(s: ClimbingDayFormState, onCountAnyway: (Boolean) -> Unit) {
+    val covered = minOf(s.coveredMinutes, s.minutes)
+    Text(
+        stringResource(if (s.countAnyway) R.string.trl_day_overlap_counted else R.string.trl_day_overlap, covered, s.minutes),
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.testTag("climbing_day_overlap"),
+    )
+    Row(
+        Modifier.fillMaxWidth()
+            .toggleable(value = s.countAnyway, role = Role.Switch, onValueChange = onCountAnyway)
+            .padding(vertical = 4.dp)
+            .testTag("climbing_day_count_anyway"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.trl_day_count_anyway), style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.trl_day_count_anyway_hint), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(8.dp))
+        Switch(checked = s.countAnyway, onCheckedChange = null)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PastDayPicker(day: LocalDate, today: LocalDate, onPick: (LocalDate) -> Unit, onDismiss: () -> Unit) {
+    fun LocalDate.utcMillis(): Long = java.time.LocalDate.parse(toString()).toEpochDay() * 86_400_000L
+    val todayMillis = today.utcMillis()
+    val pickerState = rememberDatePickerState(
+        initialSelectedDateMillis = day.utcMillis(),
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis <= todayMillis
+            override fun isSelectableYear(year: Int) = year <= java.time.LocalDate.now().year
+        },
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = {
+                val picked = pickerState.selectedDateMillis?.let { ms ->
+                    LocalDate.parse(java.time.LocalDate.ofEpochDay(ms / 86_400_000L).toString())
+                } ?: day
+                onPick(picked)
+            }) { Text(stringResource(R.string.action_ok)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    ) {
+        DatePicker(state = pickerState)
+    }
+}
+
+// ── List of climbing days ────────────────────────────────────────────
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@HiltViewModel
+class ClimbingDaysViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
+    /** "Rückgängig" after a delete (device test D45). */
+    fun restore(d: AthleteService.DeletedClimb) {
+        viewModelScope.launch(Dispatchers.IO) { service.restoreClimbingDay(d) }
+    }
+
+    val days: StateFlow<List<ClimbingDayEntry>?> = flow {
+        service.ensureReady()
+        emit(service.today().minus(DatePeriod(days = 365)).toString())
+    }.flatMapLatest { from -> service.repo.observeClimbingDaysSince(from) }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Board overlaps of the synced entries (audit W3); a sync may change only them, not the entries. */
+    val overlaps: StateFlow<Map<String, com.cruxcoach.athlete.logic.BoardOverlap.Stored>> = flow {
+        service.ensureReady()
+        emit(Unit)
+    }.flatMapLatest { service.repo.observeSettingsWithPrefix(com.cruxcoach.athlete.logic.BoardOverlap.SETTING_PREFIX) }
+        .map { service.boardOverlaps() }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+}
+
+/** Climbing logged outside the board app (by hand or from Health Connect), with edit and delete. */
+@Composable
+fun ClimbingDaysScreen(onBack: () -> Unit, viewModel: ClimbingDaysViewModel = hiltViewModel()) {
+    val days by viewModel.days.collectAsStateWithLifecycle()
+    val overlaps by viewModel.overlaps.collectAsStateWithLifecycle()
+    var editing by remember { mutableStateOf<String?>(null) }
+    var adding by remember { mutableStateOf(false) }
+    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    val snackScope = androidx.compose.runtime.rememberCoroutineScope()
+    val deletedText = stringResource(R.string.trl_day_deleted)
+    val undoText = stringResource(R.string.trf_undo)
+    fun offerUndo(d: AthleteService.DeletedClimb) {
+        snackScope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            if (snackbar.showSnackbar(deletedText, undoText, duration = androidx.compose.material3.SnackbarDuration.Long) ==
+                androidx.compose.material3.SnackbarResult.ActionPerformed) viewModel.restore(d)
+        }
+    }
+    TrainingScaffold(
+        title = stringResource(R.string.trl_days_title),
+        onBack = onBack,
+        snackbarHost = { com.cruxcoach.android.ui.training.TrainingSnackbarHost(snackbar) },
+        floatingActionButton = {
+            // The FAB's merged node carries no text of its own (device dump 2026-10-19): TalkBack needs the label.
+            val fabLabel = stringResource(R.string.trl_action_log_climbing)
+            ExtendedFloatingActionButton(
+                onClick = { adding = true },
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text(stringResource(R.string.trl_action_log_climbing)) },
+                containerColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent,
+                contentColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.onBrandAccent,
+                modifier = Modifier.testTag("climbing_days_add").semantics { contentDescription = fabLabel },
+            )
+        },
+    ) { padding ->
+        val list = days
+        when {
+            list == null -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            list.isEmpty() -> EmptyHint(stringResource(R.string.trl_days_empty), Modifier.padding(padding))
+            else -> LazyColumn(
+                Modifier.fillMaxSize().padding(padding).testTag("climbing_days_list"),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(list, key = { it.id }) { d ->
+                    Card(Modifier.fillMaxWidth().clickable { editing = d.id }.testTag("climbing_day_row_${d.id}")) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Terrain, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(climbingDayKindLabel(d.kind), style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    listOf(
+                                        runCatching { LocalDate.parse(d.day).shortLabel() }.getOrDefault(d.day),
+                                        stringResource(R.string.trl_day_minutes_value, d.minutes),
+                                        climbIntensityLabel(d.intensity),
+                                    ).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                d.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                                overlaps[d.id]?.takeIf { d.source == ClimbingDaySource.HEALTH_CONNECT && it.coveredMinutes > 0 }?.let { o ->
+                                    Text(
+                                        stringResource(if (o.countAnyway) R.string.trl_day_overlap_counted else R.string.trl_day_overlap,
+                                            minOf(o.coveredMinutes, d.minutes), d.minutes),
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.testTag("climbing_day_row_overlap_${d.id}"),
+                                    )
+                                }
+                            }
+                            if (d.source == ClimbingDaySource.HEALTH_CONNECT) {
+                                AssistChip(onClick = { editing = d.id }, label = { Text(stringResource(R.string.trl_days_source_health)) })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    editing?.let { id -> ClimbingDaySheet(onDismiss = { editing = null }, editId = id, onDeleted = ::offerUndo) }
+    if (adding) ClimbingDaySheet(onDismiss = { adding = false })
+}

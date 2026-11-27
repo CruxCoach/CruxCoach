@@ -1,0 +1,408 @@
+package com.cruxcoach.android.ui.training.common
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoButton
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
+import com.cruxcoach.android.ui.training.dayLoadLabel
+import com.cruxcoach.android.ui.training.energyWarningText
+import com.cruxcoach.android.ui.training.formatMass
+import com.cruxcoach.android.ui.training.formatNumber
+import com.cruxcoach.android.ui.training.parseDecimal
+import com.cruxcoach.athlete.logic.DayLoad
+import com.cruxcoach.athlete.logic.EnergyBalance
+import com.cruxcoach.athlete.logic.EnergyReport
+import com.cruxcoach.athlete.logic.Units
+import com.cruxcoach.athlete.logic.WeightPlan
+import com.cruxcoach.athlete.model.AthleteGoal
+import com.cruxcoach.athlete.model.AthleteProfile
+import com.cruxcoach.athlete.model.EverydayActivity
+import com.cruxcoach.athlete.model.Sex
+import kotlin.math.roundToInt
+
+/*
+ * Energy in the open (owner 2026-10-09): the estimated need with its parts,
+ * and the weight-loss goal with its calorie target. Nothing is refused; what
+ * argues against a choice is named next to it with its numbers.
+ */
+
+/** Plausible heights in cm, as in the settings. */
+val PLAUSIBLE_HEIGHT_CM = 100.0..250.0
+
+/**
+ * "Energie heute": resting energy, everyday life, training, the need, and
+ * while losing weight the deficit and calorie target. Missing height, birth
+ * year or everyday activity are entered right here.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun EnergySheet(
+    profile: AthleteProfile,
+    need: EnergyBalance.Need?,
+    weightKg: Double?,
+    heightCm: Double?,
+    plan: WeightPlan.Plan?,
+    eatenKcal: Double?,
+    onDismiss: () -> Unit,
+    onEditGoal: () -> Unit,
+    onLogWeight: (Double) -> Unit,
+    onLogHeight: (Double) -> Unit,
+    onUpdateProfile: ((AthleteProfile) -> AthleteProfile) -> Unit,
+    /** Today's planned training the training line counts before it is done ("board 60 min", audit W4). */
+    plannedTraining: String? = null,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("energy_sheet")) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            // How the estimate works sits at the title's info icon, as in the goal sheet (design.md).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.trn_sheet_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f))
+                InfoButton(stringResource(R.string.trn_sheet_title), stringResource(R.string.trn_estimate_note))
+            }
+            if (weightKg == null) {
+                Text(stringResource(R.string.trn_needs_weight), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+                NumberEntry(stringResource(R.string.tru_weight_title), Units.massUnit(profile.units), "energy_weight",
+                    toCanonical = { Units.massFromDisplay(it, profile.units) }, valid = { it in PLAUSIBLE_WEIGHT_KG }, onSave = onLogWeight)
+            }
+            if (heightCm == null) {
+                Text(stringResource(R.string.trn_needs_height), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+                NumberEntry(stringResource(R.string.trn_height_label, Units.lengthUnit(profile.units)), Units.lengthUnit(profile.units), "energy_height",
+                    toCanonical = { Units.lengthFromDisplay(it, profile.units) }, valid = { it in PLAUSIBLE_HEIGHT_CM }, onSave = onLogHeight)
+            }
+            if (need != null) {
+                Spacer(Modifier.height(12.dp))
+                KcalRow(stringResource(R.string.trn_resting), need.restingKcal.toString(), "energy_resting")
+                KcalRow(stringResource(R.string.trn_everyday), "+" + need.everydayKcal, "energy_everyday")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    EverydayActivity.entries.forEach { e ->
+                        FilterChip(selected = profile.everydayActivity == e, leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(profile.everydayActivity == e), onClick = { onUpdateProfile { it.copy(everydayActivity = e) } },
+                            label = { Text(everydayLabel(e)) }, modifier = Modifier.testTag("everyday_${e.name.lowercase()}"))
+                    }
+                }
+                KcalRow(stringResource(R.string.trn_training),
+                    if (need.trainingKcal > 0) "+" + need.trainingKcal else stringResource(R.string.trn_no_training), "energy_training", unit = need.trainingKcal > 0)
+                plannedTraining?.let {
+                    Text(stringResource(R.string.trn_training_planned, it), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("energy_training_planned"))
+                }
+                HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                KcalRow(stringResource(R.string.trn_need), need.totalKcal.toString(), "energy_need", bold = true)
+                if (plan != null && plan.targetKcal != null) {
+                    KcalRow(stringResource(R.string.trn_deficit_line, formatMass(plan.paceKgPerWeek, profile.units)),
+                        "−" + plan.dailyDeficitKcal, "energy_deficit")
+                    KcalRow(stringResource(R.string.trn_target), plan.targetKcal.toString(), "energy_target", bold = true)
+                    PlanNote(easedDeficitText(plan, need.dayLoad, profile), "energy_eased")
+                    PlanNote(weekPaceText(plan, profile), "energy_week_pace")
+                }
+                // Recommended (the line above) or an own calorie target; a low one is named right here, never refused.
+                OwnTargetChoice(com.cruxcoach.athlete.logic.FuelTargets.TargetKind.ENERGY, profile, energyTarget(need, plan),
+                    onChange = onUpdateProfile, modifier = Modifier.padding(top = 4.dp), heading = stringResource(R.string.trn_target_heading))
+                profile.ownKcal?.let { kcal ->
+                    val own = com.cruxcoach.athlete.logic.OwnEnergyTarget(kcal, need.totalKcal, need.restingKcal)
+                    if (own.large) {
+                        val preview = EnergyReport(signals = listOf(com.cruxcoach.athlete.logic.RedsSignal.LARGE_DEFICIT), ownTarget = own)
+                        Row(Modifier.padding(top = 8.dp).testTag("energy_own_warning")) {
+                            Icon(Icons.Default.Warning, null, tint = CruxCoachDesign.colors.caution, modifier = Modifier.size(18.dp).padding(top = 2.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(energyWarningText(com.cruxcoach.athlete.logic.RedsSignal.LARGE_DEFICIT, preview, profile),
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+                eatenKcal?.let { KcalRow(stringResource(R.string.trn_eaten), it.roundToInt().toString(), "energy_eaten") }
+                if (need.ageAssumed) {
+                    Text(stringResource(R.string.trn_age_assumed, EnergyBalance.age(profile, java.time.LocalDate.now().year)),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 12.dp))
+                    val thisYear = java.time.LocalDate.now().year
+                    NumberEntry(stringResource(R.string.trn_birth_year_label), null, "energy_birth_year", decimals = false,
+                        toCanonical = { it }, valid = { it.toInt().toDouble() == it && it.toInt() in (thisYear - 100)..(thisYear - 8) },
+                        onSave = { y -> onUpdateProfile { p -> p.copy(birthYear = y.toInt()) } })
+                }
+                if (need.sexAssumed) {
+                    Text(stringResource(R.string.trn_sex_assumed), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(Sex.FEMALE to R.string.tra_sex_female, Sex.MALE to R.string.tra_sex_male).forEach { (s, label) ->
+                            FilterChip(selected = profile.sex == s, leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(profile.sex == s), onClick = { onUpdateProfile { it.copy(sex = s) } },
+                                label = { Text(stringResource(label)) }, modifier = Modifier.testTag("energy_sex_${s.name.lowercase()}"))
+                        }
+                    }
+                }
+            }
+            OutlinedButton(onClick = onEditGoal, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag("energy_goal")) {
+                Text(stringResource(if (profile.goal == AthleteGoal.LOSE_WEIGHT) R.string.trn_edit_goal else R.string.trn_set_goal))
+            }
+        }
+    }
+}
+
+/**
+ * "Abnehmen": optional target weight and the pace in 0.1 kg steps, with the
+ * resulting calorie target, the weeks to the target and every warning that
+ * applies – shown live while choosing, never blocking the choice. While the
+ * goal runs every change is kept at once (owner 2026-10-10: no save
+ * buttons); before, one button starts it.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WeightGoalSheet(
+    profile: AthleteProfile,
+    weightKg: Double?,
+    heightCm: Double?,
+    need: EnergyBalance.Need?,
+    onDismiss: () -> Unit,
+    onSave: (lose: Boolean, targetKg: Double?, paceKg: Double) -> Unit,
+    onLogWeight: (Double) -> Unit,
+    onLogHeight: (Double) -> Unit,
+    /** The last seven days' needs, today last: the plan then says what the chosen pace really adds up to. */
+    weekNeeds: List<EnergyBalance.Need> = emptyList(),
+) {
+    val units = profile.units
+    val losing = profile.goal == AthleteGoal.LOSE_WEIGHT
+    var targetText by rememberSaveable {
+        mutableStateOf(profile.targetWeightKg?.let { formatNumber(Units.massToDisplay(it, units)) } ?: "")
+    }
+    var pace by rememberSaveable { mutableStateOf(WeightPlan.clampPace(profile.weeklyLossKg)) }
+    val targetKg = parseDecimal(targetText)?.let { Units.massFromDisplay(it, units) }
+    val targetValid = targetText.isBlank() || (targetKg != null && targetKg in PLAUSIBLE_WEIGHT_KG)
+    val plan = weightKg?.let { WeightPlan.plan(pace, targetKg?.takeIf { targetValid }, it, heightCm, profile.sex, need, weekNeeds) }
+    val choice = Triple(true, targetKg?.takeIf { targetValid }, pace)
+    val changed = losing && targetValid && weightKg != null &&
+        (pace != WeightPlan.clampPace(profile.weeklyLossKg) || !sameKg(choice.second, profile.targetWeightKg))
+    // What was handed over last; stopping the goal ends the auto-save, so leaving the sheet cannot restart it.
+    val handedOver = remember { arrayOfNulls<Triple<Boolean, Double?, Double>>(1) }
+    val stopped = remember { booleanArrayOf(false) }
+    val latestChanged by rememberUpdatedState(changed)
+    val latestChoice by rememberUpdatedState(choice)
+    val latestSave by rememberUpdatedState(onSave)
+    fun keep() {
+        if (!latestChanged || stopped[0] || handedOver[0] == latestChoice) return
+        handedOver[0] = latestChoice
+        latestSave(latestChoice.first, latestChoice.second, latestChoice.third)
+    }
+    LaunchedEffect(targetText, pace, losing) {
+        if (changed) {
+            kotlinx.coroutines.delay(AUTOSAVE_DELAY_MS)
+            keep()
+        }
+    }
+    DisposableEffect(Unit) { onDispose { keep() } }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("goal_sheet")) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.trn_goal_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f))
+                InfoButton(stringResource(R.string.trn_goal_title), stringResource(R.string.trn_goal_info))
+            }
+            // Under 18 first of all: adult thresholds do not fit a growing body. Said, never locked.
+            if (EnergyBalance.isMinor(profile, java.time.LocalDate.now().year)) {
+                GoalWarning(stringResource(R.string.trn_w_youth), "goal_warning_youth")
+            }
+            if (weightKg == null) {
+                Text(stringResource(R.string.trn_needs_weight), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+                NumberEntry(stringResource(R.string.tru_weight_title), Units.massUnit(units), "goal_weight",
+                    toCanonical = { Units.massFromDisplay(it, units) }, valid = { it in PLAUSIBLE_WEIGHT_KG }, onSave = onLogWeight)
+            }
+            OutlinedTextField(
+                value = targetText, onValueChange = { targetText = it }, singleLine = true, isError = !targetValid,
+                // One line: wrapped, "(optional)" fell into the field's top border at the largest font.
+                label = { Text(stringResource(R.string.trn_goal_target), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                suffix = { Text(Units.massUnit(units)) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("goal_target_input"),
+            )
+            Text(stringResource(R.string.trn_goal_pace), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                FilledTonalIconButton(onClick = { pace = WeightPlan.clampPace(pace - WeightPlan.PACE_STEP_KG) },
+                    enabled = pace > WeightPlan.MIN_PACE_KG + 1e-9, modifier = Modifier.size(48.dp).testTag("goal_pace_minus")) {
+                    Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.trn_goal_pace_minus))
+                }
+                Text(stringResource(R.string.trn_goal_pace_value, formatMass(pace, units)), style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(horizontal = 12.dp).testTag("goal_pace"),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                FilledTonalIconButton(onClick = { pace = WeightPlan.clampPace(pace + WeightPlan.PACE_STEP_KG) },
+                    enabled = pace < WeightPlan.MAX_PACE_KG - 1e-9, modifier = Modifier.size(48.dp).testTag("goal_pace_plus")) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.trn_goal_pace_plus))
+                }
+            }
+            plan?.let { p ->
+                val share = formatNumber(p.paceShare * 100)
+                Text(
+                    if (profile.showCalories) stringResource(R.string.trn_goal_pace_share, share, (pace * EnergyBalance.KCAL_PER_KG / 7).roundToInt())
+                    else stringResource(R.string.trn_goal_pace_share_plain, share),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+                Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = CruxCoachDesign.shapes.medium,
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                    Column(Modifier.padding(12.dp).testTag("goal_result")) {
+                        val targetKcal = p.targetKcal
+                        val needKcal = p.needKcal
+                        if (p.targetReached) {
+                            Text(stringResource(R.string.trn_goal_reached), style = MaterialTheme.typography.bodyMedium)
+                        } else if (targetKcal != null && needKcal != null && profile.showCalories) {
+                            Text(stringResource(R.string.trn_goal_target_today, targetKcal), style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.testTag("goal_target_kcal"))
+                            Text(stringResource(R.string.trn_goal_target_math, needKcal, p.dailyDeficitKcal), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (!p.targetReached) {
+                            PlanNote(need?.let { easedDeficitText(p, it.dayLoad, profile) }, "goal_eased")
+                            PlanNote(weekPaceText(p, profile), "goal_week_pace")
+                        }
+                        p.weeksToTarget?.takeIf { it > 0 }?.let {
+                            Text(stringResource(R.string.trn_goal_weeks, it), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        if (heightCm == null) {
+                            Text(stringResource(R.string.trn_needs_height), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                            NumberEntry(stringResource(R.string.trn_height_label, Units.lengthUnit(units)), Units.lengthUnit(units), "goal_height",
+                                toCanonical = { Units.lengthFromDisplay(it, units) }, valid = { it in PLAUSIBLE_HEIGHT_CM }, onSave = onLogHeight)
+                        }
+                    }
+                }
+                // The same reasons as on the energy card, live while choosing.
+                val preview = EnergyReport(signals = p.warnings, plan = p)
+                p.warnings.forEach { w -> GoalWarning(energyWarningText(w, preview, profile), "goal_warning_${w.name.lowercase()}") }
+            }
+            if (losing) {
+                Button(onClick = { keep(); onDismiss() },
+                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp).heightIn(min = 52.dp).testTag("goal_done")) {
+                    Text(stringResource(R.string.tru_done))
+                }
+                TextButton(onClick = { stopped[0] = true; onSave(false, profile.targetWeightKg, profile.weeklyLossKg); onDismiss() },
+                    modifier = Modifier.fillMaxWidth().testTag("goal_stop")) {
+                    Text(stringResource(R.string.trn_goal_stop))
+                }
+            } else {
+                Button(onClick = { onSave(true, targetKg?.takeIf { targetValid }, pace); onDismiss() }, enabled = targetValid && weightKg != null,
+                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp).heightIn(min = 52.dp).testTag("goal_start")) {
+                    Text(stringResource(R.string.trn_goal_start))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun everydayLabel(e: EverydayActivity): String = stringResource(when (e) {
+    EverydayActivity.SEATED -> R.string.trn_everyday_seated
+    EverydayActivity.ON_FEET -> R.string.trn_everyday_on_feet
+    EverydayActivity.PHYSICAL -> R.string.trn_everyday_physical
+})
+
+@Composable
+private fun KcalRow(label: String, value: String, tag: String, bold: Boolean = false, unit: Boolean = true) {
+    // The value below the label when it leaves the label no room ("Train/ing/heut/e" at the largest font).
+    com.cruxcoach.android.ui.training.LabelBesideOrAbove(modifier = Modifier.padding(vertical = 4.dp).testTag(tag), label = {
+        Text(label, style = if (bold) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(end = 8.dp))
+    }) {
+        Text(if (unit) stringResource(R.string.trn_kcal_signed, value) else value,
+            style = if (bold) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
+            fontWeight = if (bold) FontWeight.SemiBold else null)
+    }
+}
+
+/** One missing value entered in place: field and unit; it saves itself once it is plausible. */
+@Composable
+internal fun NumberEntry(
+    label: String,
+    suffix: String?,
+    tag: String,
+    decimals: Boolean = true,
+    toCanonical: (Double) -> Double,
+    valid: (Double) -> Boolean,
+    onSave: (Double) -> Unit,
+) {
+    fun value(text: String) = parseDecimal(text)?.let(toCanonical)
+    AutoSaveTextField(
+        stored = "",
+        isValid = { t -> value(t)?.let(valid) == true },
+        onSave = { t -> value(t)?.let(onSave) },
+        label = label, suffix = suffix,
+        keyboardType = if (decimals) KeyboardType.Decimal else KeyboardType.Number,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("${tag}_input"),
+    )
+}
+
+/** Short summary of the goal for settings rows: "0,5 kg pro Woche · heute etwa 1950 kcal · Ziel 65 kg". */
+@Composable
+fun weightGoalSummary(profile: AthleteProfile, plan: WeightPlan.Plan?): String {
+    val pace = formatMass(WeightPlan.clampPace(profile.weeklyLossKg), profile.units)
+    val target = plan?.targetKcal
+    val head = if (profile.showCalories && target != null) stringResource(R.string.trn_goal_summary, pace, target)
+        else stringResource(R.string.trn_goal_summary_plain, pace)
+    val goal = profile.targetWeightKg?.takeIf { !profile.hideBodyNumbers }?.let { stringResource(R.string.trn_goal_summary_target, formatMass(it, profile.units)) }
+    return listOfNotNull(head, goal).joinToString(" · ")
+}
+
+/**
+ * Why the day's deficit is smaller than the pace's, with both numbers (holistic
+ * audit 2026-10-17: hard days are fuelled rather than their carbohydrates capped); null
+ * when it is not smaller.
+ */
+@Composable
+fun easedDeficitText(plan: WeightPlan.Plan?, dayLoad: DayLoad, profile: AthleteProfile): String? {
+    if (plan == null || plan.easedKcal <= 0) return null
+    val day = dayLoadLabel(dayLoad)
+    return when {
+        !profile.showCalories -> stringResource(R.string.trn_deficit_eased_plain, day)
+        dayLoad == DayLoad.REST -> stringResource(R.string.trn_deficit_eased_rest, day, plan.dailyDeficitKcal, plan.paceDeficitKcal)
+        else -> stringResource(R.string.trn_deficit_eased, day, plan.dailyDeficitKcal, plan.paceDeficitKcal)
+    }
+}
+
+/**
+ * The pace the last seven days' deficits really add up to, when it is
+ * slower than the chosen one (to the 0.1 kg shown); null otherwise.
+ */
+@Composable
+fun weekPaceText(plan: WeightPlan.Plan?, profile: AthleteProfile): String? {
+    val week = plan?.weekPaceKg ?: return null
+    val shown = (week * 10).roundToInt() / 10.0
+    if (shown >= plan.paceKgPerWeek - 1e-9) return null
+    return stringResource(R.string.trn_week_pace, formatMass(shown, profile.units), formatMass(plan.paceKgPerWeek, profile.units))
+}
+
+@Composable
+private fun GoalWarning(text: String, tag: String) {
+    Row(Modifier.padding(top = 8.dp).testTag(tag)) {
+        Icon(Icons.Default.Warning, null, tint = CruxCoachDesign.colors.caution, modifier = Modifier.size(18.dp).padding(top = 2.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun PlanNote(text: String?, tag: String) {
+    if (text == null) return
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag(tag))
+}
+
+/** Two optional weights are the same to the gram that matters (lb round trips). */
+private fun sameKg(a: Double?, b: Double?): Boolean = if (a == null || b == null) a == b else kotlin.math.abs(a - b) < 0.05
+
+/** The energy target of a day: the athlete's own, else the need minus the plan's deficit while losing weight. */
+fun energyTarget(need: EnergyBalance.Need?, plan: WeightPlan.Plan?, profile: AthleteProfile? = null): Int? =
+    profile?.ownKcal ?: need?.let { it.totalKcal - (plan?.dailyDeficitKcal ?: 0) }

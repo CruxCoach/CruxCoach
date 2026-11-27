@@ -6,7 +6,7 @@ import com.cruxcoach.android.data.CruxRelayState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import javax.inject.Inject
 
 /**
@@ -27,10 +27,20 @@ class RelayShareViewModel @Inject constructor(
     /** The card shows the full disclosure until sharing was accepted once. */
     val disclosureSeen: Flow<Boolean> = relayManager.disclosureSeen
 
-    /** The single switch: sharing follows the board connection while it is on. */
-    val sharingOn: Flow<Boolean> = relayManager.manualStart.map { !it }
+    /**
+     * The single switch: sharing follows the board connection while it is on. It stays off until
+     * the user started sharing once: automatic start waits for that consent, so "on" before it
+     * promised a start that never came.
+     */
+    val sharingOn: Flow<Boolean> =
+        combine(relayManager.manualStart, relayManager.disclosureSeen) { manual, seen ->
+            !manual && seen
+        }
 
     fun setSharing(enabled: Boolean) = relayManager.setSharingEnabled(enabled)
+
+    /** Deliberate restart after sharing ended because the phone connected to a car. */
+    fun shareAgain() = relayManager.requestEnable()
 
     fun clearError() {
         relayManager.clearError()

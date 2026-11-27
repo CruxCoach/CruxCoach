@@ -27,8 +27,12 @@ activated production boundary. See [release and CI status](RELEASE_GITHUB.md).
 | Task | Start here |
 |---|---|
 | Understand boards, climbs, logs, filters and playlists | Core concepts: [English](en/CORE_CONCEPTS.md) · [Deutsch](de/CORE_CONCEPTS.md) |
+| Understand training, nutrition and the comeback plan (0.2.5) | [Core concepts: training and nutrition](en/CORE_CONCEPTS.md#training-and-nutrition-025), specs [FEAT-066–072](specs/INDEX.md) |
+| Know what a weight or count field in Training refers to | [English](en/TRAINING_WEIGHTS.md) · [Deutsch](de/TRAINING_WEIGHTS.md) |
+| Check the training suggestions over weeks with simulated athletes | [Training simulation](en/TRAINING_SIMULATION.md) |
 | Find implementation and architectural boundaries | [Source map and architecture](en/CORE_CONCEPTS.md#source-map) |
 | Design app flows and interfaces | [UI/UX design guide](../design.md) |
+| Paint and save LED pictures | PaintBox: [English](en/PAINTBOX.md) · [Deutsch](de/PAINTBOX.md) |
 | Make a contribution or orient an agent | [CONTRIBUTING](../CONTRIBUTING.md) and mandatory [AGENTS](../AGENTS.md) |
 | Choose focused checks or use a device | [Testing](testing.md) |
 | Understand release authority and migration state | [Release and CI](RELEASE_GITHUB.md), [key rotation](KEY_ROTATION.md) |

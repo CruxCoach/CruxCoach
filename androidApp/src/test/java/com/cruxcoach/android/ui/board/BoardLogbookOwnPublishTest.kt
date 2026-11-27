@@ -140,6 +140,7 @@ class BoardLogbookOwnPublishTest {
         climbNavState = mockk(relaxed = true),
         climbNameResolver = mockk(relaxed = true),
         ownClimbPublisher = ownClimbPublisher,
+        holdTypeAssets = mockk(relaxed = true),
         context = context,
     )
 

@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ble
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.annotation.ColorInt
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
@@ -45,6 +46,11 @@ data class BoardClimbLayer(
      * Until the local catalogue resolves that UUID, its occupied holds are
      * unknown and another projection must not assume it is conflict-free. */
     val controllerDetailsKnown: Boolean = true,
+    /** Set while [confirmedRouteUuid] was accepted by the controller but is
+     * not in its route list: the route is taken to be lit until this
+     * [SystemClock.elapsedRealtime], when its play time is over. Null once
+     * the list names it (or for routes only the list reported). */
+    val unlistedUntilElapsedMs: Long? = null,
     /** Process-local compare-and-set token. BLE work suspends while another
      * detail/playlist surface can replace the same numbered slot; completions
      * may mutate only the exact plan that started the operation. */
@@ -104,6 +110,9 @@ data class BoardLayerState(
     /** Freshness of the controller roster; layers are retained as last-known
      * state across a disconnect but must no longer be labelled live. */
     val quantumSyncStatus: QuantumControllerSyncStatus = QuantumControllerSyncStatus.UNSYNCED,
+    /** PaintBox identities this phone lit on [board]. A lit colour need not
+     * be in the controller's route list, and removing a picture must reach it. */
+    val litPaintUsers: Set<String> = emptySet(),
 ) {
     /** Physical controller occupancy. PREVIEW layers are local-only. */
     val occupiedCount: Int
@@ -118,6 +127,8 @@ fun BoardLayerState.matchesQuantumPlayers(players: List<QuantumActivePlayer>): B
     val represented = buildList {
         layers.forEach { layer ->
             val route = layer.confirmedRouteUuid ?: return@forEach
+            // Accepted but not in the list: absent from the players by definition.
+            if (layer.unlistedUntilElapsedMs != null) return@forEach
             add(
                 QuantumActivePlayer(
                     routeId = route,
@@ -161,6 +172,21 @@ class BoardLayerManager @Inject constructor(
     private val identities = List(MAX_LAYER_IDENTITIES) { slot ->
         deriveFipsSafeUuid("cruxcoach-board-layer-v1|$installationId|$slot")
     }
+    // Separate from climb slots: painting must never claim or replace a staged climb.
+    private val paintIdentities = List(4) { color ->
+        deriveFipsSafeUuid("cruxcoach-paintbox-v1|$installationId|$color")
+    }
+    fun paintIdentity(colorIndex: Int): String = paintIdentities[colorIndex]
+    fun ownsPaintIdentity(userUuid: String): Boolean =
+        paintIdentities.any { it.equals(userUuid, ignoreCase = true) }
+
+    fun markPaintLit(userUuid: String) {
+        if (ownsPaintIdentity(userUuid)) _state.update { it.copy(litPaintUsers = it.litPaintUsers + userUuid.lowercase()) }
+    }
+
+    fun markPaintOff(userUuid: String) {
+        _state.update { it.copy(litPaintUsers = it.litPaintUsers - userUuid.lowercase()) }
+    }
 
     private val _state = MutableStateFlow(BoardLayerState())
     val state: StateFlow<BoardLayerState> = _state.asStateFlow()
@@ -176,7 +202,7 @@ class BoardLayerManager @Inject constructor(
     /** Trust-boundary predicate used by the BLE transport before any scoped
      * Quantum mutation. A syntactically valid UUID is not proof of ownership. */
     fun ownsIdentity(userUuid: String): Boolean =
-        identities.any { it.equals(userUuid, ignoreCase = true) }
+        identities.any { it.equals(userUuid, ignoreCase = true) } || ownsPaintIdentity(userUuid)
 
     fun nextAvailableSlot(brand: BoardBrand, preferred: Int? = null): Int? {
         val max = brand.maxSimultaneousClimbs
@@ -239,6 +265,7 @@ class BoardLayerManager @Inject constructor(
                 confirmedClimbName = previous?.confirmedClimbName,
                 confirmedHolds = previous?.confirmedHolds,
                 controllerDetailsKnown = previous?.controllerDetailsKnown ?: true,
+                unlistedUntilElapsedMs = previous?.unlistedUntilElapsedMs,
             )).sortedBy { it.slot },
     )
 
@@ -251,7 +278,12 @@ class BoardLayerManager @Inject constructor(
         it.copy(status = BoardLayerStatus.SENDING)
     }
 
-    fun confirmProjection(expected: BoardLayerPlanKey): Boolean = updateOwned(expected) {
+    /** The controller accepted the plan. [unlistedUntilElapsedMs]: see
+     * [BoardClimbLayer.unlistedUntilElapsedMs]; null when its list names it. */
+    fun confirmProjection(
+        expected: BoardLayerPlanKey,
+        unlistedUntilElapsedMs: Long? = null,
+    ): Boolean = updateOwned(expected) {
         it.copy(
             status = BoardLayerStatus.CONFIRMED,
             confirmedRouteUuid = it.routeUuid,
@@ -260,6 +292,7 @@ class BoardLayerManager @Inject constructor(
             confirmedClimbName = it.climbName,
             confirmedHolds = it.holds,
             controllerDetailsKnown = true,
+            unlistedUntilElapsedMs = unlistedUntilElapsedMs,
         )
     }
 
@@ -357,13 +390,22 @@ class BoardLayerManager @Inject constructor(
     fun isBoundTo(identity: BoardLayerBoardIdentity?): Boolean =
         identity != null && _state.value.board == identity
 
-    /** Merge an authoritative Quantum snapshot without claiming foreign slots. */
-    fun reconcile(players: List<QuantumActivePlayer>) {
+    /** Merge an authoritative Quantum snapshot without claiming foreign slots.
+     * A route the controller accepted but never listed stays until its play
+     * time is over ([BoardClimbLayer.unlistedUntilElapsedMs]). */
+    fun reconcile(
+        players: List<QuantumActivePlayer>,
+        nowElapsedMs: Long = SystemClock.elapsedRealtime(),
+    ) {
         val byUser = players.associateBy { it.userId.lowercase() }
         val ownedIds = identities.mapTo(mutableSetOf()) { it.lowercase() }
         _state.update { current ->
             val owned = current.layers.mapNotNull { layer ->
                 val player = byUser[layer.userUuid.lowercase()]
+                val unlistedUntil = layer.unlistedUntilElapsedMs
+                if (player == null && layer.confirmedRouteUuid != null &&
+                    unlistedUntil != null && nowElapsedMs < unlistedUntil
+                ) return@mapNotNull layer
                 // TURN_OFF_USER produces an intermediate snapshot before the
                 // activation. Preserve the transaction placeholder until the
                 // sender either confirms or fails it.
@@ -378,6 +420,7 @@ class BoardLayerManager @Inject constructor(
                             confirmedClimbName = null,
                             confirmedHolds = null,
                             controllerDetailsKnown = true,
+                            unlistedUntilElapsedMs = null,
                         )
                     }
                 }
@@ -395,6 +438,7 @@ class BoardLayerManager @Inject constructor(
                         ?: player.routeId.take(8),
                     confirmedHolds = layer.holds.takeIf { routeMatchesPlan },
                     controllerDetailsKnown = routeMatchesPlan,
+                    unlistedUntilElapsedMs = null,
                 )
             }.toMutableList()
             val representedUsers = owned.mapTo(mutableSetOf()) { it.userUuid.lowercase() }
@@ -421,7 +465,9 @@ class BoardLayerManager @Inject constructor(
             val previousExternal = current.externalLayers.associateBy {
                 BoardLayerControllerRouteKey(it.routeUuid, it.userUuid).normalized()
             }
-            val external = players.filterNot { it.userId.lowercase() in ownedIds }.map { player ->
+            // This phone's PaintBox picture is no other climber: a climb replaces it
+            // (see removePaintBoxLayers), so it neither blocks nor fills the rack.
+            val external = players.filterNot { it.userId.lowercase() in ownedIds || ownsPaintIdentity(it.userId) }.map { player ->
                 val previous = previousExternal[
                     BoardLayerControllerRouteKey(player.routeId, player.userId).normalized()
                 ]
@@ -560,7 +606,7 @@ data class BoardLayerCapabilities(
 )
 
 /** Colours reserved by staged plans and by routes still physically lit.
- * The target slot is excluded because its TURN_OFF_USER precedes activation. */
+ * The target slot is excluded because its new route takes its own identity's place. */
 fun BoardLayerState.reservedLayerColors(replacingSlot: Int? = null): Set<Int> = buildSet {
     layers.filterNot { it.slot == replacingSlot }.forEach { layer ->
         add(layer.color)
@@ -623,4 +669,23 @@ object BoardLayerConflictPolicy {
             .flatMapTo(mutableSetOf()) { layer -> layer.holds.map { it.placementId } }
         return candidate.count { it.placementId in occupied }
     }
+}
+
+/**
+ * Turns off this phone's PaintBox picture on the connected Quantum board before
+ * a climb takes it, as a climb replaces a picture on every other board: every
+ * PaintBox identity the controller lists or this phone lit.
+ * Returns how many PaintBox layers were removed, or null if one could not be.
+ */
+internal suspend fun BoardBleConnection.removePaintBoxLayers(
+    layers: BoardLayerManager,
+    board: BoardLayerBoardIdentity,
+): Int? {
+    val listed = quantumControllerState.value.players.map { it.userId }.filter(layers::ownsPaintIdentity)
+    val paint = (listed + layers.state.value.litPaintUsers).distinctBy { it.lowercase() }
+    for (user in paint) {
+        if (!removeQuantumLayer(user, board)) return null
+        layers.markPaintOff(user)
+    }
+    return paint.size
 }

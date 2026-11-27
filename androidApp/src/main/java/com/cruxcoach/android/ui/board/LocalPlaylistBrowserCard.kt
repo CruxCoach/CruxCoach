@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 /** Playlist-UX browser banner backed only by the private local 0.2.2 queue. */
@@ -97,7 +98,7 @@ internal fun LocalPlaylistBrowserCard(
                         "${currentIndex + 1}/$totalCount",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = OrangeAccent,
+                        color = CruxCoachDesign.colors.onBrandAccentContainer,
                     )
                     Spacer(Modifier.width(2.dp))
                 }

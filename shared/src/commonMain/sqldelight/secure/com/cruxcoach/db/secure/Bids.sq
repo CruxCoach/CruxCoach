@@ -52,8 +52,17 @@ UPDATE bids SET bid_count = ?, comment = ?, synced = 0, row_version = row_versio
 selectBidUploadState:
 SELECT synced, bid_count, comment FROM bids WHERE uuid = ?;
 
+-- Only a Kilter row can have a copy on Kilter, so only its deletion goes there.
+selectBidBoardBrand:
+SELECT board_brand FROM bids WHERE uuid = ?;
+
 deleteBid:
 DELETE FROM bids WHERE uuid = ?;
+
+-- An imported attempt as it stands now: the Shiny Wall import replaces one only while
+-- it is still as written (see ShinyWallSyncEngine).
+selectBidContent:
+SELECT bid_count, comment, external_id FROM bids WHERE uuid = ?;
 
 -- ═══ UUID lookups ═══
 

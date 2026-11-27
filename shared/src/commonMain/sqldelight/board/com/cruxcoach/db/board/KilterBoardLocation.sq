@@ -90,3 +90,10 @@ SELECT * FROM kilter_board_location
 WHERE name COLLATE NOCASE LIKE ('%' || :q || '%') ESCAPE '\'
 ORDER BY name
 LIMIT :lim;
+
+-- Board picker: how common each board and MoonBoard version is in gyms.
+-- layout_id NULL = the gym list does not say which layout.
+countByBrandAndLayout:
+SELECT board_brand, layout_id, COUNT(*) AS cnt
+FROM kilter_board_location
+GROUP BY board_brand, layout_id;

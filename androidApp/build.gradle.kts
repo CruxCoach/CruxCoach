@@ -113,8 +113,9 @@ if (featureBranch != null) {
 aboutLibraries {
     collect {
         // Vendored code and data the dependency scan cannot see: zstd (its BSD
-        // licence asks for the notice in binaries), the BoardSesh hold-set map
-        // and the dontkillmyapp.com data (CC BY-SA).
+        // licence asks for the notice in binaries), the BoardSesh hold-set map,
+        // the spray-wall hold model and its ported pipeline, and the
+        // dontkillmyapp.com data (CC BY-SA).
         configPath.set(layout.projectDirectory.dir("aboutlibraries"))
     }
 }
@@ -128,8 +129,8 @@ android {
         manifestPlaceholders["appLabel"] = "@string/app_name"
         minSdk = 28
         targetSdk = 35
-        versionCode = featureVersionCode ?: 10
-        versionName = "0.2.4"
+        versionCode = featureVersionCode ?: 11
+        versionName = "0.2.5"
 
         // Only bundle arm64 native libs. armeabi-v7a alone added ~10.7 MB
         // to the APK (libmaplibre 8 MB + sqlcipher + secp256k1 + sodium +
@@ -368,6 +369,8 @@ android {
         unitTests.isReturnDefaultValues = true
         // Robolectric needs merged Android resources on the test classpath.
         unitTests.isIncludeAndroidResources = true
+        // Gradle's default 512 MB ran out in Robolectric's resource loading on CI.
+        unitTests.all { it.maxHeapSize = "2g" }
     }
 
     // Pin OkHttp on the *unit-test* classpath to 4.12.0 so MockWebServer 4.12
@@ -447,6 +450,13 @@ android {
             // Android extracts the DEX files during installation instead.
             useLegacyPackaging = true
         }
+        jniLibs {
+            // Same trade for native libraries: stored uncompressed they can be
+            // mapped from the APK, but ONNX Runtime alone (FEAT-078, the
+            // spray-wall hold model) is 34 MB uncompressed and 13 MB deflated.
+            // Compressed, Android extracts them once at install time instead.
+            useLegacyPackaging = true
+        }
     }
 
 }
@@ -524,6 +534,8 @@ dependencies {
     // Nostr NIP-17 crash reporting (quartz requires Jackson for event hashing/signing)
     implementation(libs.quartz.android)
     implementation(libs.okhttp)
+    // Spray-wall hold model (FEAT-078): segmentation on the phone, arm64 only like the rest of the native code.
+    implementation(libs.onnxruntime.android)
 
     // Encrypted SharedPreferences for Nostr key storage
     implementation(libs.security.crypto)
@@ -546,6 +558,9 @@ dependencies {
     implementation(libs.coil.okhttp)
     implementation(libs.compose.richtext.commonmark)
     implementation(libs.compose.richtext.ui.material3)
+
+    // FEAT-070 coach: Health Connect (read-only sleep + exercise sessions)
+    implementation(libs.health.connect.client)
 
     // Testing
     testImplementation(libs.kotlin.test)

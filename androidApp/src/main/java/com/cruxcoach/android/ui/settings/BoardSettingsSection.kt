@@ -290,7 +290,9 @@ internal fun AssessmentSection(
         modifier = Modifier.fillMaxWidth().testTag("settings_assessment_button"),
         colors = ButtonDefaults.buttonColors(
             containerColor = if (hasAssessment) MaterialTheme.colorScheme.secondaryContainer
-            else MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.primary,
+            contentColor = if (hasAssessment) MaterialTheme.colorScheme.onSecondaryContainer
+            else MaterialTheme.colorScheme.onPrimary
         ),
         shape = RoundedCornerShape(12.dp)
     ) {

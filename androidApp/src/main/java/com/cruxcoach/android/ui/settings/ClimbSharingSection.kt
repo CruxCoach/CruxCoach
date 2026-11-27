@@ -17,7 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BlePermissionHelper
-import com.cruxcoach.android.ui.theme.WarningYellow
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 
 @Composable
 internal fun ClimbSharingSection(
@@ -25,6 +25,7 @@ internal fun ClimbSharingSection(
     onSharingChange: (Boolean) -> Unit,
     relayManualStart: Boolean = false,
     onRelayManualStartChange: (Boolean) -> Unit = {},
+    relayDisclosureSeen: Boolean = true,
 ) {
     Text(
         stringResource(R.string.settings_sharing_title),
@@ -38,14 +39,14 @@ internal fun ClimbSharingSection(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
-                containerColor = WarningYellow.copy(alpha = 0.15f)
+                containerColor = CruxCoachDesign.colors.cautionContainer
             )
         ) {
             Text(
                 stringResource(R.string.settings_sharing_no_ble_advertising),
                 modifier = Modifier.padding(12.dp),
                 style = MaterialTheme.typography.bodySmall,
-                color = WarningYellow
+                color = CruxCoachDesign.colors.onCautionContainer
             )
         }
         return
@@ -116,5 +117,15 @@ internal fun ClimbSharingSection(
         onCheckedChange = { onRelayManualStartChange(!it) },
         modifier = Modifier.testTag("settings_relay_manual_start"),
     )
+    // Automatic sharing waits for the first share from the connection sheet, where the
+    // disclosure is shown; until then "on" here only says what happens after it.
+    if (!relayManualStart && !relayDisclosureSeen) {
+        Text(
+            stringResource(R.string.settings_relay_first_share_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("settings_relay_first_share_hint"),
+        )
+    }
 
 }

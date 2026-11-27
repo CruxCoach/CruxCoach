@@ -53,6 +53,33 @@ object MoonBoardFrameEncoder {
     fun encodeCleaning(positions: Set<Int>): ByteArray =
         (FRAME_PREFIX + positions.sorted().joinToString(",") { "P$it" } + FRAME_SUFFIX).encodeToByteArray()
 
+    /**
+     * What one frame may carry. A MoonBoard box lit a frame of 52 LEDs and showed
+     * a single LED for 53 (field report, November 2026). Whether the box counts
+     * the entries or the bytes is not measured yet. Every frame of 52 entries is
+     * at least 200 bytes long ("l#", 52 tokens on distinct positions, 51 commas,
+     * "#"), so a frame within both limits is one the box has shown.
+     */
+    const val MAX_FRAME_LEDS = 52
+    const val MAX_FRAME_BYTES = 200
+
+    /** LED entries in an `l#…#` frame. */
+    fun ledCount(frame: ByteArray): Int =
+        frame.decodeToString().removePrefix(FRAME_PREFIX).removeSuffix(FRAME_SUFFIX)
+            .split(',').count { it.isNotEmpty() }
+
+    /** Whether the box takes [frame] whole. Every MoonBoard sender refuses a frame
+     *  that doesn't fit instead of sending one the box would garble. */
+    fun fitsController(frame: ByteArray): Boolean =
+        frame.size <= MAX_FRAME_BYTES && ledCount(frame) <= MAX_FRAME_LEDS
+
+    /** Whether a climb's [frames] fit one frame of the box ([fitsController]), as [encode] builds it. */
+    fun fits(
+        frames: String,
+        variant: MoonBoardVariant,
+        ledMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
+    ): Boolean = fitsController(encode(frames, variant, ledMode))
+
     // Aurora-aligned role codes as stored in the `frames` column
     // (p{holdId}r{roleCode}). Match HOLD_STATE_CODES in the board-DB
     // MoonBoard importer.

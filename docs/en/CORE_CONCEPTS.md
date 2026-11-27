@@ -4,6 +4,7 @@
 
 **Scope:** implemented source at `4fc067e87`, preparing 0.2.3. Published app:
 0.2.2. The outcome/count corrections below belong to this preparation line.
+The section "Training and nutrition" describes `feat/0.2.5-training-nutrition` (target 0.2.5).
 
 ## Board, layout, angle, problem
 
@@ -13,6 +14,16 @@ A **layout** describes the hold arrangement. A physical installation also has
 a size, mounted hold sets and supported angles. Selecting a gym helps choose
 that configuration; the board-fit filter excludes climbs that cannot fit it.
 A Bluetooth connection identifies the controller you can actually light.
+
+**Quantum is experimental.** It is not yet tested on a real Quantum board, and
+the app says so where you pick or connect one. A climb lights as an ordinary
+player route: one route in one colour for the board's own auto-off time (31
+minutes if the board names none). A route counts as sent when the board takes
+it without an error; a refusal shows its reason. If the board's route list does
+not name a route it took, the layer rack shows it as "sent; the board does not
+list it" and keeps it until its time is over, so you can still turn it off.
+Known limits: an S Fitness is handled like the other models (four layers, one
+colour per route), and routes with more than 92 holds are not sent.
 
 A **problem** (called a climb in code) has an identity and hold frames. Its
 **angle** is the incline used to browse, project or log it. The setter's angle
@@ -196,6 +207,44 @@ switching accounts keeps the existing isolation/reset behavior. Without a retain
 local key, the UI offers import rather than a disconnect that creates an identity.
 Private keys remain masked during import, and screenshot protection remains active.
 
+## LED effects
+
+*Settings → Board & Bluetooth → LED effects* (and a climb's menu, while a board
+that shows effects is connected) keep the lit climb moving. The default is
+**None**: the climb keeps its normal colors. **Pulse** makes each hold glow
+brighter and dimmer in its own color, **Rainbow** moves every color slowly
+around the color wheel, **Two-phase strobe** flashes between the CruxCoach and
+the Kilter colors, and **Chaotic strobe** jumps the colors around while start,
+hand, top and foot holds stay apart. The gentle effects come first, the flashing
+ones last with a flash mark; what each effect does is behind the card's info
+symbol. A choice shows on the wall at once, so the wall is the preview. A status
+line says what the effect is doing (running, waiting for a climb, paused, ended,
+no board, then with "Connect board"). The effects look and move exactly
+as contributed; there is no tempo control.
+
+Effects show on a connected Kilter Board, on climbs of up to 120 lit LEDs; other
+boards keep their normal colors (one list, `LedEffectSupport`, says which
+boards). The other Aurora boards would work through the same packets and wait for
+a device test.
+
+Flashing: the two strobes start a new frame at most every 333 ms, so they change
+color at most three times a second (WCAG 2.3.1 allows three flashes, i.e. six
+changes, a second). They ask once before their first use, and every time while
+Android's "Remove animations" is on — a warning, not a lock. Pulse and Rainbow
+change gradually.
+
+Others first: what you send, route playback, the Easter animation, wall games
+and hold cleaning always go first; the effect waits or pauses. Effect frames do
+not count as activity, so automatic disconnect still releases a board that takes
+one phone at a time on schedule, and the climb's normal colors are written back
+before it goes. An effect ends after 15 minutes on the same climb (send the climb
+again to restart). Leaving the app ends it with the normal colors, unless *Keep
+running in other apps* is on (off by default): then a notification with **Stop**
+keeps it going for those 15 minutes, only while notifications can be seen. The
+phone keeps the board connection meanwhile, and there is no wake lock — if
+Android pauses the app, the effect stops. The idea and the first version were
+contributed by dapeebb (PR #21); spec `docs/specs/0.2.5/FEAT-074-led-animations.md`.
+
 ## Board map
 
 The map shows one marker per venue in the colour and letter of its board family (Kilter red "K", MoonBoard yellow "M", Tension slate "T", …); a venue with several families gets one pie segment per family. Nearby venues merge into neutral count bubbles that take a family's colour when the board choice leaves exactly one family. From city zoom on, gym names stand under the markers. The board chip on top lists every family with its marker and count, so it is also the legend; the filter chip carries the number of further active filters.
@@ -213,6 +262,38 @@ On the map, a board with a known layout opens its climbs directly ("Browse climb
 ## Board map statistics
 
 Map statistics count all recorded boards in the loaded map dataset, independently of map filters. A venue may contain several boards. Brand and layout distributions include every board family; layout names are grouped within their brand, and missing layouts remain visible as unknown. Access, adjustability, country and known size aggregates use the same dataset.
+
+## Training and nutrition (0.2.5)
+
+The training area ("Training & nutrition" in the main menu) has four tabs:
+Today, Training (workouts and the exercise library), Nutrition and Progress.
+**Today** suggests one training from the week plan, climbing days, the
+check-in, finger load of the last days, equipment of the chosen place and what
+the coach learned; every exercise on the card can be swapped, left out or never
+suggested again, and the reasons sit behind "Why?". Suggestions never force
+anything: the athlete can always change them, and safety rules (injuries,
+guardrails for young climbers and beginners, finger load) decide before
+preferences. The coach learns from swaps and changes in moderation – rejected
+exercises rest for days to weeks and are not suggested over and over – and
+"What the coach learned" shows and forgets each item.
+
+**Nutrition** follows the training day with transparent targets and warns
+with its numbers instead of locking anything ("warn, don't block"). Foods come
+from bundled BLS 4.0, USDA and Open Food Facts data, a barcode, a typed
+description or an optional on-device photo model (downloaded only on request).
+
+**Comeback plan** after an injury is a training aid, not a medical device: the
+athlete enters what a doctor or physio said and picks the stage; the app never
+diagnoses, never picks or changes a stage by itself and says on every comeback
+screen that it is not a substitute for seeing a doctor. Healing or treatment
+words are not used (`HealthWordingTest`).
+
+**Data:** everything lives in a separate SQLCipher database per account
+(`cruxcoach_athlete_<pubkey prefix>.db`, schema in `sqldelight/athlete`), opened
+on first use, never at app start. Backups carry it as the additive `athlete`
+part (envelope version 3, read forward-compatibly); categories Training, Body,
+Nutrition are on by default, injuries and the comeback diary (`HEALTH`) only
+when switched on. Health Connect is optional, one switch per direction.
 
 ## Source map
 
@@ -232,6 +313,12 @@ Read implementation and focused tests together before changing a concept.
 | Key protection | [SqlCipherKeyManager](../../androidApp/src/main/java/com/cruxcoach/android/data/SqlCipherKeyManager.kt) |
 | Backup envelope and restore | [backup](../../androidApp/src/main/java/com/cruxcoach/android/nostr/backup/) |
 | LAN snapshot exclusions | [LocalShareSchema](../../androidApp/src/main/java/com/cruxcoach/android/data/LocalShareSchema.kt) and [wire contract](LOCAL_SHARE_CONTRACT.md) |
+| Training, coach and comeback logic | [shared athlete](../../shared/src/commonMain/kotlin/com/cruxcoach/athlete/) (`logic/SessionSuggester.kt`, `logic/WorkoutPlanner.kt`, `logic/Comeback*.kt`, `logic/FuelLogic.kt`) |
+| Athlete schema and migrations | [sqldelight/athlete](../../shared/src/commonMain/sqldelight/athlete/) |
+| Training services, Health Connect | [athlete](../../androidApp/src/main/java/com/cruxcoach/android/athlete/) (`AthleteService.kt`, `ComebackService.kt`, `health/`) |
+| Training and nutrition screens | [ui/training](../../androidApp/src/main/java/com/cruxcoach/android/ui/training/) |
+| Exercise catalogue and food data | [assets/training](../../androidApp/src/main/assets/training/), [assets/fuel](../../androidApp/src/main/assets/fuel/), [foodvision](../../androidApp/src/main/java/com/cruxcoach/android/foodvision/) |
+| LED effects | [led](../../androidApp/src/main/java/com/cruxcoach/android/led/) (`LedAnimationEngine.kt`, `LedEffectSupport.kt`) and `BoardBleConnection.sendAnimationLeds` |
 | Update integrity | [IntegrityVerifier](../../androidApp/src/main/java/com/cruxcoach/android/updater/IntegrityVerifier.kt) |
 
 Android-specific UI, BLE, background work and dependency injection live in

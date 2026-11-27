@@ -1,0 +1,918 @@
+package com.cruxcoach.android.ui.training.workout
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.R
+import com.cruxcoach.android.athlete.AthleteService
+import com.cruxcoach.android.athlete.NextLine
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
+import com.cruxcoach.android.ui.training.*
+import com.cruxcoach.athlete.catalog.ExerciseCatalog
+import com.cruxcoach.athlete.catalog.ExerciseDefinition
+import com.cruxcoach.athlete.catalog.ExerciseKind
+import com.cruxcoach.athlete.catalog.LoadMode
+import com.cruxcoach.athlete.logic.ProgressionSuggestion
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
+import kotlinx.datetime.isoDayNumber
+import com.cruxcoach.athlete.model.SuggestionEventKind
+import com.cruxcoach.athlete.logic.WorkoutPlanner
+import com.cruxcoach.athlete.logic.TrainingBlocks
+import com.cruxcoach.athlete.logic.TrendKind
+import com.cruxcoach.athlete.logic.ProgressionTrend
+import com.cruxcoach.athlete.logic.ProgressionAdvisor
+import com.cruxcoach.athlete.logic.ProgressionVerdict
+import com.cruxcoach.athlete.logic.WorkoutSummary
+import com.cruxcoach.athlete.model.ExerciseSet
+import com.cruxcoach.athlete.model.SetType
+import com.cruxcoach.athlete.model.Side
+import com.cruxcoach.athlete.model.UnitSystem
+import com.cruxcoach.athlete.model.Workout
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import javax.inject.Inject
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+data class SummaryState(
+    val loading: Boolean = true,
+    val workout: Workout? = null,
+    val blocks: List<Pair<ExerciseDefinition, List<ExerciseSet>>> = emptyList(),
+    val summary: WorkoutSummary? = null,
+    val units: UnitSystem = UnitSystem.METRIC,
+    val catalog: ExerciseCatalog = ExerciseCatalog.EMPTY,
+    val routineSaved: Boolean = false,
+    /** Patterns across sessions per exercise (FEAT-071): stall, decline, twice too easy/hard. */
+    val trends: List<Pair<String, ProgressionTrend>> = emptyList(),
+    /** Own workouts containing each exercise, for the swap prompt. */
+    val routineCounts: Map<String, Int> = emptyMap(),
+    /** One-shot message: swapped in n workouts (≥ 0), deload started (-1). */
+    val message: Int? = null,
+    /** Total load moved in weighted rep work (kg × reps) and time under load on holds, for the reward header. */
+    val volumeKg: Double = 0.0,
+    val hangSeconds: Int = 0,
+    val streak: com.cruxcoach.athlete.logic.StreakState? = null,
+    /** The training was deleted: the screen leaves. */
+    val deleted: Boolean = false,
+    /** Loads the athlete lowered that the next training plans ([AthleteService.learnOwnLoads]). */
+    val ownLoads: List<com.cruxcoach.athlete.model.Benchmark> = emptyList(),
+    /** Today's training only (audit P2-15): when the fingers take max work again, after finger sets. */
+    val fingersFreeOn: kotlinx.datetime.LocalDate? = null,
+    /** Today's nutrition after the training: the day type and what is left of carbs and protein. */
+    val fuelLeft: FuelLeft? = null,
+    /** What today's form trimmed in this training, while it was not taken back. */
+    val dayForm: com.cruxcoach.athlete.logic.ReadinessModifier? = null,
+    /** What the athlete changed in today's suggestion: asked once "suggest it like this from now on?" (comparison review #3). */
+    val keep: List<com.cruxcoach.athlete.logic.PreferenceLearning.Change> = emptyList(),
+    /** The answer just given, for the snackbar and "Rückgängig". */
+    val keepAnswer: KeepAnswer? = null,
+    /** What the next training plans per exercise ([AthleteService.nextTarget]): the first block, "next time". */
+    val nextTime: List<NextLine> = emptyList(),
+    /** The step along a chain just taken (from, to), for the snackbar and "Rückgängig". */
+    val stepTaken: Pair<String, String>? = null,
+)
+
+/** "Ja" ([until] set) or "Nur heute" for [changes]; [eventIds] go again with "Rückgängig". */
+data class KeepAnswer(val changes: List<com.cruxcoach.athlete.logic.PreferenceLearning.Change>, val eventIds: List<String>,
+                      val until: kotlinx.datetime.LocalDate?)
+
+data class FuelLeft(val dayLoad: com.cruxcoach.athlete.logic.DayLoad, val carbsG: Int, val proteinG: Int)
+
+@HiltViewModel
+class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
+
+    private val _state = MutableStateFlow(SummaryState())
+    val state: StateFlow<SummaryState> = _state.asStateFlow()
+
+    fun load(workoutId: String) {
+        if (_state.value.workout?.id == workoutId) return
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            val workout = repo.workout(workoutId)
+            val catalog = service.catalog
+            val sets = repo.setsFor(workoutId).filter { it.isCompleted }
+            val blocks = sets.groupBy { it.blockIndex }.toSortedMap().values.map { rows ->
+                catalog.fallbackFor(rows.first().exerciseSlug) to rows.sortedWith(compareBy({ it.setIndex }, { it.side?.ordinal ?: -1 }))
+            }
+            val profile = repo.profile()
+            val routines = repo.routines()
+            val slugs = blocks.map { it.first.slug }.distinct()
+            val trends = slugs.mapNotNull { slug ->
+                val def = catalog[slug] ?: return@mapNotNull null
+                // History is newest first; one list per training.
+                val sessions = repo.history(slug, 200).filter { it.isCompleted }
+                    .groupBy { it.workoutId }.values.take(6).map { it.toList() }
+                val trend = ProgressionAdvisor.trend(def, sessions, profile.smallestIncrementKg)
+                trend.takeIf { it.kind != TrendKind.NONE && it.kind != TrendKind.PROGRESSING }?.let { slug to it }
+            }
+            val work = sets.filter { it.setType == SetType.WORK }
+            val volume = work.sumOf { s ->
+                val def = catalog.fallbackFor(s.exerciseSlug)
+                val loaded = def.load == LoadMode.EXTERNAL || def.load == LoadMode.BODYWEIGHT_PLUS
+                if ((def.kind == ExerciseKind.REPS || def.kind == ExerciseKind.LOAD_REPS) && loaded)
+                    (com.cruxcoach.athlete.logic.StrengthMath.effectiveLoad(def, s.loadKg, s.bodyweightKg) ?: 0.0) * (s.reps ?: 0)
+                else 0.0
+            }
+            val hang = work.sumOf { s ->
+                val def = catalog.fallbackFor(s.exerciseSlug)
+                when (def.kind) {
+                    ExerciseKind.HANG -> s.durationS ?: 0.0
+                    ExerciseKind.INTERVAL -> (s.workS ?: def.defaults.workS?.toDouble() ?: 7.0) * (s.repsPerSet ?: def.defaults.repsPerSet ?: 6)
+                    else -> 0.0
+                }
+            }
+            val streak = runCatching { service.streak(profile, service.activities(7 * 26)) }.getOrNull()
+            val today = service.today()
+            val isToday = workout?.day == today.toString()
+            // Off-wall finger sets block today and tomorrow (one more day from 40 on), as the suggestion counts it.
+            val masters = profile.coach.ageBand == com.cruxcoach.athlete.model.AgeBand.Y40_54 ||
+                profile.coach.ageBand == com.cruxcoach.athlete.model.AgeBand.Y55_PLUS
+            // Test sets count too: a first max hang without a value is a test, and it loads the fingers fully.
+            val fingerWork = sets.any { it.setType != SetType.WARMUP &&
+                com.cruxcoach.athlete.catalog.LoadDomain.FINGER in catalog.fallbackFor(it.exerciseSlug).domains }
+            val fingersFreeOn = if (isToday && fingerWork) today.plus(kotlinx.datetime.DatePeriod(days = if (masters) 3 else 2)) else null
+            val fuelLeft = if (!isToday) null else runCatching {
+                val targets = service.fuelTargets(service.activities(1)[today.toString()], profile) ?: return@runCatching null
+                val eaten = repo.foodLog(today.toString())
+                // Without a food entry today there is nothing to compare: no numbers out of thin air after the training.
+                if (eaten.isEmpty()) return@runCatching null
+                FuelLeft(targets.dayLoad, (targets.carbsG - eaten.sumOf { it.carbsG ?: 0.0 }).roundToInt().coerceAtLeast(0),
+                    (targets.proteinG - eaten.sumOf { it.proteinG ?: 0.0 }).roundToInt().coerceAtLeast(0))
+            }.getOrNull()
+            // What the next training of each exercise plans, read the way the planner will read it: the tip is the plan.
+            val nextTime = runCatching { service.nextTime(workoutId) }.getOrDefault(emptyList())
+            _state.update {
+                it.copy(
+                    nextTime = nextTime,
+                    loading = false, workout = workout, blocks = blocks, catalog = catalog,
+                    volumeKg = volume, hangSeconds = hang.roundToInt(), streak = streak,
+                    summary = if (workout != null) service.summarize(workoutId) else null,
+                    units = profile.units,
+                    trends = trends,
+                    routineCounts = slugs.associateWith { s -> routines.count { r -> r.items.any { i -> i.slug == s } } },
+                    ownLoads = workout?.let { w -> runCatching { service.ownLoadsOf(w) }.getOrNull() }.orEmpty(),
+                    fingersFreeOn = fingersFreeOn, fuelLeft = fuelLeft, dayForm = service.dayForm(workoutId),
+                    keep = workout?.let { service.keepQuestion(it) }.orEmpty(),
+                )
+            }
+            if (workout != null) logCompletion(workout, sets)
+        }
+    }
+
+    /**
+     * The answer to "suggest it like this from now on?": [keep] keeps the picks until the block ends (the chosen
+     * exercises lead their slots, the replaced ones rest); "only today" changes nothing beyond the light learning.
+     */
+    fun answerKeep(keep: Boolean) {
+        val workout = _state.value.workout ?: return
+        val changes = _state.value.keep.takeIf { it.isNotEmpty() } ?: return
+        _state.update { it.copy(keep = emptyList()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val answer = if (keep) service.keepChoices(workout, changes).let { (ids, until) -> KeepAnswer(changes, ids, until) }
+                else KeepAnswer(changes, listOfNotNull(service.keepTodayOnly(workout)), null)
+            _state.update { it.copy(keepAnswer = answer) }
+        }
+    }
+
+    /** "Rückgängig": the answer goes from the ledger and the question is back. */
+    fun undoKeep(answer: KeepAnswer) {
+        _state.update { it.copy(keepAnswer = null, keep = answer.changes) }
+        viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); answer.eventIds.forEach(service::forgetSuggestion) }
+    }
+
+    fun consumeKeepAnswer() = _state.update { it.copy(keepAnswer = null) }
+
+    /**
+     * A training started from today's suggestion tells the coach how much of
+     * it was done (the player logs this on finish; this covers the list view).
+     */
+    private fun logCompletion(workout: Workout, completed: List<ExerciseSet>) {
+        if (workout.routineId?.startsWith("suggestion") != true) return
+        val events = service.repo.suggestionEventsForDay(workout.day)
+        if (events.any { it.kind == SuggestionEventKind.COMPLETED && it.workoutId == workout.id }) return
+        val started = events.firstOrNull { it.kind == SuggestionEventKind.STARTED && it.workoutId == workout.id }
+        val done = completed.count { it.setType == SetType.WORK }
+        val planned = started?.value?.takeIf { it > 0 } ?: done.toDouble()
+        val share = if (planned > 0) (done / planned).coerceIn(0.0, 1.0) else 0.0
+        service.logSuggestion(SuggestionEventKind.COMPLETED, started?.focus, completed.map { it.exerciseSlug }.distinct(),
+            workoutId = workout.id, value = share)
+        workout.sessionRpe?.let { rpe ->
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, "session_rpe", emptyList(), workoutId = workout.id, value = rpe.toDouble())
+        }
+    }
+
+    /** Replaces [from] with [to] in every own workout that contains it, keeping sets, rest and sides. */
+    /** What the last summary action changed, for "Rückgängig" (audit P2-14): routines before a swap, or the block start. */
+    private var undoRoutines: List<com.cruxcoach.athlete.model.Routine> = emptyList()
+    private var undoSwapEvent: String? = null
+    private var undoBlockStart: String? = null
+    private var undoDeload = false
+
+    fun swapInRoutines(from: String, to: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            val target = service.catalog[to] ?: return@launch
+            var count = 0
+            val before = repo.routines().filter { r -> r.items.any { it.slug == from } }
+            undoRoutines = before; undoDeload = false
+            before.forEach { r ->
+                // The replacement keeps its place in a circuit (rounds, rests); normalize drops it if it cannot be in one.
+                val items = com.cruxcoach.athlete.logic.Circuits.normalize(r.items.map { item ->
+                    if (item.slug != from) item
+                    else WorkoutPlanner.itemFor(target).copy(sets = item.sets, restS = item.restS, sides = item.sides, warmup = item.warmup,
+                        circuit = item.circuit, circuitRestS = item.circuitRestS, roundRestS = item.roundRestS)
+                }, service.catalog)
+                repo.saveRoutine(r.copy(items = items, updatedAt = System.currentTimeMillis()))
+                count++
+            }
+            undoSwapEvent = service.logSuggestion(SuggestionEventKind.SWAPPED, null, listOf(from, to))
+            _state.update { s -> s.copy(message = count, routineCounts = s.routineCounts - from) }
+        }
+    }
+
+    /**
+     * A step along the exercise's chain, from now on (owner 2026-11-21: the next step has to take effect): the coach
+     * suggests [to] where it suggested [from] ([AthleteService.keepStep]), and own workouts that contain [from] get
+     * it too. One "Rückgängig" takes both back.
+     */
+    fun takeStep(from: String, to: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            val target = service.catalog[to] ?: return@launch
+            // One step per exercise: a second tap before the button has gone changes nothing.
+            synchronized(stepUndos) { if (stepUndos.containsKey(from)) return@launch else stepUndos[from] = StepUndo(target, null, emptyMap()) }
+            val replaced = mutableMapOf<String, Map<Int, com.cruxcoach.athlete.model.RoutineItem>>()
+            repo.routines().filter { r -> r.items.any { it.slug == from } }.forEach { r ->
+                replaced[r.id] = r.items.withIndex().filter { it.value.slug == from }.associate { it.index to it.value }
+                val items = com.cruxcoach.athlete.logic.Circuits.normalize(r.items.map { item ->
+                    if (item.slug != from) item
+                    else WorkoutPlanner.itemFor(target).copy(sets = item.sets, restS = item.restS, sides = item.sides, warmup = item.warmup,
+                        circuit = item.circuit, circuitRestS = item.circuitRestS, roundRestS = item.roundRestS)
+                }, service.catalog)
+                repo.saveRoutine(r.copy(items = items, updatedAt = System.currentTimeMillis()))
+            }
+            synchronized(stepUndos) { stepUndos[from] = StepUndo(target, service.keepStep(from, to), replaced) }
+            _state.update { s -> s.copy(stepTaken = from to to, nextTime = s.nextTime.map { if (it.def.slug == from) it.copy(offer = null) else it }) }
+        }
+    }
+
+    /** What a step changed: its ledger entry and the items it replaced in own workouts, by workout and position. */
+    private class StepUndo(val to: ExerciseDefinition, val event: String?, val replaced: Map<String, Map<Int, com.cruxcoach.athlete.model.RoutineItem>>)
+
+    /** The steps taken on this summary, by the exercise stepped from: each "Rückgängig" takes back its own. */
+    private val stepUndos = mutableMapOf<String, StepUndo>()
+
+    /** "Rückgängig" for the step from [from]: the coach's choice and the own workouts are as before, and the offer is back. */
+    fun undoStep(from: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            val undo = synchronized(stepUndos) { stepUndos.remove(from) } ?: return@launch
+            undo.event?.let(service::forgetSuggestion)
+            repo.routines().forEach { r ->
+                val before = undo.replaced[r.id] ?: return@forEach
+                // Only where the step's exercise still stands: what the athlete changed since stays.
+                val items = r.items.mapIndexed { i, item -> before[i]?.takeIf { item.slug == undo.to.slug } ?: item }
+                if (items != r.items) repo.saveRoutine(r.copy(items = com.cruxcoach.athlete.logic.Circuits.normalize(items, service.catalog),
+                    updatedAt = System.currentTimeMillis()))
+            }
+            _state.update { s -> s.copy(nextTime = s.nextTime.map { if (it.def.slug == from && it.offer == null) it.copy(offer = undo.to) else it }) }
+        }
+    }
+
+    fun consumeStepTaken() = _state.update { it.copy(stepTaken = null) }
+
+    /** Starts a lighter week now: the training block jumps to its deload week. */
+    fun startDeload() {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val start = service.today().minus(kotlinx.datetime.DatePeriod(days = 7 * (TrainingBlocks.INTRO_WEEKS + TrainingBlocks.BUILD_WEEKS)))
+            undoBlockStart = service.repo.profile().coach.blockStartDay; undoDeload = true
+            service.repo.updateProfile { p -> p.copy(coach = p.coach.copy(blockStartDay = start.toString())) }
+            _state.update { it.copy(message = -1) }
+        }
+    }
+
+    /** "Rückgängig" for the last swap in the workouts or the lighter week. */
+    fun undoLastAction() {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            if (undoDeload) {
+                val previous = undoBlockStart
+                repo.updateProfile { p -> p.copy(coach = p.coach.copy(blockStartDay = previous)) }
+                undoDeload = false
+            } else if (undoRoutines.isNotEmpty() || undoSwapEvent != null) {
+                val restored = undoRoutines
+                restored.forEach { repo.saveRoutine(it.copy(updatedAt = System.currentTimeMillis())) }
+                undoSwapEvent?.let(service::forgetSuggestion)
+                undoRoutines = emptyList(); undoSwapEvent = null
+                val routines = repo.routines()
+                _state.update { s -> s.copy(routineCounts = s.routineCounts.keys.associateWith { slug ->
+                    routines.count { r -> r.items.any { it.slug == slug } } }) }
+            }
+        }
+    }
+
+    fun consumeMessage() = _state.update { it.copy(message = null) }
+
+    fun saveRoutine(name: String) {
+        val id = _state.value.workout?.id ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            service.saveRoutineFromWorkout(id, name.trim())
+            _state.update { it.copy(routineSaved = true) }
+        }
+    }
+
+    /** A training logged by mistake can go again, with its sets (device test 2026-10-10: there was no way). */
+    fun delete() {
+        val id = _state.value.workout?.id ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            service.discardWorkout(id)
+            _state.update { it.copy(deleted = true) }
+        }
+    }
+}
+
+@Composable
+fun WorkoutSummaryScreen(
+    workoutId: String,
+    onBack: () -> Unit,
+    onOpenExercise: (String) -> Unit,
+    viewModel: WorkoutSummaryViewModel = hiltViewModel(),
+    onOpenFuel: () -> Unit = {},
+) {
+    LaunchedEffect(workoutId) { viewModel.load(workoutId) }
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val language = catalogLanguage()
+    val resources = LocalResources.current
+    val snackbar = remember { SnackbarHostState() }
+    var askName by rememberSaveable { mutableStateOf(false) }
+    val savedText = stringResource(R.string.trw_routine_saved)
+    LaunchedEffect(state.routineSaved) { if (state.routineSaved) snackbar.showSnackbar(savedText) }
+    val swapText = stringResource(R.string.tre_swap_done, state.message ?: 0)
+    val deloadText = stringResource(R.string.tre_deload_started)
+    val undoLabel = stringResource(R.string.trpg_undo)
+    val snackScope = rememberCoroutineScope()
+    LaunchedEffect(state.message) {
+        val m = state.message ?: return@LaunchedEffect
+        viewModel.consumeMessage()
+        // Shown outside the effect so consuming the message does not cancel it.
+        snackScope.launch {
+            // One tap takes it back (audit P2-14).
+            if (snackbar.showSnackbar(if (m < 0) deloadText else swapText, undoLabel, duration = SnackbarDuration.Long) ==
+                SnackbarResult.ActionPerformed) viewModel.undoLastAction()
+        }
+    }
+    // "Künftig so" answered: one line with "Rückgängig" (comparison review #3).
+    val keepUntilText = stringResource(R.string.trk_kept_until, state.keepAnswer?.until?.let { com.cruxcoach.android.ui.training.coach.formatIsoDay(it.toString()) } ?: "")
+    val keepTodayText = stringResource(R.string.trk_today_only_done)
+    LaunchedEffect(state.keepAnswer) {
+        val answer = state.keepAnswer ?: return@LaunchedEffect
+        viewModel.consumeKeepAnswer()
+        snackScope.launch {
+            if (snackbar.showSnackbar(if (answer.until != null) keepUntilText else keepTodayText, undoLabel, duration = SnackbarDuration.Long) ==
+                SnackbarResult.ActionPerformed) viewModel.undoKeep(answer)
+        }
+    }
+    // A step along a chain taken: one line with "Rückgängig".
+    val stepText = state.stepTaken?.let { (from, to) ->
+        stringResource(R.string.trpr_step_taken, state.catalog.fallbackFor(to).name(language), state.catalog.fallbackFor(from).name(language))
+    }.orEmpty()
+    LaunchedEffect(state.stepTaken) {
+        val taken = state.stepTaken ?: return@LaunchedEffect
+        val text = stepText
+        viewModel.consumeStepTaken()
+        // The line on screen belongs to the step just taken: an older one makes way instead of holding it back.
+        snackbar.currentSnackbarData?.dismiss()
+        snackScope.launch {
+            if (snackbar.showSnackbar(text, undoLabel, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoStep(taken.first)
+        }
+    }
+    var confirmSwap by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state.deleted) { if (state.deleted) onBack() }
+
+    TrainingScaffold(
+        title = stringResource(R.string.trw_summary_title),
+        onBack = onBack,
+        snackbarHost = { TrainingSnackbarHost(snackbar) },
+        actions = {
+            if (state.workout != null) {
+                IconButton(onClick = { confirmDelete = true }, modifier = Modifier.testTag("summary_delete")) {
+                    Icon(Icons.Default.DeleteOutline, contentDescription = stringResource(R.string.trw_delete_training))
+                }
+            }
+        },
+    ) { padding ->
+        val workout = state.workout
+        val summary = state.summary
+        if (state.loading) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            return@TrainingScaffold
+        }
+        if (workout == null || summary == null) {
+            EmptyHint(stringResource(R.string.trw_no_sets), Modifier.padding(padding))
+            return@TrainingScaffold
+        }
+        LazyColumn(
+            Modifier.fillMaxSize().padding(padding).testTag("summary_list"),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { RewardHeader(workout, summary, state) }
+            // The main thing after a training: what the next one of each exercise plans (owner 2026-11-21).
+            if (state.nextTime.isNotEmpty()) item(key = "next_time") { NextTimeCard(state, language, onOpenExercise, onStep = viewModel::takeStep) }
+            if (state.keep.isNotEmpty()) item(key = "keep") { KeepCard(state, language, onAnswer = viewModel::answerKeep) }
+            if (state.fingersFreeOn != null || state.fuelLeft != null || state.dayForm != null) {
+                item(key = "after") { AfterTraining(state, onOpenFuel) }
+            }
+            if (summary.records.isNotEmpty()) {
+                item { SectionTitle(stringResource(R.string.trw_records_title)) }
+                summary.records.forEach { (slug, record) ->
+                    item(key = "pr_$slug") {
+                        val def = state.catalog.fallbackFor(slug)
+                        val now = recordValueText(resources, def, record, state.units)
+                        val before = if (record.previous > 0) recordValueText(resources, def, record.copy(value = record.previous), state.units) else null
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.positiveContainer,
+                                contentColor = CruxCoachDesign.colors.onPositiveContainer),
+                            modifier = Modifier.fillMaxWidth().testTag("summary_record_$slug"),
+                        ) {
+                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.EmojiEvents, null, tint = CruxCoachDesign.colors.brandAccent, modifier = Modifier.size(32.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(def.name(language), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        if (before != null) stringResource(R.string.trp2_record_from_to, before, now)
+                                        else stringResource(R.string.trp2_record_first, now),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (state.ownLoads.isNotEmpty()) {
+                // The athlete worked lighter than planned: next time plans their load (UX review 2026-10-16).
+                item {
+                    SectionTitle(stringResource(R.string.trw_own_loads_title), keepBeside = true) {
+                        com.cruxcoach.android.ui.common.InfoButton(stringResource(R.string.trw_own_loads_title), stringResource(R.string.trw_own_loads_info))
+                    }
+                }
+                state.ownLoads.forEach { b ->
+                    item(key = "own_${b.id}") {
+                        val def = state.catalog.fallbackFor(b.exerciseSlug)
+                        val load = b.loadKg?.let { weightText(def, it, state.units) }
+                        Text(listOfNotNull(def.name(language), b.side?.let { sideLabel(it) }, load).joinToString(" · "),
+                            style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag("summary_own_load_${b.exerciseSlug}"))
+                    }
+                }
+            }
+            // "Next time" above says it with the numbers of the plan; the old tips only fill in where it has no line.
+            val ownSlugs = state.ownLoads.map { it.exerciseSlug }.toSet() + state.nextTime.map { it.def.slug }
+            val suggestions = summary.suggestions.filter { (slug, _) -> slug !in ownSlugs }
+            if (suggestions.isNotEmpty()) {
+                item { SectionTitle(stringResource(R.string.trw_suggestions_title)) }
+                suggestions.forEach { (slug, suggestion) ->
+                    item(key = "sugg_$slug") {
+                        SuggestionRow(state.catalog.fallbackFor(slug), suggestion, state, language, onOpenExercise)
+                    }
+                }
+            }
+            if (state.trends.isNotEmpty()) {
+                item { SectionTitle(stringResource(R.string.tre_trend_title)) }
+                state.trends.forEach { (slug, trend) ->
+                    item(key = "trend_$slug") {
+                        TrendRow(state.catalog.fallbackFor(slug), trend, state, language, onOpenExercise,
+                            onSwap = { to -> confirmSwap = slug to to }, onDeload = viewModel::startDeload)
+                    }
+                }
+            }
+            sideBalance(summary)?.let { (left, right) ->
+                item {
+                    Column(Modifier.testTag("summary_side_balance")) {
+                        SectionTitle(stringResource(R.string.trw_side_title))
+                        Text(stringResource(R.string.trw_side_values, left, right), style = MaterialTheme.typography.bodyMedium)
+                        if (abs(left - right) > 10) {
+                            val weaker = sideLabel(if (left < right) Side.LEFT else Side.RIGHT)
+                            Text(stringResource(R.string.trw_side_diff, weaker, abs(left - right)),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            item { SectionTitle(stringResource(R.string.trw_sets_title)) }
+            if (state.blocks.isEmpty()) item { EmptyHint(stringResource(R.string.trw_no_sets)) }
+            state.blocks.forEachIndexed { i, (def, sets) ->
+                item(key = "block_$i") {
+                    Card(onClick = { onOpenExercise(def.slug) }, modifier = Modifier.fillMaxWidth().testTag("summary_block_$i")) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(def.name(language), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            sets.forEach { s -> Text(setLine(def, s, state.units), style = MaterialTheme.typography.bodySmall) }
+                        }
+                    }
+                }
+            }
+            item {
+                OutlinedButton(onClick = { askName = true }, modifier = Modifier.fillMaxWidth().testTag("summary_save_routine"),
+                    enabled = !state.routineSaved && state.blocks.isNotEmpty()) {
+                    Icon(Icons.Default.BookmarkAdd, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.trw_save_routine))
+                }
+            }
+            item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+
+    if (confirmDelete) {
+        val w = state.workout
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(stringResource(R.string.trw_delete_training_title)) },
+            text = { if (w != null) Text(stringResource(R.string.trw_delete_training_text, workoutTitle(w), formatDay(w.day))) },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; viewModel.delete() }, modifier = Modifier.testTag("summary_delete_confirm")) {
+                    Text(stringResource(R.string.tr_action_delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
+        )
+    }
+    confirmSwap?.let { (from, to) ->
+        val count = state.routineCounts[from] ?: 0
+        AlertDialog(
+            onDismissRequest = { confirmSwap = null },
+            title = { Text(stringResource(R.string.tre_swap_confirm_title)) },
+            text = {
+                Text(if (count > 0) stringResource(R.string.tre_swap_confirm_text, state.catalog.fallbackFor(to).name(language),
+                    state.catalog.fallbackFor(from).name(language), count) else stringResource(R.string.tre_swap_none))
+            },
+            confirmButton = {
+                if (count > 0) TextButton(onClick = { confirmSwap = null; viewModel.swapInRoutines(from, to) },
+                    modifier = Modifier.testTag("summary_swap_confirm")) { Text(stringResource(R.string.tre_swap_action)) }
+                else TextButton(onClick = { confirmSwap = null; onOpenExercise(to) }) { Text(stringResource(R.string.tre_menu_details)) }
+            },
+            dismissButton = { TextButton(onClick = { confirmSwap = null }) { Text(stringResource(R.string.tr_action_cancel)) } },
+        )
+    }
+
+    if (askName) {
+        val default = state.workout?.let { workoutTitle(it) }.orEmpty()
+        var name by rememberSaveable { mutableStateOf(default) }
+        AlertDialog(
+            onDismissRequest = { askName = false },
+            title = { Text(stringResource(R.string.trw_save_routine)) },
+            text = {
+                OutlinedTextField(name, { name = it.take(80) }, singleLine = true, label = { Text(stringResource(R.string.trw_routine_name)) },
+                    modifier = Modifier.fillMaxWidth().testTag("summary_routine_name"))
+            },
+            confirmButton = {
+                TextButton(enabled = name.isNotBlank(), onClick = { askName = false; viewModel.saveRoutine(name) }) {
+                    Text(stringResource(R.string.tr_action_save))
+                }
+            },
+            dismissButton = { TextButton(onClick = { askName = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
+        )
+    }
+}
+
+@Composable
+private fun SuggestionRow(
+    def: ExerciseDefinition,
+    s: ProgressionSuggestion,
+    state: SummaryState,
+    language: String,
+    onOpenExercise: (String) -> Unit,
+) {
+    Card(Modifier.fillMaxWidth().testTag("summary_suggestion_${def.slug}")) {
+        Column(Modifier.padding(12.dp)) {
+            Text(def.name(language), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(if (s.verdict == ProgressionVerdict.TOO_EASY) R.string.trw_too_easy else R.string.trw_too_hard),
+                style = MaterialTheme.typography.bodySmall)
+            s.nextLoadKg?.let { next ->
+                val text = weightText(def, next, state.units)
+                Text(stringResource(if (s.verdict == ProgressionVerdict.TOO_EASY) R.string.trw_sugg_more_load else R.string.trw_sugg_less_load, text),
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
+            }
+            val variant = if (s.verdict == ProgressionVerdict.TOO_EASY) s.harderSlug else s.easierSlug
+            variant?.let { slug ->
+                val other = state.catalog.fallbackFor(slug)
+                TextButton(onClick = { onOpenExercise(slug) }) {
+                    Text(stringResource(if (s.verdict == ProgressionVerdict.TOO_EASY) R.string.trw_sugg_try else R.string.trw_sugg_easier_variant,
+                        other.name(language)))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * "Next time": one row per exercise with today's sets, the next plan and the step between them, in the numbers the
+ * next training will show. Where the top of the range went with reserve the next exercise of the chain is one tap
+ * away, after a training that was too hard the easier one; the tap takes effect for the coach's suggestions.
+ */
+@Composable
+private fun NextTimeCard(state: SummaryState, language: String, onOpenExercise: (String) -> Unit, onStep: (String, String) -> Unit) {
+    Card(Modifier.fillMaxWidth().testTag("summary_next_time")) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(stringResource(R.string.trpr_next_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            state.nextTime.forEach { line ->
+                val def = line.def
+                val plan = com.cruxcoach.android.ui.training.common.planText(line.sets, line.next.reps, line.next.durationS, line.next.loadKg, def, state.units)
+                val today = com.cruxcoach.android.ui.training.common.setsDoneText(line.done, def, state.units)
+                val step = com.cruxcoach.android.ui.training.common.stepText(line.done, line.next.reps, line.next.durationS, line.next.loadKg, def, state.units)
+                val name = def.name(language) + (line.side?.let { " · " + com.cruxcoach.android.ui.training.sideLabel(it) } ?: "")
+                val key = def.slug + line.side?.name.orEmpty()
+                if (plan != null) {
+                    // The plan beside the name, or below it where both do not fit (320 dp, the largest font): never cut.
+                    com.cruxcoach.android.ui.training.LabelBesideOrAbove(
+                        modifier = Modifier.heightIn(min = 48.dp).clickable { onOpenExercise(def.slug) }.padding(vertical = 6.dp).testTag("summary_next_$key"),
+                        growth = 1.5f,
+                        label = {
+                            Column(Modifier.padding(end = 8.dp)) {
+                                Text(name, style = MaterialTheme.typography.bodyLarge)
+                                today?.let {
+                                    Text(stringResource(R.string.trpr_today, it), style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        },
+                    ) {
+                        Column(horizontalAlignment = Alignment.End) {
+                            val tone = step?.second
+                            val colour = when (tone) {
+                                com.cruxcoach.android.ui.training.common.StepTone.UP -> CruxCoachDesign.colors.positive
+                                com.cruxcoach.android.ui.training.common.StepTone.DOWN -> CruxCoachDesign.colors.caution
+                                else -> MaterialTheme.colorScheme.onSurface
+                            }
+                            Text(plan, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = colour, maxLines = 1)
+                            step?.let { Text(it.first, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+                        }
+                    }
+                }
+                line.offer?.let { to ->
+                    TextButton(onClick = { onStep(def.slug, to.slug) }, modifier = Modifier.testTag("summary_step_${def.slug}")) {
+                        Text(stringResource(if (line.offerHarder) R.string.trpr_next_step else R.string.trw_sugg_easier_variant, to.name(language)))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Patterns across sessions: stall → variation, decline → lighter week, twice too easy/hard → chain partner. */
+@Composable
+private fun TrendRow(
+    def: ExerciseDefinition,
+    t: ProgressionTrend,
+    state: SummaryState,
+    language: String,
+    onOpenExercise: (String) -> Unit,
+    onSwap: (String) -> Unit,
+    onDeload: () -> Unit,
+) {
+    OutlinedCard(Modifier.fillMaxWidth().testTag("summary_trend_${def.slug}")) {
+        Column(Modifier.padding(12.dp)) {
+            Text(def.name(language), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            when (t.kind) {
+                TrendKind.STALL -> {
+                    Text(stringResource(R.string.tre_trend_stall, t.sessions.coerceAtMost(6)), style = MaterialTheme.typography.bodySmall)
+                    val variation = t.variationSlug
+                    if (variation != null) {
+                        TextButton(onClick = { onOpenExercise(variation) }) {
+                            Text(stringResource(R.string.tre_trend_stall_try, state.catalog.fallbackFor(variation).name(language)))
+                        }
+                    } else {
+                        Text(stringResource(R.string.tre_trend_stall_generic), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                TrendKind.DECLINE -> {
+                    Text(stringResource(R.string.tre_trend_decline), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = onDeload, modifier = Modifier.testTag("summary_deload")) { Text(stringResource(R.string.tre_deload_action)) }
+                }
+                TrendKind.TOO_EASY_TWICE -> {
+                    Text(stringResource(R.string.tre_trend_easy), style = MaterialTheme.typography.bodySmall)
+                    t.harderSlug?.let { to ->
+                        TextButton(onClick = { onSwap(to) }, modifier = Modifier.testTag("summary_swap_${def.slug}")) {
+                            Text(stringResource(R.string.tre_swap_harder, state.catalog.fallbackFor(to).name(language)))
+                        }
+                    }
+                }
+                TrendKind.TOO_HARD_TWICE -> {
+                    Text(stringResource(R.string.tre_trend_hard), style = MaterialTheme.typography.bodySmall)
+                    t.easierSlug?.let { to ->
+                        TextButton(onClick = { onSwap(to) }, modifier = Modifier.testTag("summary_swap_${def.slug}")) {
+                            Text(stringResource(R.string.tre_swap_easier, state.catalog.fallbackFor(to).name(language)))
+                        }
+                    }
+                }
+                TrendKind.NONE, TrendKind.PROGRESSING -> Unit
+            }
+        }
+    }
+}
+
+/**
+ * "2 exercises swapped – suggest it like this from now on?" (comparison review #3): only after a training whose
+ * suggestion the athlete changed, once. "Yes" keeps the picks until the block ends, "only today" changes nothing.
+ */
+@Composable
+private fun KeepCard(state: SummaryState, language: String, onAnswer: (Boolean) -> Unit) {
+    val changes = state.keep
+    val swapped = changes.count { it.chosen != null }
+    val left = changes.size - swapped
+    val what = when {
+        swapped > 0 && left > 0 -> pluralStringResource(R.plurals.trk_swapped, swapped, swapped) + ", " +
+            pluralStringResource(R.plurals.trk_left_out_more, left, left)
+        swapped > 0 -> pluralStringResource(R.plurals.trk_swapped, swapped, swapped)
+        else -> pluralStringResource(R.plurals.trk_left_out, left, left)
+    }
+    val details = changes.map { c -> keptChangeText(c.replaced, c.chosen, state.catalog, language) }
+    OutlinedCard(Modifier.fillMaxWidth().testTag("summary_keep")) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp)) {
+            Text(stringResource(R.string.trk_question, what), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(end = 8.dp))
+            Text(details.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp, end = 8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { onAnswer(false) }, modifier = Modifier.testTag("summary_keep_today")) { Text(stringResource(R.string.trk_today_only)) }
+                TextButton(onClick = { onAnswer(true) }, modifier = Modifier.testTag("summary_keep_yes")) { Text(stringResource(R.string.trc_yes)) }
+            }
+        }
+    }
+}
+
+/** Left/right as % of the stronger side, or null without both sides. */
+private fun sideBalance(summary: WorkoutSummary): Pair<Int, Int>? {
+    val left = summary.sideLoad[Side.LEFT] ?: return null
+    val right = summary.sideLoad[Side.RIGHT] ?: return null
+    val max = maxOf(left, right).takeIf { it > 0 } ?: return null
+    return (left / max * 100).roundToInt() to (right / max * 100).roundToInt()
+}
+
+@Composable
+private fun setLine(def: ExerciseDefinition, s: ExerciseSet, units: UnitSystem): String {
+    val parts = mutableListOf<String>()
+    parts += when (s.setType) {
+        SetType.WARMUP -> setTypeLabel(SetType.WARMUP)
+        SetType.TEST -> setTypeLabel(SetType.TEST)
+        SetType.WORK -> stringResource(R.string.trw_set_cd, s.setIndex + 1)
+    }
+    s.side?.let { parts += sideLabel(it) }
+    when (def.kind) {
+        ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.CLIMB ->
+            s.reps?.let { parts += pluralStringResource(R.plurals.trw_reps, it, it) }
+        ExerciseKind.TIME, ExerciseKind.HANG ->
+            s.durationS?.let { parts += stringResource(R.string.tr_format_seconds, it.roundToInt()) }
+        ExerciseKind.INTERVAL -> parts += stringResource(R.string.trw_interval_format,
+            (s.workS ?: 0.0).roundToInt(), (s.restBetweenS ?: 0.0).roundToInt(), s.repsPerSet ?: 0)
+    }
+    if (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL) {
+        s.loadKg?.let { load -> parts += weightText(def, load, units) }
+    }
+    s.edgeMm?.let { parts += stringResource(R.string.tr_format_mm, formatNumber(it)) }
+    s.grip?.let { parts += gripLabel(it) }
+    // A timed hold's reserve is in seconds.
+    s.rir?.let { parts += stringResource(if (def.kind == ExerciseKind.TIME || def.kind == ExerciseKind.HANG) R.string.trpg_rir_short_seconds
+        else R.string.trw_rir_short, it) }
+    s.note?.takeIf { it.isNotBlank() }?.let { parts += it }
+    return parts.joinToString(" · ")
+}
+
+internal fun formatDay(day: String): String = runCatching {
+    java.time.LocalDate.parse(day).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+}.getOrDefault(day)
+
+/**
+ * The end of a training as a small celebration (a reward screen):
+ * a check that pops in, "done", the key numbers, and where the week stands.
+ */
+/**
+ * Training, recovery and nutrition in one place (audit P2-15): when the fingers take max work again,
+ * what today's food still needs after this training, and what today's form trimmed.
+ */
+@Composable
+private fun AfterTraining(state: SummaryState, onOpenFuel: () -> Unit) {
+    Card(Modifier.fillMaxWidth().testTag("summary_after")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.tre_after_title), style = MaterialTheme.typography.titleSmall)
+            state.dayForm?.let { m ->
+                val why = m.reason?.let { com.cruxcoach.android.ui.training.today.readinessReasonShort(it) }
+                    ?: stringResource(R.string.trpg_dayform_climbed)
+                if (m.setsDelta < 0) Text(stringResource(R.string.tre_after_dayform, why), style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.testTag("summary_after_dayform"))
+            }
+            state.fingersFreeOn?.let { day ->
+                val name = java.time.DayOfWeek.of(day.dayOfWeek.isoDayNumber)
+                    .getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
+                Text(stringResource(R.string.tre_after_fingers, name), style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.testTag("summary_after_fingers"))
+            }
+            state.fuelLeft?.let { f ->
+                val day = com.cruxcoach.android.ui.training.dayLoadLabel(f.dayLoad)
+                Text(if (f.carbsG == 0 && f.proteinG == 0) stringResource(R.string.tre_after_fuel_done, day)
+                    else stringResource(R.string.tre_after_fuel, day, f.carbsG, f.proteinG),
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("summary_after_fuel"))
+                TextButton(onClick = onOpenFuel, modifier = Modifier.testTag("summary_after_open_fuel")) {
+                    Text(stringResource(R.string.tre_after_fuel_open))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RewardHeader(workout: Workout, summary: WorkoutSummary, state: SummaryState) {
+    val scale = remember { androidx.compose.animation.core.Animatable(0.4f) }
+    LaunchedEffect(workout.id) {
+        scale.animateTo(1f, androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
+        ))
+    }
+    Column(Modifier.fillMaxWidth().testTag("summary_reward"), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(
+            Icons.Default.CheckCircle, null, tint = CruxCoachDesign.colors.positive,
+            modifier = Modifier.size(88.dp).graphicsLayer { scaleX = scale.value; scaleY = scale.value },
+        )
+        Text(stringResource(R.string.trp2_reward_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 8.dp))
+        Text(workoutTitle(workout) + " · " + formatDay(workout.day), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(16.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatTile(
+                stringResource(R.string.trw_summary_duration),
+                summary.durationMinutes?.let { pluralStringResource(R.plurals.trw_minutes, it, it) } ?: "–",
+                Modifier.weight(1f),
+            )
+            StatTile(stringResource(R.string.trw_summary_sets), summary.completedSets.toString(), Modifier.weight(1f))
+            when {
+                state.volumeKg > 0 -> StatTile(stringResource(R.string.trp2_tile_volume),
+                    formatMass(state.volumeKg, state.units), Modifier.weight(1f))
+                state.hangSeconds > 0 -> StatTile(stringResource(R.string.trp2_tile_hang),
+                    formatClock(state.hangSeconds), Modifier.weight(1f))
+                else -> StatTile(stringResource(R.string.trw_summary_exercises), summary.exercises.toString(), Modifier.weight(1f))
+            }
+        }
+        state.streak?.let { st ->
+            Spacer(Modifier.height(12.dp))
+            Card(Modifier.fillMaxWidth().testTag("summary_week")) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        if (st.currentWeekDone) stringResource(R.string.trp2_week_goal_reached)
+                        else stringResource(R.string.trp2_week_goal, st.currentWeekDays, st.goal),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    LinearProgressIndicator(
+                        progress = { if (st.goal > 0) (st.currentWeekDays.toFloat() / st.goal).coerceIn(0f, 1f) else 0f },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        color = CruxCoachDesign.colors.positive,
+                    )
+                    if (st.weeks > 0) {
+                        Text(pluralStringResource(R.plurals.trp2_streak_weeks, st.weeks, st.weeks), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+            }
+        }
+    }
+}

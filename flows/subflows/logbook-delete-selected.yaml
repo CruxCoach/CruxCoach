@@ -1,0 +1,10 @@
+appId: com.cruxcoach.android
+name: subflow-logbook-delete-selected
+---
+# Delete the selected logbook entries through the logbook menu, by labels only.
+- tapOn: "Logbuch-Optionen"
+- tapOn: "Ausgewählte löschen"
+- extendedWaitUntil:
+    visible: "[0-9]+ Logeintr(ag|äge) löschen\\?"
+    timeout: 5000
+- tapOn: "Löschen"

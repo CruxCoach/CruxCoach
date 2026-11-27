@@ -19,6 +19,8 @@
     <exclude domain="sharedpref" path="sqlcipher_prefs.xml"/>
     <!-- Kilter OAuth tokens, per-pubkey-prefixed, EncryptedSharedPrefs. -->
     <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
+    <!-- Shiny Wall sign-in tokens, per-pubkey-prefixed, EncryptedSharedPrefs. -->
+    <exclude domain="sharedpref" path="shinywall_secure_prefs.xml"/>
     <!-- Amber signer config: pubkey hex + Amber package name. Would
          cross-device-leak the user's npub on a Google-Drive restore. -->
     <exclude domain="sharedpref" path="amber_config.xml"/>
@@ -52,9 +54,22 @@
          unless the user explicitly enables or confirms sending them. -->
     <exclude domain="file" path="crash_log.txt"/>
     <exclude domain="file" path="crash_log_prev.txt"/>
+    <!-- FEAT-078: spray-wall photos (pictures of a private wall, often at home).
+         Their holds and climbs live in the excluded encrypted database, so a
+         restored photo would have nothing to belong to. -->
+    <exclude domain="file" path="spray_walls"/>
+    <exclude domain="file" path="hold_model"/>
     <!-- Exclude the entire database domain. The personal SQLCipher DB is
          identity-scoped and has a dynamic cruxcoach_secure_<pubkey>.db name,
          so a filename rule cannot cover every identity or its journal files.
          The public board catalogue is re-downloadable and already excluded. -->
     <exclude domain="database" path="."/>
+    <!-- FEAT-069: the 2–4 GB photo model (re-downloadable; Auto Backup gives
+         up entirely above 25 MB) and its device-specific download/probe state. -->
+    <exclude domain="external" path="foodvision"/>
+    <exclude domain="sharedpref" path="foodvision.xml"/>
+    <!-- Which entries this install already wrote to this phone's Health
+         Connect. The food log itself (database) is not restored by Auto
+         Backup, so on another phone this list would be wrong. -->
+    <exclude domain="sharedpref" path="health_connect_export.xml"/>
 </full-backup-content>

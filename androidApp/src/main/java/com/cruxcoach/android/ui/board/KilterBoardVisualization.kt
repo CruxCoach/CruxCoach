@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.LedHoldColors
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.theme.BrandOrange
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.rgb332ToComposeColor
 import com.cruxcoach.data.repository.BoardPlacement
@@ -61,6 +62,7 @@ import com.cruxcoach.domain.board.BoardZoneFilter
 import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.android.ble.BoardClimbLayer
 import kotlinx.coroutines.withTimeoutOrNull
+import com.cruxcoach.android.ui.paintbox.detectPaintGestures
 
 /** Bundled board-size IDs that have a WebP asset in board_images/.
  *  Original Kilter sizes: 7, 8, 10, 14, 27, 28 (product_id=1).
@@ -173,6 +175,10 @@ internal fun KilterBoardVisualization(
      * fallback two-tap-cycle behavior runs.
      */
     onHoldMoved: ((fromId: Int, toId: Int) -> Unit)? = null,
+    paintColors: Map<Int, Int> = emptyMap(),
+    onPaint: ((Set<Int>) -> Unit)? = null,
+    onPaintStart: () -> Unit = {},
+    onPaintEnd: () -> Unit = {},
     /**
      * Editor mode: draw active holds as solid role-colored discs instead of
      * rings, and suppress the orange selection overlay. The role color IS
@@ -242,6 +248,9 @@ internal fun KilterBoardVisualization(
     val hasBundledImage = when {
         brand == BoardBrand.KILTER -> sizeId in BUNDLED_BOARD_SIZES
         brand.usesAuroraProtocol || isQuantum -> true
+        // Composed from the hold photos (board_images/shinywall); a missing
+        // file falls back to the dots like any other brand.
+        brand == BoardBrand.SHINYWALL -> true
         else -> false
     }
     // The active layout (from the size's set images) picks the layout-specific
@@ -257,7 +266,37 @@ internal fun KilterBoardVisualization(
     var zoomOffset by remember { mutableStateOf(Offset.Zero) }
     val zoomState by rememberUpdatedState(zoomScale to zoomOffset)
 
-    val zoomModifier: Modifier = if (allowZoom) {
+    val currentPaint by rememberUpdatedState(onPaint)
+    val currentPaintStart by rememberUpdatedState(onPaintStart)
+    val currentPaintEnd by rememberUpdatedState(onPaintEnd)
+    val zoomModifier: Modifier = if (onPaint != null) {
+        Modifier.pointerInput(placements, boardSize) {
+            detectPaintGestures(
+                hit = { screen ->
+                    val pivot = Offset(size.width / 2f, size.height / 2f)
+                    val pos = (screen - pivot - zoomOffset) / zoomScale + pivot
+                    val xs = size.width.toFloat() / boardWidth
+                    val ys = size.height.toFloat() / boardHeight
+                    val radius = quantumModel?.let { quantumHitRadiusDp(it).dp.toPx() }
+                        ?: boardMarkerScale(brand, xs, boardWidth) * 6f
+                    placements.values.map { p ->
+                        val point = quantumModel?.let {
+                            quantumBoardPoint(it, p.x, p.y, size.width.toFloat(), compactQuantumPhone, quantumTablet)
+                                .let { point -> Offset(point.x, point.y) }
+                        } ?: Offset((p.x - edgeLeft) * xs, size.height - (p.y - edgeBottom) * ys)
+                        p.placementId.toInt() to (point - pos).getDistance()
+                    }.minByOrNull { it.second }?.takeIf { it.second <= radius }?.first
+                },
+                begin = { currentPaintStart() },
+                paint = { currentPaint?.invoke(it) },
+                end = { currentPaintEnd() },
+                transform = { scale, pan ->
+                    zoomScale = (zoomScale * scale).coerceIn(1f, 4f)
+                    zoomOffset = if (zoomScale <= 1.001f) Offset.Zero else zoomOffset + pan
+                },
+            )
+        }
+    } else if (allowZoom) {
         Modifier.pointerInput(Unit) {
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false)
@@ -333,7 +372,9 @@ internal fun KilterBoardVisualization(
             val currentFrameSet = remember(currentFrameHolds) {
                 currentFrameHolds?.map { it.placementId }?.toSet()
             }
-            val selectedColor = OrangeAccent
+            // On a board photo (no transparency) the rings take the bright orange in both themes.
+            // Hold pictures without a backdrop sit on the card, where the theme's orange reads.
+            val selectedColor = if (boardBitmap?.hasAlpha == false) BrandOrange else OrangeAccent
 
             // Drag-preview state: hold ID highlighted during long-press drag
             var dragPreviewHoldId by remember { mutableStateOf<Int?>(null) }
@@ -537,30 +578,22 @@ internal fun KilterBoardVisualization(
                     val bottom = (quantumCorners?.maxOf { it.y }
                         ?: size.height - (zoneToDraw.minY.toFloat() - edgeBottom) * yScale).plus(pad).coerceAtMost(size.height)
                     drawRect(
-                        color = OrangeAccent.copy(alpha = 0.15f),
+                        color = selectedColor.copy(alpha = 0.15f),
                         topLeft = Offset(left, top),
                         size = androidx.compose.ui.geometry.Size(right - left, bottom - top)
                     )
                     drawRect(
-                        color = OrangeAccent,
+                        color = selectedColor,
                         topLeft = Offset(left, top),
                         size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
                         style = Stroke(width = 2.dp.toPx())
                     )
                 }
                 placements.values.forEach { placement ->
-                    val point = quantumModel?.let {
-                        quantumBoardPoint(
-                            model = it,
-                            sourceXMilli = placement.x,
-                            sourceYMilli = placement.y,
-                            boardPixels = size.width,
-                            compactPhone = compactQuantumPhone,
-                            tablet = quantumTablet,
-                        )
-                    }
-                    val px = point?.x ?: (placement.x.toFloat() - edgeLeft) * xScale
-                    val py = point?.y ?: size.height - (placement.y.toFloat() - edgeBottom) * yScale
+                    val point = paintBoardPoint(placement, size, edgeLeft, edgeBottom,
+                        boardWidth, boardHeight, quantumModel, compactQuantumPhone, quantumTablet)
+                    val px = point.x
+                    val py = point.y
 
                     if (px !in 0f..size.width || py !in 0f..size.height) return@forEach
 
@@ -588,25 +621,13 @@ internal fun KilterBoardVisualization(
                         val intensity = heatmapData[pid]
                         if (intensity != null && intensity >= 0.15f) {
                             val heatColor = heatmapColor(intensity)
-                            // Soft halo — barely visible at low intensity,
-                            // brighter for hot holds. Stays smaller than
-                            // the hold so the photo still reads through.
-                            drawCircle(
-                                color = heatColor.copy(alpha = 0.18f + 0.20f * intensity),
-                                radius = markerScale * 4.5f,
-                                center = Offset(px, py),
-                                style = Fill,
-                            )
-                            // Tiny core dot — the actual "this is hot" marker.
-                            drawCircle(
-                                color = heatColor.copy(alpha = 0.55f + 0.30f * intensity),
-                                radius = markerScale * 1.8f,
-                                center = Offset(px, py),
-                                style = Fill,
-                            )
+                            drawBoardColorOverlay(Offset(px, py), markerScale, heatColor, intensity)
                         }
                     }
 
+                    paintColors[pid]?.let { color ->
+                        drawBoardColorOverlay(Offset(px, py), markerScale, rgb332ToComposeColor(color))
+                    }
                     // Layer 4: Active hold circles (existing behavior — colored ring).
                     if (holds.isNotEmpty() && !(quantumModel != null && currentClimbIsLayered)) {
                         val activeHold = activeHoldMap[pid]

@@ -41,6 +41,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.theme.SuccessGreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -160,10 +161,12 @@ private fun AnnouncementCard(
             // (the unread dot, surface tint and bold weight all flip), but it must
             // never collapse/truncate the text — there is no expand affordance, so
             // a truncated "read" announcement could never be read in full again.
-            Text(
+            // A long press selects the text to copy; opening one of its links reads it too.
+            MessageText(
                 text = announcement.content,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (announcement.isRead) FontWeight.Normal else FontWeight.Medium,
+                onLinkOpened = onClick,
             )
         }
     }
@@ -171,7 +174,7 @@ private fun AnnouncementCard(
 
 @Composable
 private fun categoryBadge(category: String): Pair<String, Color> = when (category) {
-    "release" -> stringResource(R.string.devcontact_category_release) to Color(0xFF4CAF50)
+    "release" -> stringResource(R.string.devcontact_category_release) to SuccessGreen
     "issue" -> stringResource(R.string.devcontact_category_issue) to MaterialTheme.colorScheme.error
     "tip" -> stringResource(R.string.devcontact_category_tip) to OrangeAccent
     else -> stringResource(R.string.devcontact_category_general) to MaterialTheme.colorScheme.onSurfaceVariant

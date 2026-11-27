@@ -19,6 +19,7 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardSwitchLinkPolicy
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.android.led.LedAnimationService
 import com.cruxcoach.android.notification.BoardSyncWorker
 import com.cruxcoach.android.notification.NostrPushCoordinator
 import com.cruxcoach.android.notification.NotificationPollWorker
@@ -46,7 +47,10 @@ class CruxCoachApp : Application(), Configuration.Provider {
     lateinit var workerFactory: HiltWorkerFactory
 
     @Inject
-    lateinit var userPreferences: UserPreferences
+    lateinit var userPreferencesLazy: dagger.Lazy<UserPreferences>
+
+    /** Lazy so the photo model's process never builds it: that would open the account key store. */
+    private val userPreferences: UserPreferences get() = userPreferencesLazy.get()
 
     @Inject
     lateinit var syncManager: dagger.Lazy<BoardSyncManager>
@@ -81,6 +85,12 @@ class CruxCoachApp : Application(), Configuration.Provider {
     @Inject
     lateinit var boardBleConnection: dagger.Lazy<BoardBleConnection>
 
+    @Inject
+    lateinit var ledAnimationEngine: dagger.Lazy<com.cruxcoach.android.led.LedAnimationEngine>
+
+    @Inject
+    lateinit var relayAdapterNameGuard: dagger.Lazy<com.cruxcoach.android.data.RelayAdapterNameGuard>
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 
@@ -106,6 +116,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 !up && linkWasUp -> policy.onLinkDown()
                 up && policy.onSelectionChanged(
                     board, connectedBrand, userPreferences.isOnboardingCompleted(),
+                    sizeConfirmedOnBoard = connection.sizeConfirmedOnBoard,
                 ) -> {
                     Log.i("CruxCoachApp", "Active board switched to $board while connected — releasing the link")
                     connection.disconnect()
@@ -133,6 +144,14 @@ class CruxCoachApp : Application(), Configuration.Provider {
     }
 
     override fun onCreate() {
+        if (Application.getProcessName().endsWith(com.cruxcoach.android.foodvision.VisionProtocol.PROCESS_SUFFIX)) {
+            // FEAT-069: the food photo process only runs FoodVisionService. It
+            // must not open databases, connect to relays or schedule work.
+            // super.onCreate() still injects the fields above; they are Lazy
+            // (or, for the worker factory, only providers), so nothing opens.
+            super.onCreate()
+            return
+        }
         PerfLogger.milestone("CruxCoachApp.onCreate START")
         PerfLogger.logMemory("app-create-start")
 
@@ -149,8 +168,17 @@ class CruxCoachApp : Application(), Configuration.Provider {
             val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
             Thread.setDefaultUncaughtExceptionHandler(CruxCoachCrashHandler(this, defaultHandler))
         }
+        // Board sharing borrows the phone's Bluetooth name. A run that ended
+        // abruptly (killed, crashed, updated, phone restarted) may have left it
+        // renamed; every process start gives it back, also one for background
+        // work, so this never waits for the user to open the app.
+        PerfLogger.trace("RelayAdapterNameGuard.restoreIfStale") {
+            relayAdapterNameGuard.get().restoreIfStale()
+        }
         PerfLogger.trace("ApkShareHelper.cleanupCache") { ApkShareHelper.cleanupCache(this) }
         PerfLogger.trace("TrainingReminderWorker.schedule") { TrainingReminderWorker.schedule(this) }
+        PerfLogger.trace("BodyReminders.ensureScheduled") { com.cruxcoach.android.athlete.BodyReminders.ensureScheduled(this) }
+        PerfLogger.trace("TrainingReminders.ensureScheduled") { com.cruxcoach.android.athlete.TrainingReminders.ensureScheduled(this) }
         PerfLogger.trace("NotificationPollWorker.schedule") { NotificationPollWorker.schedule(this) }
 
         // FEAT-001: NIP-65 relay discovery — opportunistic refresh on app
@@ -188,6 +216,44 @@ class CruxCoachApp : Application(), Configuration.Provider {
         // when installed via Zapstore (§6.6).
         PerfLogger.trace("UpdaterCoordinator.start") { updaterCoordinator.get().start() }
 
+        // LED effects: follow the lit board and the "LED effects" settings.
+        // Silent until the user picks one and a Kilter climb is lit.
+        PerfLogger.trace("LedAnimationEngine.start") { ledAnimationEngine.get().start() }
+
+        // LED effect keep-alive, only when the user turned on "Keep running in
+        // other apps" and the notification with Stop can be seen. This observer
+        // is added AFTER the engine registers itself with `start()`, so on the way
+        // out of the foreground (lifecycle down events run in reverse registration
+        // order) it claims the engine's background half before the engine sees the
+        // foreground loss: not a beat is skipped, and a connectedDevice foreground
+        // service is then what keeps the process allowed to write. Coming back
+        // releases the claim; the service ends itself when it sees that. If Android
+        // still freezes or kills the app, the effect stops with it: no wake lock.
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) {
+                ledAnimationEngine.get().releaseBackground()
+            }
+
+            override fun onStop(owner: LifecycleOwner) {
+                val engine = ledAnimationEngine.get()
+                if (!engine.shouldKeepRunningInBackground()) return
+                if (!LedAnimationService.notificationsVisible(this@CruxCoachApp)) {
+                    Log.i("CruxCoachApp", "LED effect not kept running: its notification could not be seen")
+                    return
+                }
+                engine.claimBackground()
+                runCatching { LedAnimationService.start(this@CruxCoachApp) }
+                    .onFailure {
+                        engine.releaseBackground()
+                        Log.w(
+                            "CruxCoachApp",
+                            "LED effect keep-alive refused; the effect stops with the background",
+                            it,
+                        )
+                    }
+            }
+        })
+
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             private var lastForegroundPoll = 0L
 
@@ -196,6 +262,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 // changes to the device's primary language without a full restart.
                 applySystemLocaleIfNeeded()
                 boardBleConnection.get().refreshQuantumStateOnForeground()
+                // A give-back that Android refused earlier (other user profile
+                // active, permission missing) gets another chance.
+                relayAdapterNameGuard.get().restoreIfStale()
 
                 // Kick the Nostr relay pool back to life on every
                 // foreground. Pre-fix, the pool only auto-reconnected on

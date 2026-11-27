@@ -1,0 +1,2265 @@
+package com.cruxcoach.android.ui.training.today
+
+import kotlinx.datetime.todayIn
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingFlat
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoButton
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
+import com.cruxcoach.android.ui.training.*
+import com.cruxcoach.android.ui.training.fuel.amountText
+import com.cruxcoach.android.ui.training.fuel.inputText
+import com.cruxcoach.athlete.logic.BuiltinRoutines
+import com.cruxcoach.athlete.logic.FuelUnits
+import com.cruxcoach.athlete.logic.ReadinessLevel
+import com.cruxcoach.athlete.logic.TrainingPlaces
+import com.cruxcoach.athlete.logic.ReadinessReason
+import com.cruxcoach.athlete.logic.SuggestionFocus
+import com.cruxcoach.athlete.logic.SuggestionReason
+import com.cruxcoach.athlete.logic.Units
+import java.time.format.TextStyle
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun TodayScreen(
+    onBack: () -> Unit,
+    onOpenExercises: () -> Unit,
+    onOpenRoutines: () -> Unit,
+    onOpenWorkout: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onOpenBody: () -> Unit,
+    onOpenFuel: () -> Unit,
+    onOpenInjuries: () -> Unit,
+    onOpenWeeklyReview: () -> Unit,
+    onOpenSettings: () -> Unit,
+    viewModel: TodayViewModel = hiltViewModel(),
+    onOpenPlayer: () -> Unit = onOpenWorkout,
+    onOpenBenchmarks: () -> Unit = {},
+    tabBar: @Composable () -> Unit = {},
+    /** Opens the workout editor: an own routine id, or `from` = "ex:<slug>,<slug>" to start a new one. */
+    onOpenEditor: (routineId: String?, from: String?) -> Unit = { _, _ -> },
+    /** Board day: the playlist generator preset with a [com.cruxcoach.domain.playlist.GeneratorType] name and minutes. */
+    onOpenPlaylistGenerator: (type: String, minutes: Int) -> Unit = { _, _ -> },
+    /** Goal and training week: the coach setup (first step of the checklist). */
+    onOpenCoachSetup: () -> Unit = {},
+    /** Start values estimated from a few questions (FEAT-071). */
+    onOpenEstimate: () -> Unit = {},
+    /** "Klettertag eintragen": climbing outside the board app. */
+    onLogClimbing: () -> Unit = {},
+    /** The filled climbing tile: today's one climbing day to edit (device test D30) … */
+    onEditClimbing: (entryId: String) -> Unit = {},
+    /** … or the list of climbing days when today has several. */
+    onOpenClimbingDays: () -> Unit = {},
+    /** What the coach learned from the athlete's choices (settings page, forgettable). */
+    onOpenLearned: () -> Unit = {},
+    /** An injury's comeback plan (owner 2026-10-20). */
+    onOpenComeback: (injuryId: String) -> Unit = {},
+    /** An exercise's page with its steps ("So geht's" for an exercise new to the athlete, issue #68). */
+    onOpenExercise: (slug: String) -> Unit = {},
+    /** "Gestern geklettert?" under a finger suggestion: the climbing entry, opened on yesterday. */
+    onLogClimbingYesterday: () -> Unit = {},
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val comebacks by viewModel.comebacks.collectAsStateWithLifecycle()
+    var askWhy by rememberSaveable { mutableStateOf(false) }
+    var showWhy by rememberSaveable { mutableStateOf(false) }
+    // After a finished training the hero says so; another session only on request.
+    var moreToday by rememberSaveable(state.today?.toString()) { mutableStateOf(false) }
+    var showWeight by rememberSaveable { mutableStateOf(false) }
+    var showEquipment by rememberSaveable { mutableStateOf(false) }
+    var showGoal by rememberSaveable { mutableStateOf(false) }
+    var showCheckin by rememberSaveable { mutableStateOf(false) }
+    /** "Tage planen" (owner 2026-10-19). */
+    var planDays by rememberSaveable { mutableStateOf(false) }
+    /** An exercise of today's card the athlete tapped to swap. */
+    var swapFor by rememberSaveable { mutableStateOf<String?>(null) }
+    var menu by remember { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    val savedText = stringResource(R.string.trsg_saved)
+    val weightSavedText = stringResource(R.string.tru_weight_saved)
+    val undoText = stringResource(R.string.trf_undo)
+    val neverDoneText = stringResource(R.string.trt_never_done)
+    val swappedText = stringResource(R.string.trt_swapped_undo)
+    val droppedText = stringResource(R.string.trt_dropped_undo)
+    val dontKnowText = stringResource(R.string.trt_dont_know_undo)
+    val screenLanguage = catalogLanguage()
+    val glass = FuelUnits.waterPresetsMl(state.profile.units).first()
+    val waterAddedText = stringResource(R.string.tru_water_added, amountText(glass.toDouble(), FuelUnits.unitFor(state.profile.units, drink = true)))
+    val snackScope = rememberCoroutineScope()
+    fun tell(text: String) { snackScope.launch { snackbar.currentSnackbarData?.dismiss(); snackbar.showSnackbar(text) } }
+    LaunchedEffect(state.suggestionSaved) {
+        // Shown outside this effect: consuming the flag restarts the effect and would cancel it.
+        if (state.suggestionSaved) { viewModel.consumeSuggestionSaved(); tell(savedText) }
+    }
+    LaunchedEffect(state.startedWorkout) {
+        if (state.startedWorkout) {
+            val guided = state.startedGuided
+            viewModel.consumeStartedWorkout()
+            if (guided) onOpenPlayer() else onOpenWorkout()
+        }
+    }
+    TrainingScaffold(
+        title = stringResource(R.string.tr_nav_today),
+        onBack = onBack,
+        bottomBar = tabBar,
+        snackbarHost = { TrainingSnackbarHost(snackbar) },
+        actions = {
+            IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("today_settings")) {
+                Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.tr_action_settings))
+            }
+            // Seldom used: in the menu, not as another row of buttons on the screen.
+            Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.testTag("today_menu")) {
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.trt_more_actions))
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.trt_weekly_review)) }, leadingIcon = { Icon(Icons.Default.Insights, null) },
+                        onClick = { menu = false; onOpenWeeklyReview() }, modifier = Modifier.testTag("today_weekly_review"))
+                    DropdownMenuItem(text = { Text(stringResource(R.string.trt_done_hero_history)) }, leadingIcon = { Icon(Icons.Default.History, null) },
+                        onClick = { menu = false; onOpenHistory() }, modifier = Modifier.testTag("today_history"))
+                    if (state.openWorkout == null) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.trt_quick_free)) }, leadingIcon = { Icon(Icons.Default.Add, null) },
+                            onClick = { menu = false; viewModel.startEmptyWorkout() }, modifier = Modifier.testTag("today_start_empty"))
+                    }
+                    DropdownMenuItem(text = { Text(stringResource(R.string.trt_report_injury)) }, leadingIcon = { Icon(Icons.Default.Healing, null) },
+                        onClick = { menu = false; onOpenInjuries() }, modifier = Modifier.testTag("today_report_injury"))
+                }
+            }
+        },
+    ) { padding ->
+        if (state.loading) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            return@TrainingScaffold
+        }
+        LazyColumn(
+            Modifier.fillMaxSize().padding(padding).testTag("today_list"),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            // One glance: where the week stands, what is still missing, today's training, then the day.
+            item { WeekHeader(state, onPlanDays = { planDays = true }) }
+            state.openPause?.let { item(key = "pause") { PauseBanner(onEndPause = viewModel::endPause) } }
+            if (state.injuries.isNotEmpty()) item(key = "injury") { InjuryBanner(state, onOpenInjuries) }
+            comebacks.forEach { c ->
+                item(key = "comeback-${c.injury.id}") {
+                    ComebackTodayCard(c, onOpen = { onOpenComeback(c.injury.id) },
+                        onMorning = { v -> viewModel.comebackToday(c.injury.id) { it.copy(morningPain = v) } },
+                        onStart = { index, name -> viewModel.startComebackSession(c.injury.id, index, name) })
+                }
+            }
+            // No setup checklist here any more (owner 2026-11-21): the start asks what the coach needs, the rest is
+            // asked when it matters and stays reachable under "Coach anpassen" in the settings.
+            if (state.openWorkout != null) {
+                item(key = "open_workout") { OpenWorkoutCard(onOpenPlayer) }
+            } else if (state.todaysWorkouts.isNotEmpty() && !moreToday) {
+                item(key = "done_hero") { DoneHeroCard(state, onMore = { moreToday = true }, onOpenHistory = onOpenHistory) }
+            } else state.suggestion?.let {
+                item(key = "daily_suggestion") {
+                    DailySuggestionCard(
+                        state = state,
+                        onStart = viewModel::startSuggestion,
+                        onNext = { askWhy = true },
+                        onWhy = { showWhy = true },
+                        onClimbedYesterday = onLogClimbingYesterday,
+                        onEdit = { title -> viewModel.editTarget(title).let { (id, from) -> onOpenEditor(id, from) } },
+                        onSave = viewModel::saveSuggestion,
+                        onOpenPlaylistGenerator = onOpenPlaylistGenerator,
+                        checkin = { CheckinRow(state, onOpen = { showCheckin = true }) },
+                        onPickPlace = viewModel::pickPlace,
+                        onQuickCheckin = viewModel::saveQuickCheckin,
+                        onMoreCheckin = { showCheckin = true },
+                        onChooseMinutes = viewModel::chooseMinutes,
+                        onExercise = { swapFor = it },
+                        onOpenSteps = onOpenExercise,
+                        onChooseCircuit = viewModel::chooseCircuit,
+                        onSetCircuit = viewModel::setCircuit,
+                        onLighter = { viewModel.chooseLevel(-1) },
+                        onTrainAnyway = viewModel::trainAnyway,
+                        onInsist = viewModel::insistToday,
+                    )
+                }
+                state.durationHint?.let { minutes ->
+                    item(key = "duration_hint") { DurationHintCard(minutes, onApply = viewModel::applyDurationHint) }
+                }
+                state.levelOffer?.let { offer ->
+                    item(key = "level_offer") { LevelOfferCard(offer, onAnswer = viewModel::answerLevelOffer) }
+                }
+                state.habitOffer?.let { offer ->
+                    item(key = "habit_offer") {
+                        HabitOfferCard(offer, suggestionTitle(state), onYes = viewModel::acceptHabitOffer, onNo = viewModel::declineHabitOffer)
+                    }
+                }
+            }
+            // "Your logbook shows 7a – take it over?" once per grade.
+            state.gradeOffer?.let { grade -> item(key = "grade_offer") { GradeOfferCard(grade, onAnswer = viewModel::answerGradeOffer) } }
+            if (state.energy.signals.isNotEmpty()) item { EnergyCareCard(state.energy, state.profile, "today_reds", onAdjustGoal = { showGoal = true }) }
+            if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state, onSeen = viewModel::dismissLoadSpike, onLighterWeek = viewModel::startLighterWeek) }
+            item(key = "day") {
+                DayGrid(
+                    state = state,
+                    // Today's entry rather than a new one that would log the day twice (device test D30).
+                    onLogClimbing = {
+                        val entries = state.climbingEntriesToday
+                        when (entries.size) {
+                            0 -> onLogClimbing()
+                            1 -> onEditClimbing(entries.single())
+                            else -> onOpenClimbingDays()
+                        }
+                    },
+                    onLogWeight = { showWeight = true },
+                    onOpenBody = onOpenBody,
+                    onOpenFuel = onOpenFuel,
+                    onAddWater = {
+                        viewModel.addWater(glass)
+                        snackScope.launch {
+                            snackbar.currentSnackbarData?.dismiss()
+                            if (snackbar.showSnackbar(waterAddedText, undoText, duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed) {
+                                viewModel.removeLastWater()
+                            }
+                        }
+                    },
+                )
+            }
+            // At the very end: at most one gentle next step. What the coach is missing comes first – the equipment when
+            // the start was skipped, the body weight (loads and protein need it; the start no longer asks) – then a
+            // re-test after two months. Own start values are entered under Progress, not asked for here.
+            run {
+                listOf(TodaySuggestion.CONFIGURE_EQUIPMENT, TodaySuggestion.LOG_WEIGHT, TodaySuggestion.PLAN_WEEK, TodaySuggestion.BASELINE_TEST)
+                    .firstOrNull { it in state.suggestions }?.let { s ->
+                    item(key = s.name) {
+                        SuggestionCard(s, onAction = {
+                            when (s) {
+                                TodaySuggestion.SET_BENCHMARKS -> onOpenEstimate()
+                                TodaySuggestion.BASELINE_TEST -> viewModel.startRoutine(BuiltinRoutines.BASELINE_TESTS)
+                                TodaySuggestion.CONFIGURE_EQUIPMENT -> showEquipment = true
+                                TodaySuggestion.LOG_WEIGHT -> showWeight = true
+                                TodaySuggestion.PLAN_WEEK -> planDays = true
+                            }
+                        }, onSecondary = if (s == TodaySuggestion.SET_BENCHMARKS) onOpenBenchmarks else null)
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+
+    if (showWhy) WhySheet(state, onDismiss = { showWhy = false }, onOpenLearned = { showWhy = false; onOpenLearned() })
+    val pendingStart by viewModel.pendingStart.collectAsStateWithLifecycle()
+    pendingStart?.let { com.cruxcoach.android.ui.training.workout.OpenTrainingDialog(it, viewModel::resolveStart) }
+    if (showCheckin) {
+        CheckinSheet(state, onDismiss = { showCheckin = false },
+            onSave = { s, e, sk, f, sick, sore -> viewModel.saveCheckin(s, e, sk, f, sick, sore); showCheckin = false },
+            onClear = { viewModel.clearCheckin(); showCheckin = false })
+    }
+    if (showWeight) {
+        com.cruxcoach.android.ui.training.common.WeightSheet(
+            units = state.profile.units, lastKg = state.trendKg, hideNumbers = state.profile.hideBodyNumbers,
+            reason = stringResource(R.string.tru_weight_reason_setup),
+            onDismiss = { showWeight = false },
+            onSave = { kg -> viewModel.logWeight(kg); showWeight = false; tell(weightSavedText) },
+        )
+    }
+    if (showGoal) {
+        com.cruxcoach.android.ui.training.common.WeightGoalSheet(
+            profile = state.profile, weightKg = state.trendKg, heightCm = state.heightCm, need = state.need,
+            onDismiss = { showGoal = false },
+            onSave = viewModel::saveWeightGoal,
+            onLogWeight = viewModel::logWeight, onLogHeight = viewModel::logHeight,
+            weekNeeds = state.weekNeeds,
+        )
+    }
+    if (showEquipment) {
+        com.cruxcoach.android.ui.training.common.EquipmentSheet(
+            initial = state.profile.equipment.takeIf { state.profile.equipmentConfigured } ?: emptySet(),
+            onDismiss = { showEquipment = false },
+            onSave = viewModel::saveEquipment,
+            placeName = com.cruxcoach.android.ui.training.common.todaysPlaceName(state.profile),
+        )
+    }
+    if (askWhy) {
+        val adjustTitle = suggestionTitle(state)
+        NextSuggestionSheet(
+            state = state,
+            onMinutes = { m -> viewModel.chooseMinutes(m) },
+            onCircuit = { on -> viewModel.chooseCircuit(on) },
+            onEdit = { askWhy = false; viewModel.editTarget(adjustTitle).let { (id, from) -> onOpenEditor(id, from) } },
+            onSave = { askWhy = false; viewModel.saveSuggestion(adjustTitle) },
+            onCoach = { askWhy = false; onOpenCoachSetup() },
+            onDismiss = { askWhy = false },
+            onShuffle = { askWhy = false; viewModel.nextSuggestion() },
+            onFocus = { focus -> askWhy = false; viewModel.chooseFocus(focus) },
+            onLevel = { shift -> askWhy = false; viewModel.chooseLevel(shift) },
+            // What hurts today is spared today (check-in), not turned into an injury; equipment is answered right here.
+            onHurts = { askWhy = false; showCheckin = true },
+            onEquipment = { askWhy = false; showEquipment = true },
+            onPlace = { id -> askWhy = false; viewModel.pickPlace(id) },
+            onRestToday = { askWhy = false; viewModel.restToday() },
+            onClimbToday = { kind -> askWhy = false; viewModel.climbToday(kind) },
+            onNoClimbToday = { askWhy = false; viewModel.noClimbToday() },
+            onPlanDays = { askWhy = false; planDays = true },
+        )
+    }
+    if (planDays) com.cruxcoach.android.ui.training.workouts.DayPlannerSheet(onDismiss = { planDays = false })
+    // The usual workout taken into the standard week: one line with "Rückgängig".
+    state.habitTaken?.let { taken ->
+        val day = java.time.DayOfWeek.of(taken.isoDay).getDisplayName(TextStyle.FULL, Locale.getDefault())
+        val text = stringResource(R.string.trhb_taken, day, suggestionTitle(state))
+        LaunchedEffect(taken) {
+            viewModel.consumeHabitTaken()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoHabitTaken(taken)
+                }
+            }
+        }
+    }
+    // "Heute Ruhetag": one line with "Rückgängig" (owner 2026-10-19).
+    state.restTodayUndo?.let { before ->
+        val text = stringResource(R.string.trt_rest_today_done)
+        LaunchedEffect(before) {
+            viewModel.consumeRestTodayUndo()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoRestToday(before)
+                }
+            }
+        }
+    }
+    // "Leichte Woche starten" from the load card: one line with "Rückgängig".
+    state.lighterWeekUndo?.let { before ->
+        val text = stringResource(R.string.tre_deload_started)
+        LaunchedEffect(before) {
+            viewModel.consumeLighterWeekUndo()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoLighterWeek(before)
+                }
+            }
+        }
+    }
+    // The climbing day taken back (a second tap on its chip, or another kind of training chosen): one line with
+    // "Rückgängig" as well.
+    state.noClimbTodayUndo?.let { before ->
+        val text = stringResource(R.string.trt_no_climb_today_done)
+        LaunchedEffect(before) {
+            viewModel.consumeNoClimbTodayUndo()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoNoClimbToday(before)
+                }
+            }
+        }
+    }
+    // "Heute klettere ich": one line with "Rückgängig".
+    state.climbTodayUndo?.let { before ->
+        val text = stringResource(R.string.trt_climb_today_done)
+        LaunchedEffect(before) {
+            viewModel.consumeClimbTodayUndo()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoRestToday(before)
+                }
+            }
+        }
+    }
+    swapFor?.let { slug ->
+        val alternatives = remember(slug, state.suggestion) { viewModel.alternatives(slug) }
+        val isNew = slug in state.newToYou
+        val familiar = remember(slug, state.suggestion, isNew) { if (isNew) viewModel.familiarSwap(slug) else null }
+        SwapSheet(
+            state = state, slug = slug, alternatives = alternatives,
+            isNew = isNew, familiar = familiar,
+            onDontKnow = { to ->
+                swapFor = null
+                viewModel.dontKnowExercise(slug, to)
+                val text = dontKnowText.format(state.catalog.fallbackFor(to).name(screenLanguage), state.catalog.fallbackFor(slug).name(screenLanguage))
+                snackScope.launch {
+                    snackbar.currentSnackbarData?.dismiss()
+                    if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoCardChange()
+                }
+            },
+            onOpenSteps = { swapFor = null; onOpenExercise(slug) },
+            onDismiss = { swapFor = null },
+            onSwap = { to ->
+                swapFor = null
+                viewModel.swapExercise(slug, to)
+                val text = swappedText.format(state.catalog.fallbackFor(to).name(screenLanguage), state.catalog.fallbackFor(slug).name(screenLanguage))
+                snackScope.launch {
+                    snackbar.currentSnackbarData?.dismiss()
+                    if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoCardChange()
+                }
+            },
+            onDrop = {
+                swapFor = null
+                viewModel.dropExercise(slug)
+                val text = droppedText.format(state.catalog.fallbackFor(slug).name(screenLanguage))
+                snackScope.launch {
+                    snackbar.currentSnackbarData?.dismiss()
+                    if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoCardChange()
+                }
+            },
+            onExclude = {
+                swapFor = null
+                viewModel.excludeExercise(slug)
+                // Never final by accident (comparison review #8): one tap takes it back.
+                snackScope.launch {
+                    snackbar.currentSnackbarData?.dismiss()
+                    if (snackbar.showSnackbar(neverDoneText.format(state.catalog.fallbackFor(slug).name(screenLanguage)), undoText,
+                            duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.includeExercise(slug)
+                }
+            },
+        )
+    }
+    // A climbing day deleted from the tile: one line with "Rückgängig" (device test D45).
+    state.climbDeleted?.let { deleted ->
+        val text = stringResource(R.string.trl_day_deleted)
+        LaunchedEffect(deleted) {
+            viewModel.consumeClimbDeleted()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoClimbingDelete(deleted)
+                }
+            }
+        }
+    }
+    // A logbook grade taken over: one line with "Rückgängig".
+    state.gradeTaken?.let { taken ->
+        val text = stringResource(R.string.trt_grade_taken, com.cruxcoach.android.ui.training.coach.gradeWithV(taken.first))
+        LaunchedEffect(taken) {
+            viewModel.consumeGradeTaken()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoGradeTaken(taken)
+            }
+        }
+    }
+    // A level step kept for good: one line with "Rückgängig" (comparison review #10).
+    state.levelKept?.let { kept ->
+        val kind = levelKindLabel(kept.offer.focus)
+        val now = (kept.before ?: 0) + kept.offer.direction
+        val text = stringResource(when {
+            now < 0 -> R.string.trt_level_kept_easier
+            now > 0 -> R.string.trt_level_kept_harder
+            else -> R.string.trt_level_kept_normal
+        }, kind)
+        LaunchedEffect(kept) {
+            viewModel.consumeLevelKept()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoLevelKept(kept)
+            }
+        }
+    }
+    // Turned down for the third time: ask once instead of resting it again and again.
+    state.neverOffer?.let { slug ->
+        val name = state.catalog.fallbackFor(slug).name(catalogLanguage())
+        val text = stringResource(R.string.trt_never_offer, name)
+        val yes = stringResource(R.string.trt_never_offer_yes)
+        LaunchedEffect(slug) {
+            snackbar.currentSnackbarData?.dismiss()
+            val result = snackbar.showSnackbar(text, yes, withDismissAction = true, duration = SnackbarDuration.Long)
+            viewModel.answerNeverOffer(result == SnackbarResult.ActionPerformed)
+        }
+    }
+}
+
+// ── Header: week strip and consistency ──────────────────────────────
+
+@Composable
+private fun WeekHeader(state: TodayState, onPlanDays: () -> Unit = {}) {
+    val streak = state.streak
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                if (streak != null) {
+                    Text(
+                        pluralStringResource(R.plurals.trt_week_progress, streak.goal, streak.currentWeekDays, streak.goal),
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                    )
+                    val sub = when {
+                        streak.currentWeekPaused -> stringResource(R.string.trt_streak_paused)
+                        streak.weeks > 0 -> pluralStringResource(R.plurals.trt_streak_weeks, streak.weeks, streak.weeks)
+                        else -> stringResource(R.string.trt_streak_start)
+                    }
+                    Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (streak != null && streak.jokers > 0) {
+                AssistChip(onClick = {}, label = { Text(pluralStringResource(R.plurals.trt_jokers, streak.jokers, streak.jokers)) },
+                    leadingIcon = { Icon(Icons.Default.Shield, null) })
+            }
+            InfoButton(stringResource(R.string.trt_streak_info_title), stringResource(R.string.trt_streak_info_text))
+            // Plan the days ahead: rest, climbing days, trainings, swaps (owner 2026-10-19).
+            IconButton(onClick = onPlanDays, modifier = Modifier.testTag("today_plan_days")) {
+                Icon(Icons.Default.EditCalendar, contentDescription = stringResource(R.string.trdp_title))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        val planLabel = stringResource(R.string.trdp_title)
+        Row(Modifier.fillMaxWidth().clip(CruxCoachDesign.shapes.small).clickable(onClickLabel = planLabel, onClick = onPlanDays)
+            .testTag("today_week_strip"), horizontalArrangement = Arrangement.SpaceBetween) {
+            val locale = Locale.getDefault()
+            // What the card suggests today, for today's circle.
+            val suggested = if (state.suggestion != null) suggestionTitle(state) else null
+            state.week.forEach { day ->
+                val weekday = java.time.DayOfWeek.of(day.date.dayOfWeek.ordinal + 1)
+                val label = weekday.getDisplayName(TextStyle.NARROW, locale)
+                val filled = day.climbed || day.trained
+                val ahead = state.today?.let { day.date >= it } == true
+                // Read out with the whole weekday ("T" is Tuesday and Thursday), and saying what the circle shows. A day
+                // is a rest day only when it is planned as one: a day ahead with nothing planned is free, today is
+                // what the card suggests, and a day gone by without an entry is just that (Nokia walk 2026-11-22: a new
+                // athlete heard "rest" seven times, the coach's training days included).
+                val desc = when {
+                    day.climbed && day.trained -> stringResource(R.string.trt_day_both)
+                    day.climbed -> stringResource(R.string.trt_day_climbed)
+                    day.trained -> stringResource(R.string.trt_day_trained)
+                    day.paused -> stringResource(R.string.trt_day_paused)
+                    !ahead -> stringResource(R.string.trt_day_nothing)
+                    day.isToday && state.openWorkout != null -> stringResource(R.string.trt_day_running)
+                    day.climbPlanned -> stringResource(R.string.trw_day_planned, stringResource(R.string.trdp_climb))
+                    day.planned == com.cruxcoach.athlete.model.PLAN_REST -> stringResource(R.string.trw_day_planned, stringResource(R.string.trwo_plan_rest))
+                    day.planned != null -> stringResource(R.string.trw_day_planned, stringResource(R.string.trdp_training))
+                    day.isToday && suggested != null -> stringResource(R.string.trt_day_suggested, suggested)
+                    else -> stringResource(R.string.trw_status_free)
+                }
+                val name = weekday.getDisplayName(TextStyle.FULL, locale)
+                Column(horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.semantics { contentDescription = "$name: $desc" }) {
+                    Text(label, style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Normal)
+                    Box(
+                        Modifier.size(28.dp).clip(CircleShape)
+                            .background(if (filled) CruxCoachDesign.colors.brandAccent else MaterialTheme.colorScheme.surfaceVariant)
+                            .border(if (day.isToday) 2.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        when {
+                            day.climbed && day.trained -> Icon(Icons.Default.DoneAll, null, Modifier.size(16.dp), tint = CruxCoachDesign.colors.onBrandAccent)
+                            day.climbed -> Icon(Icons.Default.Terrain, null, Modifier.size(16.dp), tint = CruxCoachDesign.colors.onBrandAccent)
+                            day.trained -> Icon(Icons.Default.FitnessCenter, null, Modifier.size(16.dp), tint = CruxCoachDesign.colors.onBrandAccent)
+                            day.paused -> Icon(Icons.Default.Bedtime, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            // What is still ahead this week: planned climbing, a planned training, a rest day.
+                            ahead && day.climbPlanned -> Icon(Icons.Default.Terrain, null, Modifier.size(14.dp).testTag("today_week_planned_climb"),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            ahead && day.planned == com.cruxcoach.athlete.model.PLAN_REST -> Icon(Icons.Default.Weekend, null, Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            ahead && day.planned != null -> Icon(Icons.Default.FitnessCenter, null, Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OpenWorkoutCard(onOpen: () -> Unit) {
+    Card(
+        onClick = onOpen,
+        colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.brandAccent),
+        modifier = Modifier.fillMaxWidth().testTag("today_open_workout"),
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.PlayArrow, null, tint = CruxCoachDesign.colors.onBrandAccent, modifier = Modifier.size(32.dp))
+            Spacer(Modifier.width(12.dp))
+            // At a large font titleLarge broke "weitermachen" inside the word at 320 dp.
+            val large = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f
+            Text(stringResource(R.string.trt_continue_workout), color = CruxCoachDesign.colors.onBrandAccent,
+                style = if (large) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+/** Today's training is done: say so, and offer more only on request. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun DoneHeroCard(state: TodayState, onMore: () -> Unit, onOpenHistory: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.positiveContainer,
+            contentColor = CruxCoachDesign.colors.onPositiveContainer),
+        modifier = Modifier.fillMaxWidth().testTag("today_done_hero"),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.CheckCircle, null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.trt_done_hero_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
+            val minutes = state.todaysWorkouts.sumOf { it.durationMinutes ?: 0 }
+            // Titles resolved in composition first; joinToString's lambda is not composable.
+            val titles = state.todaysWorkouts.map { com.cruxcoach.android.ui.training.workout.workoutTitle(it) }
+            val minutesText = if (minutes > 0) " · " + pluralStringResource(R.plurals.trt_minutes, minutes, minutes) else ""
+            Text(
+                titles.joinToString(" · ") + minutesText,
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp),
+            )
+            Text(stringResource(R.string.trt_done_hero_text), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+            // "Verlauf" goes under the outlined button when both do not fit: beside it, it broke into a column of
+            // single letters at 320 dp and the largest font (RC1 walk).
+            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val onCard = CruxCoachDesign.colors.onPositiveContainer
+                OutlinedButton(onClick = onMore, colors = ButtonDefaults.outlinedButtonColors(contentColor = onCard),
+                    modifier = Modifier.testTag("today_done_more")) { Text(stringResource(R.string.trt_done_hero_more)) }
+                TextButton(onClick = onOpenHistory, colors = ButtonDefaults.textButtonColors(contentColor = onCard),
+                    modifier = Modifier.testTag("today_done_history")) {
+                    Text(stringResource(R.string.trt_done_hero_history))
+                }
+            }
+        }
+    }
+}
+
+/** Thin status line: an open pause, with the way out right there. */
+@Composable
+private fun PauseBanner(onEndPause: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().testTag("today_pause")) {
+        Row(Modifier.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Bedtime, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.trt_pause_short), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            TextButton(onClick = onEndPause, modifier = Modifier.testTag("today_end_pause")) { Text(stringResource(R.string.trt_pause_end)) }
+        }
+    }
+}
+
+/** Thin status line for injury mode; the suggestion below already trains around it. */
+@Composable
+private fun InjuryBanner(state: TodayState, onManage: () -> Unit) {
+    val paused = state.injuries.any { it.climbingPaused }
+    // "Left wrist, right elbow" / "Handgelenk links, Ellbogen rechts".
+    val summary = state.injuries.map { i -> injuryPlaceLabel(i.region, i.side) }
+        .joinToString(", ").replaceFirstChar { it.titlecase(Locale.getDefault()) }
+    Surface(
+        onClick = onManage,
+        color = CruxCoachDesign.colors.cautionContainer, contentColor = CruxCoachDesign.colors.onCautionContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().testTag("today_injury"),
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Healing, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(if (paused) R.string.trt_injury_mode_paused else R.string.trt_injury_mode),
+                    style = MaterialTheme.typography.labelLarge)
+                Text(summary, style = MaterialTheme.typography.bodySmall)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.trt_injury_manage))
+        }
+    }
+}
+
+// ── Readiness check-in ──────────────────────────────────────────────
+
+/**
+ * The check-in as one line inside today's training: a prompt until answered,
+ * afterwards the day's verdict in a few characters. The questions open in a sheet.
+ */
+@Composable
+private fun CheckinRow(state: TodayState, onOpen: () -> Unit) {
+    val checkin = state.checkin
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.35f), shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("today_readiness"),
+    ) {
+        Column(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)) {
+            if (checkin == null && state.profile.checkinEnabled) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Mood, null, Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.trt_checkin_title), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onOpen, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+                        modifier = Modifier.testTag("today_checkin_open")) { Text(stringResource(R.string.tru_checkin_action)) }
+                }
+            } else {
+                ReadinessResult(state, onEdit = if (state.profile.checkinEnabled) onOpen else null)
+            }
+        }
+    }
+}
+
+/** The four questions in a sheet; tapping the selected value clears it (every question is optional). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CheckinSheet(
+    state: TodayState,
+    onDismiss: () -> Unit,
+    onSave: (Int?, Int?, Int?, Int?, Boolean, Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit,
+    onClear: () -> Unit,
+) {
+    val checkin = state.checkin
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("today_checkin_sheet")) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).verticalScroll(rememberScrollState())) {
+            CheckinForm(checkin?.sleep, checkin?.energy, checkin?.skin, checkin?.fingers, checkin?.sick ?: false, checkin?.sore.orEmpty(), onSave)
+            if (checkin != null) {
+                TextButton(onClick = onClear, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text(stringResource(R.string.trt_checkin_reset)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReadinessResult(state: TodayState, onEdit: (() -> Unit)?) {
+    val r = state.readiness
+    val c = state.checkin
+    val (icon, title) = when (r.level) {
+        ReadinessLevel.GO -> Icons.Default.CheckCircle to stringResource(R.string.trt_ready_go)
+        ReadinessLevel.ADAPT -> Icons.Default.Tune to stringResource(R.string.trt_ready_adapt)
+        ReadinessLevel.REST -> Icons.Default.Bedtime to stringResource(R.string.trt_ready_rest)
+    }
+    // Answers in a few characters ("Schlaf 4 · Haut 2"); the injury has its own banner above.
+    val answers = listOfNotNull(
+        c?.sleep?.let { stringResource(R.string.trt_q_sleep) + " " + it },
+        c?.energy?.let { stringResource(R.string.trt_q_energy) + " " + it },
+        c?.skin?.let { stringResource(R.string.trt_q_skin) + " " + it },
+        c?.fingers?.let { stringResource(R.string.trt_q_fingers) + " " + it },
+        if (c?.sick == true) stringResource(R.string.trt_short_sick) else null,
+        c?.sore?.takeIf { it.isNotEmpty() }?.let { set -> stringResource(R.string.trt_short_sore, set.map { regionLabel(it) }.joinToString(", ")) },
+    )
+    val factor = r.reasons.firstOrNull { it != ReadinessReason.INJURY_CLIMBING_PAUSED && it != ReadinessReason.INJURY_ACTIVE && it != ReadinessReason.ALL_GOOD }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = when (r.level) {
+            ReadinessLevel.GO -> CruxCoachDesign.colors.positive
+            ReadinessLevel.ADAPT -> CruxCoachDesign.colors.caution
+            ReadinessLevel.REST -> MaterialTheme.colorScheme.onSurfaceVariant
+        })
+        Spacer(Modifier.width(12.dp))
+        // "Ändern" below the answers when they do not fit beside it (320 dp, large font).
+        LabelBesideOrAbove(modifier = Modifier.weight(1f), growth = 1.5f, label = { Column {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            if (answers.isNotEmpty()) {
+                Text(answers.joinToString(" · "), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("today_checkin_summary"))
+            }
+        } }) {
+            if (onEdit != null) TextButton(onClick = onEdit, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+                modifier = Modifier.testTag("today_checkin_edit")) {
+                Text(stringResource(R.string.trt_checkin_change))
+            }
+        }
+    }
+    factor?.let {
+        Text(readinessReasonText(it), style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp).testTag("today_readiness_reason"))
+    }
+}
+
+@Composable
+private fun readinessReasonText(reason: ReadinessReason): String = stringResource(when (reason) {
+    ReadinessReason.SICK -> R.string.trt_reason_sick
+    ReadinessReason.INJURY_CLIMBING_PAUSED -> R.string.trt_reason_injury_paused
+    ReadinessReason.INJURY_ACTIVE -> R.string.trt_reason_injury
+    ReadinessReason.FINGERS_TIRED -> R.string.trt_reason_fingers
+    ReadinessReason.SKIN_LOW -> R.string.trt_reason_skin
+    ReadinessReason.LOW_SLEEP -> R.string.trt_reason_sleep
+    ReadinessReason.LOW_ENERGY -> R.string.trt_reason_energy
+    ReadinessReason.LOW_MOTIVATION -> R.string.trt_reason_motivation
+    ReadinessReason.ALL_GOOD -> R.string.trt_reason_all_good
+})
+
+@Composable
+internal fun readinessReasonShort(reason: ReadinessReason): String = stringResource(when (reason) {
+    ReadinessReason.SICK -> R.string.trt_short_sick
+    ReadinessReason.INJURY_CLIMBING_PAUSED, ReadinessReason.INJURY_ACTIVE -> R.string.trt_short_injury
+    ReadinessReason.FINGERS_TIRED -> R.string.trt_q_fingers
+    ReadinessReason.SKIN_LOW -> R.string.trt_q_skin
+    ReadinessReason.LOW_SLEEP -> R.string.trt_q_sleep
+    ReadinessReason.LOW_ENERGY -> R.string.trt_q_energy
+    ReadinessReason.LOW_MOTIVATION -> R.string.trt_short_motivation
+    ReadinessReason.ALL_GOOD -> R.string.trt_reason_all_good
+})
+
+@Composable
+private fun CheckinForm(
+    sleep0: Int?, energy0: Int?, skin0: Int?, fingers0: Int?, sick0: Boolean,
+    sore0: Set<com.cruxcoach.athlete.model.InjuryRegion>,
+    onSave: (Int?, Int?, Int?, Int?, Boolean, Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit,
+) {
+    var sore by rememberSaveable { mutableStateOf(sore0.map { it.name }) }
+    var sleep by rememberSaveable { mutableStateOf(sleep0) }
+    var energy by rememberSaveable { mutableStateOf(energy0) }
+    var skin by rememberSaveable { mutableStateOf(skin0) }
+    var fingers by rememberSaveable { mutableStateOf(fingers0) }
+    var sick by rememberSaveable { mutableStateOf(sick0) }
+    Text(stringResource(R.string.trt_checkin_title), style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.trt_checkin_hint), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(8.dp))
+    ScaleRow(stringResource(R.string.trt_q_sleep), sleep, "sleep") { sleep = it }
+    // Health Connect (opt-in): last night's sleep as a suggestion; the athlete taps to take it, nothing is saved by itself.
+    if (sleep == null) {
+        com.cruxcoach.android.athlete.health.rememberSleepHint(kotlin.time.Clock.System.todayIn(kotlinx.datetime.TimeZone.currentSystemDefault()))
+            ?.let { hint -> com.cruxcoach.android.athlete.health.SleepHintChip(hint, onApply = { sleep = it }) }
+    }
+    ScaleRow(stringResource(R.string.trt_q_energy), energy, "energy") { energy = it }
+    ScaleRow(stringResource(R.string.trt_q_skin), skin, "skin") { skin = it }
+    ScaleRow(stringResource(R.string.trt_q_fingers), fingers, "fingers") { fingers = it }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { sick = !sick }) {
+        Checkbox(checked = sick, onCheckedChange = { sick = it }, modifier = Modifier.testTag("checkin_sick"))
+        Text(stringResource(R.string.trt_q_sick))
+    }
+    Text(stringResource(R.string.trt_q_sore), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+    SoreChips(sore.mapNotNull { n -> com.cruxcoach.athlete.model.InjuryRegion.entries.firstOrNull { it.name == n } }.toSet(), accent = false) { set ->
+        sore = set.map { it.name }
+    }
+    val soreSet = sore.mapNotNull { n -> com.cruxcoach.athlete.model.InjuryRegion.entries.firstOrNull { it.name == n } }.toSet()
+    Button(
+        onClick = { onSave(sleep, energy, skin, fingers, sick, soreSet) },
+        enabled = sick || soreSet.isNotEmpty() || listOf(sleep, energy, skin, fingers).any { it != null },
+        modifier = Modifier.fillMaxWidth().testTag("checkin_save"),
+    ) { Text(stringResource(R.string.tr_action_save)) }
+}
+
+/**
+ * Before today's suggestion: how strong the athlete feels and whether anything
+ * hurts – and what. Both are optional; "Show suggestion" works with or
+ * without answers. What hurts is spared today without becoming an injury.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun QuickCheckin(onSave: (Int?, Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit, onMore: () -> Unit) {
+    val chipColors = answerChipColors()
+    var strength by rememberSaveable { mutableStateOf<Int?>(null) }
+    var hurts by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    var sore by rememberSaveable { mutableStateOf(listOf<String>()) }
+    val soreSet = sore.mapNotNull { n -> com.cruxcoach.athlete.model.InjuryRegion.entries.firstOrNull { it.name == n } }.toSet()
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_quick_checkin")) {
+        Text(stringResource(R.string.trt_quick_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.trt_quick_text), style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.trt_quick_strength), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+            (1..5).forEach { v ->
+                FilterChip(
+                    selected = strength == v,
+                    onClick = { strength = if (strength == v) null else v },
+                    label = { Text("$v", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) },
+                    colors = chipColors,
+                    modifier = Modifier.weight(1f).testTag("today_quick_strength_$v"),
+                )
+            }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.trt_quick_weak), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.trt_quick_strong), style = MaterialTheme.typography.bodySmall)
+        }
+        Text(stringResource(R.string.trt_quick_hurts), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = hurts == false, onClick = { hurts = false; sore = emptyList() },
+                label = { Text(stringResource(R.string.trt_quick_no)) }, colors = chipColors, modifier = Modifier.testTag("today_quick_hurts_no"))
+            FilterChip(selected = hurts == true, onClick = { hurts = true },
+                label = { Text(stringResource(R.string.trt_quick_yes)) }, colors = chipColors, modifier = Modifier.testTag("today_quick_hurts_yes"))
+        }
+        if (hurts == true) {
+            Text(stringResource(R.string.trt_quick_where), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+            SoreChips(soreSet) { set -> sore = set.map { it.name } }
+        }
+        Button(
+            onClick = { onSave(strength, if (hurts == true) soreSet else emptySet()) },
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp).testTag("today_quick_show"),
+        ) { Text(stringResource(R.string.trt_quick_show)) }
+        TextButton(onClick = onMore, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+            modifier = Modifier.align(Alignment.CenterHorizontally).testTag("today_quick_more")) {
+            Text(stringResource(R.string.trt_quick_more))
+        }
+    }
+}
+
+/** An answer stands out on the suggestion card, whose colour the default selected chip shares. */
+@Composable
+private fun answerChipColors() = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = CruxCoachDesign.colors.brandAccent,
+    selectedLabelColor = CruxCoachDesign.colors.onBrandAccent,
+)
+
+/** Body areas as chips, several at once; the same ones as for an injury. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun SoreChips(
+    selected: Set<com.cruxcoach.athlete.model.InjuryRegion>,
+    /** On the suggestion card the default selected colour is the card's own; the sheet keeps the default. */
+    accent: Boolean = true,
+    onChange: (Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit,
+) {
+    val colors = if (accent) answerChipColors() else FilterChipDefaults.filterChipColors()
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        com.cruxcoach.athlete.model.InjuryRegion.entries.forEach { r ->
+            FilterChip(
+                selected = r in selected,
+                onClick = { onChange(if (r in selected) selected - r else selected + r) },
+                label = { Text(regionLabel(r)) },
+                colors = colors,
+                modifier = Modifier.testTag("today_sore_${r.name.lowercase()}"),
+            )
+        }
+    }
+}
+
+/** 1–5 as five tappable dots; tapping the selected value clears it (every question is optional). */
+@Composable
+private fun ScaleRow(label: String, value: Int?, tag: String, onChange: (Int?) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        (1..5).forEach { v ->
+            val selected = value == v
+            FilterChip(
+                selected = selected,
+                onClick = { onChange(if (selected) null else v) },
+                label = { Text("$v") },
+                modifier = Modifier.padding(start = 4.dp).testTag("checkin_${tag}_$v"),
+            )
+        }
+    }
+}
+
+// ── "Dein Tag": what is logged often, with today's value ──────────
+
+/**
+ * Climbing, weight, food and water as four tiles, each with today's value and
+ * one tap to log: the values and the quick actions are the same thing.
+ */
+@Composable
+private fun DayGrid(
+    state: TodayState,
+    onLogClimbing: () -> Unit,
+    onLogWeight: () -> Unit,
+    onOpenBody: () -> Unit,
+    onOpenFuel: () -> Unit,
+    onAddWater: () -> Unit,
+) {
+    val units = state.profile.units
+    val tiles = buildList<@Composable (Modifier) -> Unit> {
+        add { m -> ClimbingTile(state, onLogClimbing, m) }
+        if (state.profile.bodyEnabled) add { m -> WeightTile(state, onLogWeight, onOpenBody, m) }
+        add { m -> FoodTile(state, onOpenFuel, m) }
+        add { m -> WaterTile(state, units, onAddWater, m) }
+    }
+    Column(Modifier.fillMaxWidth().testTag("today_quick"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(R.string.tru_day_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 4.dp))
+        // One tile a row at a large font: two side by side cut "Eintragen" and "Gewicht" off at 320 dp.
+        val perRow = if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) 1 else 2
+        tiles.chunked(perRow).forEach { row ->
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                row.forEach { tile -> tile(Modifier.weight(1f).fillMaxHeight()) }
+                if (row.size < perRow) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClimbingTile(state: TodayState, onLog: () -> Unit, modifier: Modifier) {
+    val a = state.activity
+    val climbed = a != null && (a.climbingMinutes > 0 || a.climbingEfforts > 0)
+    com.cruxcoach.android.ui.training.common.ValueTile(
+        icon = Icons.Default.Terrain, tint = CruxCoachDesign.colors.brandAccent,
+        label = stringResource(R.string.tru_tile_climbing),
+        value = when {
+            !climbed || a == null -> stringResource(R.string.tru_tile_log)
+            a.climbingMinutes > 0 -> pluralStringResource(R.plurals.trt_minutes, a.climbingMinutes, a.climbingMinutes)
+            else -> pluralStringResource(R.plurals.tru_tile_efforts, a.climbingEfforts, a.climbingEfforts)
+        },
+        valueIsAction = !climbed,
+        supporting = if (climbed) dayLoadLabel(state.dayLoad) else stringResource(R.string.tru_tile_climbing_hint),
+        tag = "today_log_climbing", onClick = onLog, modifier = modifier,
+    )
+}
+
+@Composable
+private fun WeightTile(state: TodayState, onLog: () -> Unit, onOpenBody: () -> Unit, modifier: Modifier) {
+    val trend = state.trendKg
+    val loggedToday = state.lastWeighDay != null && state.lastWeighDay == state.today?.toString()
+    val rate = state.weeklyRateKg
+    com.cruxcoach.android.ui.training.common.ValueTile(
+        icon = Icons.Default.MonitorWeight, tint = MaterialTheme.colorScheme.tertiary,
+        label = stringResource(R.string.tru_tile_weight),
+        value = when {
+            trend == null -> stringResource(R.string.tru_tile_log)
+            state.profile.hideBodyNumbers -> stringResource(R.string.trt_numbers_hidden_short)
+            else -> formatMass(trend, state.profile.units)
+        },
+        valueIsAction = trend == null,
+        supporting = when {
+            loggedToday -> stringResource(R.string.tru_tile_weight_today)
+            trend != null && rate != null && !state.profile.hideBodyNumbers ->
+                stringResource(R.string.tru_tile_weight_rate, formatMass(rate, state.profile.units, signed = true))
+            else -> stringResource(R.string.tru_tile_weight_tap)
+        },
+        tag = "today_weight", onClick = onLog, modifier = modifier,
+        trailing = if (trend != null) ({
+            IconButton(onClick = onOpenBody, modifier = Modifier.size(36.dp).testTag("today_body")) {
+                Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = stringResource(R.string.tru_open_body), modifier = Modifier.size(20.dp))
+            }
+        }) else null,
+    )
+}
+
+@Composable
+private fun FoodTile(state: TodayState, onOpen: () -> Unit, modifier: Modifier) {
+    val t = state.fuelTargets
+    val energyGoal = com.cruxcoach.android.ui.training.common.energyTarget(state.need, state.fuelPlan ?: state.energy.plan, state.profile)
+    val protein = state.proteinToday.roundToInt()
+    com.cruxcoach.android.ui.training.common.ValueTile(
+        icon = Icons.Default.Restaurant, tint = CruxCoachDesign.colors.positive,
+        // All three macros, as on the nutrition page (owner 2026-11-22: protein alone makes no sense); the big number
+        // is the energy when the athlete sees calories, else protein of its target.
+        label = stringResource(R.string.tru_tile_food),
+        value = when {
+            state.profile.showCalories && energyGoal != null -> stringResource(R.string.trn_tile_kcal, (state.kcalToday ?: 0.0).roundToInt(), energyGoal)
+            state.profile.showCalories -> stringResource(R.string.trf_kcal_value, (state.kcalToday ?: 0.0).roundToInt())
+            t != null -> stringResource(R.string.trf_progress_g, protein, t.proteinG)
+            else -> stringResource(R.string.trf_value_g, protein)
+        },
+        progress = foodTileProgress(state.profile.showCalories, (state.kcalToday ?: 0.0).roundToInt(), energyGoal, protein, t?.proteinG),
+        supporting = if (t == null) stringResource(R.string.tru_tile_food_no_target)
+            else stringResource(R.string.tru_tile_food_macros, state.carbsToday.roundToInt(), t.carbsG, protein, t.proteinG, state.fatToday.roundToInt(), t.fatG),
+        tag = "today_fuel", onClick = onOpen, modifier = modifier,
+    )
+}
+
+@Composable
+private fun WaterTile(state: TodayState, units: com.cruxcoach.athlete.model.UnitSystem, onAdd: () -> Unit, modifier: Modifier) {
+    val volume = FuelUnits.unitFor(units, drink = true)
+    val target = state.fuelTargets?.waterMl
+    val glass = FuelUnits.waterPresetsMl(units).first()
+    com.cruxcoach.android.ui.training.common.ValueTile(
+        icon = Icons.Default.WaterDrop, tint = WaterBlue,
+        label = stringResource(R.string.tru_tile_water),
+        value = if (target != null) stringResource(R.string.trf_progress_volume, inputText(state.waterTodayMl.toDouble(), volume),
+            amountText(target.toDouble(), volume)) else amountText(state.waterTodayMl.toDouble(), volume),
+        progress = target?.let { state.waterTodayMl.toFloat() / it },
+        supporting = stringResource(R.string.tru_tile_water_tap, amountText(glass.toDouble(), volume)),
+        tag = "today_water_add", onClick = onAdd, modifier = modifier,
+        trailing = { Icon(Icons.Default.AddCircle, null, tint = WaterBlue, modifier = Modifier.padding(end = 8.dp).size(24.dp)) },
+    )
+}
+
+/**
+ * The orange of links and buttons on the suggestion card: its secondaryContainer is darker than the
+ * page, where the theme's orange stays below 4.5:1 (light 4.1, dark 3.4).
+ */
+private val AccentOnCard: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFFFFB74D, light = 0xFF9A3500)
+
+/** "+1 kg" and "−1 kg" on the suggestion card: the theme's green and amber reach only 4.3:1 on its light container. */
+private val StepUpOnCard: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFF8EE8A5, light = 0xFF125C2C)
+
+private val StepDownOnCard: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFFFFD166, light = 0xFF674C00)
+
+/** Water's own colour, the same on Today and in the nutrition log; deeper in the light theme, where its taps need 3:1. */
+internal val WaterBlue: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFF4FA3F7, light = 0xFF1E78C8)
+
+@Composable
+private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit, onSecondary: (() -> Unit)? = null) {
+    val (title, text, action) = when (s) {
+        TodaySuggestion.CONFIGURE_EQUIPMENT -> Triple(R.string.trt_sugg_equipment_title, R.string.trt_sugg_equipment_text, R.string.trt_sugg_equipment_action)
+        TodaySuggestion.SET_BENCHMARKS -> Triple(R.string.trt_sugg_benchmarks_title, R.string.trt_sugg_benchmarks_text, R.string.tru_estimate)
+        TodaySuggestion.BASELINE_TEST -> Triple(R.string.trt_sugg_test_title, R.string.trt_sugg_test_text, R.string.tr_action_start)
+        TodaySuggestion.LOG_WEIGHT -> Triple(R.string.trt_sugg_weight_title, R.string.trt_sugg_weight_text, R.string.trt_sugg_weight_action)
+        TodaySuggestion.PLAN_WEEK -> Triple(R.string.trt_sugg_week_title, R.string.trt_sugg_week_text, R.string.trdp_card_action)
+    }
+    OutlinedCard(Modifier.fillMaxWidth().testTag("today_suggestion_${s.name.lowercase()}")) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp)) {
+            Text(stringResource(title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(text), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
+                onSecondary?.let { TextButton(onClick = it) { Text(stringResource(R.string.tru_enter_exact)) } }
+                FilledTonalButton(onClick = onAction, modifier = Modifier.testTag("today_suggestion_action")) { Text(stringResource(action)) }
+            }
+        }
+    }
+}
+
+// ── Daily suggestion (climber version) ──────────────────────────────
+
+@Composable
+private fun suggestionTitle(state: TodayState): String {
+    val s = state.suggestion ?: return ""
+    if (s.addOn) return stringResource(R.string.tre_focus_addon)
+    // A planned climbing day is called what it is: "Halle Bouldern · Limit" – while the card is that day's card. With
+    // another kind in its place (chosen for today, ill, climbing paused) the card carries that kind's name, and so does
+    // the training started from it (Nokia walk 2026-11-22: a pull training was "Gym bouldering · Volume" on the done card).
+    if (s.focus == SuggestionFocus.BOARD_DAY && s.boardPlan == null) {
+        com.cruxcoach.athlete.logic.DayPlans.climbOf(s.plannedEntry)?.let { return com.cruxcoach.android.ui.training.workouts.climbPlanLabel(it) }
+    }
+    if (s.focus == SuggestionFocus.PLANNED) {
+        state.plannedName?.let { return it }
+        s.plannedEntry?.takeIf { it.startsWith("builtin:") }
+            ?.let { BuiltinRoutines.byKey(it.removePrefix("builtin:")) }
+            ?.let { return routineName(it) }
+    }
+    return stringResource(when (s.focus) {
+        SuggestionFocus.PLANNED -> R.string.trsg_focus_planned
+        SuggestionFocus.BOARD_DAY -> R.string.trsg_focus_board
+        SuggestionFocus.FINGER_STRENGTH -> R.string.trsg_focus_finger
+        SuggestionFocus.PULL_PUSH -> R.string.trsg_focus_pull_push
+        SuggestionFocus.LEGS_CORE -> R.string.trsg_focus_legs_core
+        SuggestionFocus.MOBILITY_RECOVERY -> R.string.trsg_focus_mobility
+        SuggestionFocus.INJURY_SAFE -> R.string.trsg_focus_injury
+        SuggestionFocus.REST -> R.string.trsg_focus_rest
+    })
+}
+
+@Composable
+private fun suggestionReasonText(reason: SuggestionReason): String = stringResource(when (reason) {
+    SuggestionReason.SICK -> R.string.trsg_reason_sick
+    SuggestionReason.REST_READINESS -> R.string.trsg_reason_rest_readiness
+    SuggestionReason.WEEK_PLAN -> R.string.trsg_reason_week_plan
+    SuggestionReason.WEEK_PLAN_BOARD -> R.string.trsg_reason_week_plan_board
+    SuggestionReason.WEEK_PLAN_REST -> R.string.trsg_reason_week_plan_rest
+    SuggestionReason.PLAN_FILTERED_FOR_INJURY -> R.string.trsg_reason_plan_filtered
+    SuggestionReason.PLAN_REPLACED_FOR_INJURY -> R.string.trsg_reason_plan_replaced
+    SuggestionReason.BOARD_SKIPPED_TODAY -> R.string.trsg_reason_board_skipped
+    SuggestionReason.BOARD_LIGHT -> R.string.trsg_reason_board_light
+    SuggestionReason.HARD_DAY_TOMORROW -> R.string.trsg_reason_hard_tomorrow
+    SuggestionReason.INJURY_CLIMBING_PAUSED -> R.string.trsg_reason_injury
+    SuggestionReason.FINGERS_LOADED_RECENTLY -> R.string.trsg_reason_fingers_loaded
+    SuggestionReason.FINGERS_TIRED -> R.string.trsg_reason_fingers_tired
+    SuggestionReason.SKIN_LOW -> R.string.trsg_reason_skin
+    SuggestionReason.FINGERS_RESTED -> R.string.trsg_reason_fingers_rested
+    SuggestionReason.NO_FINGER_EQUIPMENT -> R.string.trsg_reason_no_finger_equipment
+    SuggestionReason.PULL_LONGER_AGO -> R.string.trsg_reason_pull_longer_ago
+    SuggestionReason.LEGS_LONGER_AGO -> R.string.trsg_reason_legs_longer_ago
+    SuggestionReason.LOW_ENERGY -> R.string.trsg_reason_low_energy
+    SuggestionReason.GOAL_STRENGTH -> R.string.trsg_reason_goal_strength
+    SuggestionReason.FAVORITES_USED -> R.string.trsg_reason_favorites
+    SuggestionReason.SHORTENED_TO_TIME -> R.string.trsg_reason_shortened
+    SuggestionReason.RECOVERY_AFTER_LIMIT -> R.string.tre_reason_recovery_limit
+    SuggestionReason.RECOVERY_AFTER_HARD -> R.string.tre_reason_recovery_hard
+    SuggestionReason.RECOVERY_AFTER_VOLUME -> R.string.tre_reason_recovery_volume
+    SuggestionReason.FINGER_LOAD_RISING -> R.string.tre_reason_finger_rising
+    SuggestionReason.SKIN_LOAD_RISING -> R.string.tre_reason_skin_rising
+    SuggestionReason.GUARDRAIL_YOUTH -> R.string.tre_reason_guard_youth
+    SuggestionReason.GUARDRAIL_NOVICE -> R.string.tre_reason_guard_novice
+    SuggestionReason.GUARDRAIL_MASTERS -> R.string.tre_reason_guard_masters
+    SuggestionReason.FINGER_PREFERENCE_NONE -> R.string.tre_reason_finger_none
+    SuggestionReason.FOCUS_AREAS -> R.string.tre_reason_focus
+    SuggestionReason.GOAL_PROJECT -> R.string.tre_reason_goal_project
+    SuggestionReason.GOAL_HEALTHY -> R.string.tre_reason_goal_healthy
+    SuggestionReason.GOAL_COMEBACK -> R.string.tre_reason_goal_comeback
+    SuggestionReason.CLIMBING_DAY -> R.string.tre_reason_climbing_day
+    SuggestionReason.CLIMBING_DAY_ADDON -> R.string.tre_reason_addon
+    SuggestionReason.BLOCK_INTRO -> R.string.tre_reason_block_intro
+    SuggestionReason.BLOCK_DELOAD -> R.string.tre_reason_block_deload
+    SuggestionReason.BLOCK_TAPER -> R.string.tre_reason_block_taper
+    SuggestionReason.BLOCK_EVENT -> R.string.tre_reason_block_event
+    SuggestionReason.PREFERENCES_LEARNED -> R.string.tre_reason_learned
+    SuggestionReason.NO_TIME_TODAY -> R.string.tre_reason_no_time
+    SuggestionReason.LEVEL_EASIER -> R.string.tre_reason_level_easier
+    SuggestionReason.LEVEL_HARDER -> R.string.tre_reason_level_harder
+    SuggestionReason.RETURN_AFTER_BREAK -> R.string.tre_reason_return_break
+    SuggestionReason.RETURN_FINGER -> R.string.tre_reason_return_finger
+    SuggestionReason.WEEKLY_TARGET -> R.string.trv_reason_weekly
+    SuggestionReason.WEEK_VOLUME_FULL -> R.string.trv_reason_week_full
+    SuggestionReason.WEEK_VOLUME_CLIMBING_AHEAD -> R.string.trv_reason_week_climbing_ahead
+    SuggestionReason.WEEK_VOLUME_DONE -> R.string.trv_reason_week_done
+    SuggestionReason.WEEK_DAYS_DONE -> R.string.trv_reason_week_days_done
+    SuggestionReason.CHOSEN_TODAY -> R.string.trt_reason_chosen
+    SuggestionReason.SPARED_TODAY -> R.string.trt_reason_spared_generic
+    SuggestionReason.NO_WALL_HERE -> R.string.trt_reason_no_wall
+    SuggestionReason.MORE_TIME_TODAY -> R.string.trt_reason_more_time
+    SuggestionReason.EXTENDED_TO_TIME -> R.string.trt_reason_extended
+    SuggestionReason.KEPT_SHORT_THIS_WEEK -> R.string.trt_reason_kept_short
+    SuggestionReason.LESS_THAN_CHOSEN -> R.string.trt_reason_less_than_chosen
+    SuggestionReason.USUAL_KIND -> R.string.trt_reason_usual_kind_generic
+    SuggestionReason.USUAL_MINUTES -> R.string.trt_reason_usual_minutes_generic
+    SuggestionReason.KEPT_CHOICE -> R.string.tre_reason_kept
+    SuggestionReason.LEVEL_EASIER_KEPT -> R.string.tre_reason_level_easier_kept
+    SuggestionReason.LEVEL_HARDER_KEPT -> R.string.tre_reason_level_harder_kept
+    SuggestionReason.PLANNED_CLIMB -> R.string.trdp_reason_planned_climb
+    SuggestionReason.CLIMB_LIGHTER_ADVISED -> R.string.trdp_reason_lighter
+    SuggestionReason.LIMIT_TOMORROW -> R.string.trdp_reason_limit_tomorrow
+    SuggestionReason.PLANNED_CLIMB_NOT_LOGGED -> R.string.trdp_reason_not_logged
+    SuggestionReason.FINGERS_BEFORE_HARD_DAY -> R.string.trdp_reason_fingers_before
+    SuggestionReason.USUAL_ROUTINE_WEEKDAY, SuggestionReason.USUAL_ROUTINE -> R.string.trhb_reason_generic
+    SuggestionReason.COMEBACK_PLAN -> R.string.cb_reason_plan
+    SuggestionReason.COMEBACK_CLIMBING -> R.string.cb_reason_climbing_generic
+    SuggestionReason.COMEBACK_NO_BOARD -> R.string.cb_reason_no_board
+})
+
+private val com.cruxcoach.athlete.logic.Evidence.WeeklyTarget.isFingerWeekMet: Boolean
+    get() = area == com.cruxcoach.athlete.logic.VolumeArea.FINGER && done >= target
+
+/**
+ * The weekly line a "weekly plan" reason means: the area with the most left, else a finger week already met,
+ * which is why there is no finger training today (RC1 walk 2026-11-16: "Finger has the most left" beside
+ * "Week: Finger 0/0", while pulling was behind).
+ */
+internal fun weeklyTargetMeant(basedOn: List<com.cruxcoach.athlete.logic.Evidence>): com.cruxcoach.athlete.logic.Evidence.WeeklyTarget? {
+    val weekly = basedOn.filterIsInstance<com.cruxcoach.athlete.logic.Evidence.WeeklyTarget>()
+    return weekly.firstOrNull { it.done < it.target } ?: weekly.firstOrNull { it.isFingerWeekMet } ?: weekly.firstOrNull()
+}
+
+/**
+ * The sentence for that line. A finger target of 0 (climbing paused, both hands hurt) counts as met, but the fingers
+ * had no sessions: the week has none planned (owner 2026-11-17, after #140).
+ */
+internal fun weeklyReasonRes(w: com.cruxcoach.athlete.logic.Evidence.WeeklyTarget): Int = when {
+    w.isFingerWeekMet && w.target == 0 -> R.string.trv_reason_no_finger_week
+    w.isFingerWeekMet -> R.string.trv_reason_finger_week_met
+    else -> R.string.trv_reason_weekly_area
+}
+
+/** A reason with today's details where it has them ("Heute geschont: Schulter …", "Wie meist am Montag: …"). */
+@Composable
+private fun suggestionReasonText(reason: SuggestionReason, state: TodayState): String {
+    val usual = state.usual
+    val weekday = state.today?.let { java.time.DayOfWeek.of(it.dayOfWeek.ordinal + 1).getDisplayName(TextStyle.FULL, Locale.getDefault()) }
+    val usualFocus = usual?.focus
+    val usualMinutes = usual?.minutes
+    if (reason == SuggestionReason.USUAL_KIND && usualFocus != null && weekday != null) {
+        return stringResource(R.string.trt_reason_usual_kind, weekday, kindLabel(usualFocus))
+    }
+    if (reason == SuggestionReason.USUAL_MINUTES && usualMinutes != null && weekday != null) {
+        return stringResource(R.string.trt_reason_usual_minutes, weekday, usualMinutes)
+    }
+    // The usual workout says which and why: "Wie meist am Montag: „Push-Tag“, jede Übung mit ihrem nächsten Schritt."
+    if (reason == SuggestionReason.USUAL_ROUTINE_WEEKDAY && weekday != null) return stringResource(R.string.trhb_reason_weekday, weekday, suggestionTitle(state))
+    if (reason == SuggestionReason.USUAL_ROUTINE) return stringResource(R.string.trhb_reason_usual, suggestionTitle(state))
+    // Planned for this date only ("Heute Ruhetag", a moved day): not the standard week's doing (device check 2026-10-19).
+    if (state.today?.let { com.cruxcoach.athlete.logic.DayPlans.isOverridden(state.profile, it) } == true) {
+        when (reason) {
+            SuggestionReason.WEEK_PLAN_REST -> return stringResource(R.string.trdp_reason_day_rest)
+            SuggestionReason.WEEK_PLAN -> return stringResource(R.string.trdp_reason_day_plan)
+            SuggestionReason.WEEK_PLAN_BOARD -> return stringResource(R.string.trdp_reason_day_board)
+            else -> Unit
+        }
+    }
+    // The weekly plan names the area it means (device test 2026-10-17: "this area" on a finger day meant pull).
+    if (reason == SuggestionReason.WEEKLY_TARGET) {
+        weeklyTargetMeant(state.suggestion?.basedOn.orEmpty())?.let { w ->
+            return stringResource(weeklyReasonRes(w), com.cruxcoach.android.ui.training.workouts.volumeAreaLabel(w.area))
+        }
+    }
+    // A comeback stage says how to climb (owner 2026-10-20): its own words, and why lighter.
+    val comebackStage = state.injuries.firstNotNullOfOrNull { i ->
+        i.activePlan?.takeIf { it.source == com.cruxcoach.athlete.model.PlanSource.CRUXCOACH }?.let { com.cruxcoach.athlete.logic.Comeback.stage(i, it) }
+    }
+    if (reason == SuggestionReason.COMEBACK_CLIMBING && comebackStage != null) {
+        return stringResource(R.string.cb_reason_climbing, comebackStage.climbingText.of(catalogLanguage()))
+    }
+    if (reason == SuggestionReason.CLIMB_LIGHTER_ADVISED && SuggestionReason.COMEBACK_CLIMBING in state.suggestion?.reasons.orEmpty()) {
+        return stringResource(R.string.cb_reason_lighter)
+    }
+    val sore = state.checkin?.sore.orEmpty()
+    if (reason != SuggestionReason.SPARED_TODAY || sore.isEmpty()) return suggestionReasonText(reason)
+    val areas = sore.map { regionLabel(it) }.joinToString(", ")
+    return stringResource(R.string.trt_reason_spared, areas)
+}
+
+/**
+ * Today's training as the one big thing on the screen: what, how long, the
+ * first exercises, the check-in and one big button. Reasons, evidence and
+ * confidence sit behind "Warum?"; another suggestion is the one small action
+ * next to it, adapt and save are in the menu.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun DailySuggestionCard(
+    state: TodayState,
+    onStart: (String) -> Unit,
+    onNext: () -> Unit,
+    onWhy: () -> Unit,
+    onEdit: (String) -> Unit,
+    onSave: (String) -> Unit,
+    onClimbedYesterday: () -> Unit = {},
+    onOpenPlaylistGenerator: (type: String, minutes: Int) -> Unit = { _, _ -> },
+    checkin: @Composable () -> Unit = {},
+    onPickPlace: (String) -> Unit = {},
+    onQuickCheckin: (Int?, Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit = { _, _ -> },
+    onMoreCheckin: () -> Unit = {},
+    onChooseMinutes: (Int?) -> Unit = {},
+    /** A tap on an exercise: swap it, leave it out today or never suggest it. */
+    onExercise: (String) -> Unit = {},
+    /** "So geht's" under an exercise new to the athlete: its page with the steps. */
+    onOpenSteps: (String) -> Unit = {},
+    /** "Als Zirkel" for today (owner 2026-10-17), and its rounds and rests. */
+    onChooseCircuit: (Boolean) -> Unit = {},
+    onSetCircuit: (Int?, Int?, Int?) -> Unit = { _, _, _ -> },
+    /** "Leichter" from the energy hint (holistic audit P2-17): today's easier level, as in "another suggestion". */
+    onLighter: () -> Unit = {},
+    /** "Trotzdem trainieren" on the recovery card once the week's training days are done (owner 2026-11-06). */
+    onTrainAnyway: () -> Unit = {},
+    onInsist: () -> Unit = {},
+) {
+    val s = state.suggestion ?: return
+    var circuitSheet by remember { mutableStateOf(false) }
+    if (circuitSheet) CircuitSheet(s.routine.items, onDismiss = { circuitSheet = false }, onSet = onSetCircuit,
+        onOff = { circuitSheet = false; onChooseCircuit(false) })
+    val language = catalogLanguage()
+    val title = suggestionTitle(state)
+    val main = s.routine.items.filter { !it.warmup }
+    // A planned gym, rope or rock day: the card holds the warm-up for it and a short block for afterwards. Only while
+    // the card is a climbing card: with another kind chosen over the plan it is a training like any other (Nokia walk
+    // 2026-11-22: "After climbing" and "Start the warm-up" on a pull session).
+    val climbDay = !s.addOn && s.focus == SuggestionFocus.BOARD_DAY && com.cruxcoach.athlete.logic.DayPlans.isClimb(s.plannedEntry)
+    // … and the coach really builds the day around the climbing, not a board session in its place.
+    val aroundClimbing = climbDay && SuggestionReason.PLANNED_CLIMB in s.reasons
+    var menu by remember { mutableStateOf(false) }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+        modifier = Modifier.fillMaxWidth().testTag("today_suggestion_card"),
+    ) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)) {
+            // The week of the block ("lighter week") is explained behind "Why?", not as a word on the card.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.trt_today_hero), style = MaterialTheme.typography.labelLarge)
+            }
+            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 4.dp).testTag("today_suggestion_title"))
+            // How long and where, in one row: one tap on the time or the place changes it for today
+            // (owner 2026-10-16); with one place there is still "no equipment today".
+            val day = state.today?.toString() ?: java.time.LocalDate.now().toString()
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                // The count matches the list below: the warm-up is part of the time, not of the list.
+                Text(pluralStringResource(R.plurals.trsg_meta_count, main.size, main.size), style = MaterialTheme.typography.bodyMedium)
+                if (s.timeAdjustable) DurationChip(s.totalMinutes, state.minutesToday, state.profile.sessionMinutes, onChooseMinutes)
+                else Text(stringResource(R.string.trt_duration_value, s.totalMinutes), style = MaterialTheme.typography.bodyMedium)
+                // On a planned climbing day the title says where the day happens ("Gym bouldering"). The place – it
+                // decides the equipment of the exercises – stands with the block for afterwards instead (Nokia walk
+                // 2026-11-22: "Home" right under a gym day); without such a block it is in the adjust sheet only.
+                if (!aroundClimbing) TodayPlacePicker(state, day, onPickPlace)
+            }
+            // How the athlete feels today: one optional tap, never a gate.
+            if (state.profile.checkinEnabled) DayFormRow(state, onForm = { energy -> onQuickCheckin(energy, state.checkin?.sore.orEmpty()) }, onMore = onMoreCheckin)
+            if (main.isNotEmpty()) {
+                // Each exercise with its sets; a tap swaps it (owner 2026-10-16: overridable with little effort).
+                // Open from the start when an exercise new to the athlete would sit behind "+N more" (issue #68): its
+                // steps and "Don't know it" belong before the start. It stays open after "Don't know it" on it.
+                var expanded by rememberSaveable(s.routine.items.size) { mutableStateOf(main.drop(4).any { it.slug in state.newToYou }) }
+                val shown = if (expanded) main else main.take(4)
+                // A climbing day: the list is the block for afterwards – say so, and that the warm-up comes first (Nokia
+                // walk 2026-11-22: two exercises, 36 minutes and "start warm-up" did not add up).
+                val warmups = s.routine.items.count { it.warmup }
+                val beforeClimbing = warmups > 0 && !s.addOn && s.focus == SuggestionFocus.BOARD_DAY && (s.boardPlan != null || climbDay)
+                Column(Modifier.padding(top = 4.dp).testTag("today_suggestion_items")) {
+                    if (beforeClimbing) {
+                        Text(stringResource(R.string.trt_before_climbing, pluralStringResource(R.plurals.trsg_meta_count, warmups, warmups)),
+                            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp).testTag("today_before_climbing"))
+                    }
+                    if (aroundClimbing) {
+                        // "After climbing" with where: at home, at another place or without equipment. The picker is 48 dp
+                        // high and brings its own room above the line; without a place yet there is no picker.
+                        val picker = TrainingPlaces.of(state.profile).isNotEmpty()
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = if (picker) 0.dp else 8.dp).testTag("today_after_climbing")) {
+                            Text(stringResource(R.string.trt_after_climbing), style = MaterialTheme.typography.labelLarge)
+                            TodayPlacePicker(state, day, onPickPlace)
+                        }
+                    } else if (beforeClimbing) {
+                        Text(stringResource(R.string.trt_after_climbing), style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(top = 8.dp).testTag("today_after_climbing"))
+                    }
+                    shown.forEachIndexed { index, item ->
+                        // A circuit's members under one header: rounds and rests, a tap changes them.
+                        val circuit = item.circuit
+                        if (circuit != null && shown.getOrNull(index - 1)?.circuit != circuit) {
+                            CircuitGroupHeader(s.routine.items, circuit, onClick = { circuitSheet = true })
+                        }
+                        val def = state.catalog.fallbackFor(item.slug)
+                        val name = def.name(language)
+                        val swap = stringResource(R.string.trt_swap_action)
+                        // The sets beside the name, or below it when the name does not fit there (320 dp, large font); the
+                        // bullet stays on the name's first line.
+                        LabelBesideOrAbove(
+                            modifier = Modifier.heightIn(min = 40.dp).clip(CruxCoachDesign.shapes.small)
+                                .clickable(onClickLabel = swap) { onExercise(item.slug) }
+                                .testTag("today_item_${item.slug}"),
+                            label = {
+                                Row {
+                                    if (item.slug in state.favorites) {
+                                        // A favourite carries its star, so it is clear why it keeps coming back.
+                                        Icon(Icons.Default.Star, contentDescription = stringResource(R.string.trt_favorite), Modifier.padding(top = 2.dp).size(16.dp)
+                                            .testTag("today_favorite_${item.slug}"), tint = CruxCoachDesign.colors.brandAccent)
+                                    } else {
+                                        Text("•", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(16.dp),
+                                            color = if (item.circuit != null) CruxCoachDesign.colors.brandAccent else androidx.compose.ui.graphics.Color.Unspecified,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                    }
+                                    Spacer(Modifier.width(4.dp))
+                                    Column {
+                                        Text(name, style = MaterialTheme.typography.bodyMedium)
+                                        // What the last training was (owner 2026-11-21: every row says last time and today).
+                                        val row = state.rows[item.slug]
+                                        if (item.slug !in state.newToYou) row?.last?.takeIf { it.isNotEmpty() }
+                                            ?.let { com.cruxcoach.android.ui.training.common.setsDoneText(it, def, state.profile.units) }
+                                            ?.let {
+                                                Text(stringResource(R.string.trpr_last_time, it), style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("today_last_${item.slug}"))
+                                            }
+                                        // New to the athlete (issue #68): one tap to the steps; the row itself still swaps.
+                                        if (item.slug in state.newToYou) {
+                                            val how = stringResource(R.string.trt_new_how)
+                                            val label = stringResource(R.string.trt_new_to_you)
+                                            val accent = AccentOnCard
+                                            // One text, so it wraps as a whole at the largest font size.
+                                            Text(
+                                                buildAnnotatedString {
+                                                    append("$label · ")
+                                                    withStyle(SpanStyle(color = accent, fontWeight = FontWeight.SemiBold)) { append(how) }
+                                                },
+                                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.heightIn(min = 32.dp).clip(CruxCoachDesign.shapes.small)
+                                                    .clickable(onClickLabel = how) { onOpenSteps(item.slug) }
+                                                    .padding(end = 8.dp, top = 6.dp, bottom = 6.dp).testTag("today_new_${item.slug}"),
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                        ) {
+                            // The sets the training will plan: today's form may take one off (audit W7: card ≠ player).
+                            val planned = state.dayForm?.let { com.cruxcoach.athlete.logic.ReadinessModifiers.applyToItem(item, def, it) } ?: item
+                            val row = state.rows[item.slug]
+                            // The numbers the training will plan; the item's range while there is nothing to go by yet.
+                            val target = row?.let { com.cruxcoach.android.ui.training.common.planText(planned.sets, it.next.reps, it.next.durationS, it.next.loadKg, def, state.profile.units) }
+                                ?: com.cruxcoach.android.ui.training.workouts.routineItemSummary(planned, def, state.profile.units, short = true)
+                            val step = row?.let { com.cruxcoach.android.ui.training.common.stepText(it.last, it.next.reps, it.next.durationS, it.next.loadKg, def, state.profile.units) }
+                            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
+                                Text(target, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                                    modifier = Modifier.testTag("today_target_${item.slug}"))
+                                step?.let { (text, tone) ->
+                                    Text(text, style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                                        fontWeight = if (tone == com.cruxcoach.android.ui.training.common.StepTone.SAME) FontWeight.Normal else FontWeight.SemiBold,
+                                        color = when (tone) {
+                                            com.cruxcoach.android.ui.training.common.StepTone.UP -> StepUpOnCard
+                                            com.cruxcoach.android.ui.training.common.StepTone.SAME -> MaterialTheme.colorScheme.onSecondaryContainer
+                                            com.cruxcoach.android.ui.training.common.StepTone.DOWN -> StepDownOnCard
+                                        },
+                                        modifier = Modifier.testTag("today_step_${item.slug}"))
+                                }
+                            }
+                        }
+                    }
+                    if (main.size > 4) {
+                        Text(
+                            if (expanded) stringResource(R.string.trt_show_less) else stringResource(R.string.trt_more_exercises, main.size - 4),
+                            style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = AccentOnCard,
+                            modifier = Modifier.clip(CruxCoachDesign.shapes.small).clickable { expanded = !expanded }
+                                .padding(vertical = 8.dp, horizontal = 4.dp).testTag("today_items_more"),
+                        )
+                    }
+                }
+            }
+            s.reasons.firstOrNull()?.let {
+                // The reason with "Warum?" right behind it: the details are one tap away, not another row of icons.
+                val why = stringResource(R.string.tru_why)
+                val accent = AccentOnCard
+                Text(
+                    buildAnnotatedString {
+                        append(suggestionReasonText(it, state))
+                        append("  ")
+                        pushStyle(androidx.compose.ui.text.SpanStyle(color = accent, fontWeight = FontWeight.SemiBold))
+                        append(why)
+                        pop()
+                    },
+                    // No line limit: at the largest font a limit cut off "Warum?" (UI pass 0.2.5).
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp).clickable(onClickLabel = why, onClick = onWhy).testTag("today_suggestion_reason"),
+                )
+                // The coach only knows what is logged: climbing yesterday that is not in the app is one tap to add,
+                // and the suggestion follows (owner 2026-11-22).
+                if (it == SuggestionReason.FINGERS_RESTED) {
+                    TextButton(onClick = onClimbedYesterday, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+                        contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.testTag("today_climbed_yesterday")) {
+                        Text(stringResource(R.string.trt_climbed_yesterday))
+                    }
+                }
+            }
+            // Little energy lately before maximal finger work: one supportive line and "lighter" as one tap (P2-17).
+            val energyHint = remember(state.energy, s, state.catalog) {
+                com.cruxcoach.athlete.logic.EnergyBeforeTraining.hint(state.energy, s, state.catalog)
+            }
+            energyHint?.let { EnergyHintLine(it, state.profile, lighterChosen = state.levelShift < 0, onLighter = onLighter) }
+            // The day's verdict only when it changes the training (a tired day, a rest day); "all good" needs no line.
+            if (state.checkin != null && state.readiness.level != ReadinessLevel.GO) checkin()
+            val plan = s.boardPlan
+            if (plan != null) {
+                // Board day: the session on the board is the main thing, the warm-up comes with it.
+                Button(onClick = { onOpenPlaylistGenerator(plan.type.name, plan.minutes) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp).testTag("today_suggestion_board")) {
+                    Icon(Icons.Default.Terrain, null); Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.tre_board_plan, generatorLabel(plan.type), plan.minutes))
+                }
+                OutlinedButton(onClick = { onStart(title) }, enabled = s.routine.items.isNotEmpty(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_suggestion_start")) {
+                    Text(stringResource(R.string.trt_warmup_start))
+                }
+            } else {
+                Button(onClick = { onStart(title) }, enabled = s.routine.items.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp).testTag("today_suggestion_start")) {
+                    Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp))
+                    Text(stringResource(if (climbDay) R.string.trt_warmup_start else R.string.trsg_start))
+                }
+                // Only when the week's training days are done, not when an area's volume is: one tap trains anyway.
+                if (s.reasons.firstOrNull() == SuggestionReason.WEEK_DAYS_DONE) {
+                    OutlinedButton(onClick = onTrainAnyway, colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_train_anyway")) {
+                        Icon(Icons.Default.FitnessCenter, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.trv_train_anyway))
+                    }
+                }
+            }
+            // The coach held the chosen or planned kind back because of the fingers: advice, and one tap decides
+            // otherwise. Below both layouts: a board day held back to a light session is a board card too.
+            s.heldBack?.let { kind ->
+                OutlinedButton(onClick = onInsist, colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_insist")) {
+                    Text(stringResource(R.string.trt_insist, kindLabel(kind)))
+                }
+            }
+            // One quiet link: everything else about today's training lives in one sheet ("Training anpassen").
+            TextButton(onClick = onNext, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+                modifier = Modifier.align(Alignment.CenterHorizontally).testTag("today_suggestion_next")) {
+                Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_adjust))
+            }
+        }
+    }
+}
+
+/** "Home ▾" on today's card: the place in use today and the menu to pick another one for today. */
+@Composable
+private fun TodayPlacePicker(state: TodayState, day: String, onPick: (String) -> Unit) {
+    com.cruxcoach.android.ui.training.common.PlacePicker(
+        places = TrainingPlaces.of(state.profile),
+        currentId = TrainingPlaces.current(state.profile, day)?.id,
+        defaultId = TrainingPlaces.default(state.profile)?.id,
+        onPick = onPick,
+    )
+}
+
+/**
+ * How the athlete feels today, as one optional tap on the card (owner 2026-11-21: the training shows at once, the
+ * day's form is no gate). "Tired" is the check-in's low energy and trims the training as before; "more" opens the
+ * four questions (sleep, fingers, skin, ill) and what hurts.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun DayFormRow(state: TodayState, onForm: (Int) -> Unit, onMore: () -> Unit) {
+    val tired = (state.checkin?.energy ?: 3) <= 2
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().testTag("today_form")) {
+        FilterChip(selected = !tired, onClick = { if (tired) onForm(3) }, label = { Text(stringResource(R.string.trt_form_good)) },
+            leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(!tired), modifier = Modifier.testTag("today_form_good"))
+        FilterChip(selected = tired, onClick = { if (!tired) onForm(2) }, label = { Text(stringResource(R.string.trt_form_tired)) },
+            leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(tired), modifier = Modifier.testTag("today_form_tired"))
+        TextButton(onClick = onMore, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+            modifier = Modifier.testTag("today_checkin_open")) { Text(stringResource(R.string.trt_form_more)) }
+    }
+}
+
+/** The kinds of training the athlete can choose, in their words. */
+@Composable
+private fun kindLabel(focus: SuggestionFocus): String = stringResource(when (focus) {
+    SuggestionFocus.FINGER_STRENGTH -> R.string.trt_kind_finger
+    SuggestionFocus.PULL_PUSH -> R.string.trt_kind_pull_push
+    SuggestionFocus.LEGS_CORE -> R.string.trt_kind_legs_core
+    SuggestionFocus.BOARD_DAY -> R.string.trt_kind_board
+    else -> R.string.trt_kind_mobility
+})
+
+/** Today's duration: the estimate, and a menu of durations for today only. */
+@Composable
+private fun DurationChip(minutes: Int, chosen: Int?, usual: Int, onChoose: (Int?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        // Quiet text with a caret, not a chip (owner 2026-11-21: one filled button per screen, everything else calm).
+        Row(verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clip(CruxCoachDesign.shapes.small)
+                .clickable(onClickLabel = stringResource(R.string.trt_duration_title)) { open = true }
+                .heightIn(min = 48.dp).padding(horizontal = 2.dp).testTag("today_duration")) {
+            Text(stringResource(R.string.trt_duration_value, minutes), style = MaterialTheme.typography.bodyMedium)
+            Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.testTag("today_duration_menu")) {
+            Text(stringResource(R.string.trt_duration_title), style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            TodayViewModel.DURATION_OPTIONS.forEach { m ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.trt_duration_value, m)) },
+                    onClick = { open = false; onChoose(if (m == chosen) null else m) },
+                    trailingIcon = if (m == chosen) { { Icon(Icons.Default.Check, null) } } else null,
+                    modifier = Modifier.testTag("today_duration_$m"),
+                )
+            }
+            if (chosen != null) {
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.trt_duration_usual, usual)) },
+                    onClick = { open = false; onChoose(null) },
+                    modifier = Modifier.testTag("today_duration_usual"),
+                )
+            }
+        }
+    }
+}
+
+/** "Warum?": every reason, what the suggestion was based on, and how sure it is. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WhySheet(state: TodayState, onDismiss: () -> Unit, onOpenLearned: () -> Unit = {}) {
+    val s = state.suggestion ?: return
+    val language = catalogLanguage()
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("today_why_sheet")) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState())) {
+            Text(stringResource(R.string.trsg_why_title), style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            // The reasons first; what they rest on in one line; how well the coach knows you and the block as
+            // headings whose long explanations sit behind their info icons (device test 2026-10-10: the sheet
+            // said "Einstiegswoche" three times and "Basis – Basis").
+            s.reasons.forEach { Text("• " + suggestionReasonText(it, state), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp)) }
+            val block = state.block?.let { blockLabel(it) }
+            val evidence = s.basedOn.map { evidenceText(it, state, language) }.filter { it.isNotBlank() && it != block }
+            if (evidence.isNotEmpty()) {
+                Text(stringResource(R.string.trt_based_on_title) + ": " + evidence.joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp).testTag("today_why_evidence"))
+            }
+            val confidenceTitle = stringResource(R.string.tre_conf_info_title)
+            SectionTitle(confidenceTitle + ": " + confidenceLabel(s.confidence), keepBeside = true) {
+                InfoButton(confidenceTitle, stringResource(R.string.tre_conf_info_text))
+            }
+            if (s.confidence == com.cruxcoach.athlete.logic.Confidence.LOW) {
+                Text(stringResource(R.string.trt_low_data), style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("today_suggestion_confidence"))
+            }
+            // Intro, deload, taper and event weeks already have their own reason line above.
+            val blockNamed = s.reasons.any { it.name.startsWith("BLOCK_") }
+            if (block != null && !blockNamed) {
+                SectionTitle(block, keepBeside = true) { InfoButton(block, stringResource(R.string.tre_block_info_text)) }
+            }
+            // What the coach learned from the athlete's choices: visible and forgettable in one place.
+            TextButton(onClick = onOpenLearned, modifier = Modifier.padding(top = 8.dp).testTag("today_why_learned")) {
+                Icon(Icons.Default.Psychology, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.trlr_title))
+            }
+        }
+    }
+}
+
+// ── Safety cards ────────────────────────────────────────────────────
+
+@Composable
+private fun LoadSpikeCard(state: TodayState, onSeen: () -> Unit = {}, onLighterWeek: () -> Unit = {}) {
+    OutlinedCard(Modifier.fillMaxWidth().testTag("today_load_spike")) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Speed, null, tint = CruxCoachDesign.colors.caution)
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.trt_spike_title, state.loadSpikes.map { domainLabel(it) }.joinToString(", ")),
+                    style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.trt_spike_text), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        // Advice the athlete has read does not come back every day: quiet until next week. The lighter week is an
+        // offer here, never something the coach starts by itself – and none while the week already is a lighter one
+        // (a second tap started its seven days again) or the days before a trip or competition.
+        val phase = state.block?.phase
+        val lighterAlready = phase == com.cruxcoach.athlete.logic.BlockPhase.DELOAD || phase == com.cruxcoach.athlete.logic.BlockPhase.TAPER ||
+            phase == com.cruxcoach.athlete.logic.BlockPhase.EVENT
+        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.End) {
+            if (!lighterAlready) {
+                TextButton(onClick = onLighterWeek, modifier = Modifier.testTag("today_load_spike_lighter")) { Text(stringResource(R.string.tre_deload_action)) }
+            }
+            TextButton(onClick = onSeen, modifier = Modifier.testTag("today_load_spike_seen")) { Text(stringResource(R.string.action_understood)) }
+        }
+    }
+}
+
+// ── FEAT-071: block, confidence, evidence, feedback ─────────────────
+
+@Composable
+private fun blockLabel(b: com.cruxcoach.athlete.logic.BlockState): String = when (b.phase) {
+    com.cruxcoach.athlete.logic.BlockPhase.INTRO -> stringResource(R.string.tre_block_intro)
+    com.cruxcoach.athlete.logic.BlockPhase.BUILD -> stringResource(R.string.tre_block_build, b.weekInBlock, b.weeksInBlock)
+    com.cruxcoach.athlete.logic.BlockPhase.DELOAD -> stringResource(R.string.tre_block_deload)
+    com.cruxcoach.athlete.logic.BlockPhase.TAPER -> stringResource(R.string.tre_block_taper, b.daysToEvent ?: 0)
+    com.cruxcoach.athlete.logic.BlockPhase.EVENT -> stringResource(R.string.tre_block_event)
+}
+
+@Composable
+private fun confidenceLabel(c: com.cruxcoach.athlete.logic.Confidence): String = stringResource(when (c) {
+    com.cruxcoach.athlete.logic.Confidence.LOW -> R.string.tre_conf_low
+    com.cruxcoach.athlete.logic.Confidence.MEDIUM -> R.string.tre_conf_medium
+    com.cruxcoach.athlete.logic.Confidence.HIGH -> R.string.tre_conf_high
+})
+
+@Composable
+private fun generatorLabel(t: com.cruxcoach.domain.playlist.GeneratorType): String = stringResource(when (t) {
+    com.cruxcoach.domain.playlist.GeneratorType.PYRAMID -> R.string.tre_gen_pyramid
+    com.cruxcoach.domain.playlist.GeneratorType.POWER_ENDURANCE -> R.string.tre_gen_pe
+    com.cruxcoach.domain.playlist.GeneratorType.VOLUME -> R.string.tre_gen_volume
+    com.cruxcoach.domain.playlist.GeneratorType.LIMIT -> R.string.tre_gen_limit
+    com.cruxcoach.domain.playlist.GeneratorType.PROJECTING -> R.string.tre_gen_projecting
+    com.cruxcoach.domain.playlist.GeneratorType.MANUAL -> R.string.tre_gen_manual
+})
+
+@Composable
+private fun intensityLabel(i: com.cruxcoach.athlete.model.ClimbIntensity?): String = stringResource(when (i) {
+    com.cruxcoach.athlete.model.ClimbIntensity.LIGHT -> R.string.tre_int_light
+    com.cruxcoach.athlete.model.ClimbIntensity.VOLUME -> R.string.tre_int_volume
+    com.cruxcoach.athlete.model.ClimbIntensity.HARD -> R.string.tre_int_hard
+    com.cruxcoach.athlete.model.ClimbIntensity.LIMIT -> R.string.tre_int_limit
+    null -> R.string.tre_int_unknown
+})
+
+@Composable
+private fun structureLabel(s: com.cruxcoach.athlete.logic.LoadStructure): String = stringResource(when (s) {
+    com.cruxcoach.athlete.logic.LoadStructure.FINGER -> R.string.tre_struct_finger
+    com.cruxcoach.athlete.logic.LoadStructure.SKIN -> R.string.tre_struct_skin
+    com.cruxcoach.athlete.logic.LoadStructure.SHOULDER -> R.string.tre_struct_shoulder
+})
+
+@Composable
+private fun trendLabel(t: com.cruxcoach.athlete.logic.LoadTrend): String = stringResource(when (t) {
+    com.cruxcoach.athlete.logic.LoadTrend.LOW -> R.string.tre_trend_low
+    com.cruxcoach.athlete.logic.LoadTrend.NORMAL -> R.string.tre_trend_normal
+    com.cruxcoach.athlete.logic.LoadTrend.RISING -> R.string.tre_trend_rising
+    com.cruxcoach.athlete.logic.LoadTrend.SPIKE -> R.string.tre_trend_spike
+})
+
+@Composable
+internal fun coachGoalLabel(g: com.cruxcoach.athlete.model.CoachGoal): String = stringResource(when (g) {
+    com.cruxcoach.athlete.model.CoachGoal.CLIMB_HARDER -> R.string.tre_goal_climb_harder
+    com.cruxcoach.athlete.model.CoachGoal.PROJECT -> R.string.tre_goal_project
+    com.cruxcoach.athlete.model.CoachGoal.BUILD_STRENGTH -> R.string.tre_goal_strength
+    com.cruxcoach.athlete.model.CoachGoal.STAY_HEALTHY -> R.string.tre_goal_healthy
+    com.cruxcoach.athlete.model.CoachGoal.COMEBACK -> R.string.tre_goal_comeback
+    com.cruxcoach.athlete.model.CoachGoal.EVENT -> R.string.tre_goal_event
+})
+
+@Composable
+internal fun focusAreaLabel(f: com.cruxcoach.athlete.model.FocusArea): String = stringResource(when (f) {
+    com.cruxcoach.athlete.model.FocusArea.FINGER_STRENGTH -> R.string.tre_focus_finger
+    com.cruxcoach.athlete.model.FocusArea.PULL_STRENGTH -> R.string.tre_focus_pull
+    com.cruxcoach.athlete.model.FocusArea.POWER -> R.string.tre_focus_power
+    com.cruxcoach.athlete.model.FocusArea.POWER_ENDURANCE -> R.string.tre_focus_pe
+    com.cruxcoach.athlete.model.FocusArea.CORE -> R.string.tre_focus_core
+    com.cruxcoach.athlete.model.FocusArea.MOBILITY -> R.string.tre_focus_mobility
+    com.cruxcoach.athlete.model.FocusArea.PREVENTION -> R.string.tre_focus_prevention
+})
+
+/** One piece of "Basierend auf …", in the athlete's words. */
+@Composable
+private fun evidenceText(e: com.cruxcoach.athlete.logic.Evidence, state: TodayState, language: String): String = when (e) {
+    is com.cruxcoach.athlete.logic.Evidence.Climbing -> {
+        val detail = if (e.efforts > 0) stringResource(R.string.tre_ev_climb_detail, intensityLabel(e.intensity), e.efforts)
+            else intensityLabel(e.intensity)
+        when (e.daysAgo) {
+            0 -> stringResource(R.string.tre_ev_climb_today, detail)
+            1 -> stringResource(R.string.tre_ev_climb_yesterday, detail)
+            else -> stringResource(R.string.tre_ev_climb_days, e.daysAgo, detail)
+        }
+    }
+    is com.cruxcoach.athlete.logic.Evidence.WeekPlan -> stringResource(R.string.tre_ev_week_plan)
+    is com.cruxcoach.athlete.logic.Evidence.CheckIn -> stringResource(R.string.tre_ev_checkin, readinessReasonShort(e.reason))
+    is com.cruxcoach.athlete.logic.Evidence.SoreToday -> stringResource(R.string.trt_ev_sore, regionLabel(e.region))
+    is com.cruxcoach.athlete.logic.Evidence.InjuryActive -> stringResource(R.string.tre_ev_injury, injuryPlaceLabel(e.region, e.side))
+    is com.cruxcoach.athlete.logic.Evidence.LoadTrendNote -> stringResource(R.string.tre_ev_trend, structureLabel(e.structure), trendLabel(e.trend))
+    is com.cruxcoach.athlete.logic.Evidence.PerformanceValue -> {
+        val def = state.catalog.fallbackFor(e.benchmark.exerciseSlug)
+        stringResource(R.string.tre_ev_value, def.name(language),
+            com.cruxcoach.android.ui.training.benchmarks.benchmarkSummary(def, e.benchmark, state.profile, state.bodyweightKg))
+    }
+    is com.cruxcoach.athlete.logic.Evidence.BlockNote -> blockLabel(e.state)
+    is com.cruxcoach.athlete.logic.Evidence.Favorites -> stringResource(R.string.tre_ev_favorites)
+    is com.cruxcoach.athlete.logic.Evidence.Affinity -> stringResource(R.string.tre_ev_affinity,
+        e.slugs.take(3).joinToString(", ") { state.catalog.fallbackFor(it).name(language) })
+    is com.cruxcoach.athlete.logic.Evidence.GoalNote -> stringResource(R.string.tre_ev_goal, coachGoalLabel(e.goal))
+    is com.cruxcoach.athlete.logic.Evidence.FocusNote -> stringResource(R.string.tre_ev_focus, e.areas.map { focusAreaLabel(it) }.joinToString(", "))
+    is com.cruxcoach.athlete.logic.Evidence.Guardrail -> stringResource(when (e.kind) {
+        com.cruxcoach.athlete.logic.GuardrailKind.YOUTH -> R.string.tre_ev_guard_youth
+        com.cruxcoach.athlete.logic.GuardrailKind.NOVICE -> R.string.tre_ev_guard_novice
+        com.cruxcoach.athlete.logic.GuardrailKind.MASTERS -> R.string.tre_ev_guard_masters
+    })
+    // "1 Woche Verlauf" – real plurals, and a part that is 0 is left out ("0 Sends" said nothing).
+    is com.cruxcoach.athlete.logic.Evidence.History -> listOfNotNull(
+        e.weeks.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.tre_ev_history_weeks, it, it) },
+        e.logbookSends.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.tre_ev_sends, it, it) },
+    ).joinToString(" · ")
+    is com.cruxcoach.athlete.logic.Evidence.Return -> stringResource(R.string.tre_ev_return, e.state.daysOff, e.state.week, e.state.weeksTotal)
+    is com.cruxcoach.athlete.logic.Evidence.WeeklyTarget -> stringResource(
+        if (e.area == com.cruxcoach.athlete.logic.VolumeArea.FINGER) R.string.trv_ev_sessions else R.string.trv_ev_sets,
+        com.cruxcoach.android.ui.training.workouts.volumeAreaLabel(e.area), e.done, e.target)
+    is com.cruxcoach.athlete.logic.Evidence.TimeToday -> stringResource(R.string.trt_ev_time_today, e.minutes, e.usual)
+}
+
+@Composable
+internal fun LevelOfferCard(offer: com.cruxcoach.athlete.logic.PreferenceLearning.LevelOffer, onAnswer: (Boolean) -> Unit) {
+    OutlinedCard(Modifier.fillMaxWidth().testTag("today_level_offer")) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp)) {
+            Text(stringResource(if (offer.direction < 0) R.string.trt_level_offer_easier else R.string.trt_level_offer_harder,
+                levelKindLabel(offer.focus)), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(end = 8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { onAnswer(false) }, modifier = Modifier.testTag("today_level_offer_no")) { Text(stringResource(R.string.trc_no)) }
+                TextButton(onClick = { onAnswer(true) }, modifier = Modifier.testTag("today_level_offer_yes")) { Text(stringResource(R.string.trc_yes)) }
+            }
+        }
+    }
+}
+
+/** "Am Montag machst du meist „Push-Tag“. Fest in die Standardwoche übernehmen?" (owner 2026-10-19). */
+@Composable
+private fun HabitOfferCard(offer: HabitOffer, name: String, onYes: () -> Unit, onNo: () -> Unit) {
+    val day = java.time.DayOfWeek.of(offer.isoDay).getDisplayName(TextStyle.FULL, Locale.getDefault())
+    OutlinedCard(Modifier.fillMaxWidth().testTag("today_habit_offer")) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp)) {
+            Text(stringResource(R.string.trhb_offer, day, name), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(end = 8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onNo, modifier = Modifier.testTag("today_habit_offer_no")) { Text(stringResource(R.string.trhb_offer_no)) }
+                TextButton(onClick = onYes, modifier = Modifier.testTag("today_habit_offer_yes")) { Text(stringResource(R.string.trhb_offer_yes)) }
+            }
+        }
+    }
+}
+
+/** "Your logbook shows 7a (V6) – take it over as your grade?" with yes and no. */
+@Composable
+private fun GradeOfferCard(grade: String, onAnswer: (Boolean) -> Unit) {
+    OutlinedCard(Modifier.fillMaxWidth().testTag("today_grade_offer")) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp)) {
+            Text(stringResource(R.string.trt_grade_offer, com.cruxcoach.android.ui.training.coach.gradeWithV(grade)),
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(end = 8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { onAnswer(false) }, modifier = Modifier.testTag("today_grade_offer_no")) { Text(stringResource(R.string.trc_no)) }
+                TextButton(onClick = { onAnswer(true) }, modifier = Modifier.testTag("today_grade_offer_yes")) { Text(stringResource(R.string.trc_yes)) }
+            }
+        }
+    }
+}
+
+/** The kind of training a level step is kept for, in the athlete's words. */
+@Composable
+internal fun levelKindLabel(focus: SuggestionFocus): String = when (focus) {
+    SuggestionFocus.PLANNED -> stringResource(R.string.trsg_focus_planned)
+    SuggestionFocus.INJURY_SAFE -> stringResource(R.string.trsg_focus_injury)
+    else -> kindLabel(focus)
+}
+
+@Composable
+internal fun DurationHintCard(minutes: Int, onApply: () -> Unit) {
+    OutlinedCard(Modifier.fillMaxWidth().testTag("today_duration_hint")) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Timer, null)
+            Spacer(Modifier.width(8.dp))
+            // At the largest font the button goes under the hint: beside "Übernehmen" the hint was squeezed into a
+            // column about ten letters wide at 320 dp (RC1 walk).
+            LabelBesideOrAbove(modifier = Modifier.weight(1f),
+                label = { Text(stringResource(R.string.tre_duration_hint, minutes), style = MaterialTheme.typography.bodySmall) }) {
+                TextButton(onClick = onApply) { Text(stringResource(R.string.tre_duration_apply)) }
+            }
+        }
+    }
+}
+
+/**
+ * "Anderer Vorschlag": what would suit today better – the kind of training, a lighter or harder day,
+ * or simply another mix. Time, place and single exercises are changed on the card itself; what hurts
+ * goes to today's check-in (spared today), missing equipment to the equipment sheet.
+ */
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun NextSuggestionSheet(
+    state: TodayState,
+    onDismiss: () -> Unit,
+    onShuffle: () -> Unit,
+    onFocus: (SuggestionFocus?) -> Unit,
+    onLevel: (Int) -> Unit,
+    onHurts: () -> Unit,
+    onEquipment: () -> Unit,
+    onPlace: (String) -> Unit = {},
+    onRestToday: () -> Unit = {},
+    onClimbToday: (com.cruxcoach.athlete.model.ClimbingDayKind?) -> Unit = {},
+    onNoClimbToday: () -> Unit = {},
+    onPlanDays: () -> Unit = {},
+    onMinutes: (Int?) -> Unit = {},
+    onCircuit: (Boolean) -> Unit = {},
+    onEdit: () -> Unit = {},
+    onSave: () -> Unit = {},
+    onCoach: () -> Unit = {},
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("today_next_sheet")) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+            // Everything about today's training in one place (owner 2026-11-21); the card keeps the one button.
+            Text(stringResource(R.string.trt_adjust_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(bottom = 12.dp))
+            if (state.suggestion?.timeAdjustable == true) {
+                Text(stringResource(R.string.trt_duration_title), style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TodayViewModel.DURATION_OPTIONS.forEach { m ->
+                        FilterChip(selected = state.minutesToday == m, onClick = { onMinutes(if (state.minutesToday == m) null else m) },
+                            label = { Text(stringResource(R.string.trt_duration_value, m)) }, modifier = Modifier.testTag("today_adjust_minutes_$m"))
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+            // "Heute klettere ich" (owner 2026-11-22): one tap makes today a climbing day; the coach plans around it.
+            Text(stringResource(R.string.trt_climb_today), style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf(com.cruxcoach.athlete.model.ClimbingDayKind.GYM_BOULDER, com.cruxcoach.athlete.model.ClimbingDayKind.GYM_ROPE,
+                    com.cruxcoach.athlete.model.ClimbingDayKind.OUTDOOR).forEach { k ->
+                    val entry = com.cruxcoach.athlete.logic.DayPlans.climbOf(state.suggestion?.plannedEntry)
+                    // A second tap takes the choice back.
+                    FilterChip(selected = entry?.kind == k, onClick = { if (entry?.kind == k) onNoClimbToday() else onClimbToday(k) },
+                        label = { Text(climbingDayKindLabel(k)) },
+                        modifier = Modifier.testTag("today_climb_${k.name.lowercase()}"))
+                }
+                val boardToday = state.suggestion?.plannedEntry == com.cruxcoach.athlete.model.PLAN_BOARD
+                FilterChip(selected = boardToday, onClick = { if (boardToday) onNoClimbToday() else onClimbToday(null) },
+                    label = { Text(kindLabel(SuggestionFocus.BOARD_DAY)) }, modifier = Modifier.testTag("today_climb_board"))
+            }
+            Spacer(Modifier.height(16.dp))
+            // What the athlete feels like today (owner 2026-10-15: "rather push and pull than fingers").
+            Text(stringResource(R.string.trt_next_kind), style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // The board has its chip under "Heute klettere ich" (it stood here a second time).
+                listOf(SuggestionFocus.FINGER_STRENGTH, SuggestionFocus.PULL_PUSH, SuggestionFocus.LEGS_CORE,
+                    SuggestionFocus.MOBILITY_RECOVERY).forEach { f ->
+                    FilterChip(
+                        selected = state.wish == f,
+                        onClick = { onFocus(if (state.wish == f) null else f) },
+                        label = { Text(kindLabel(f)) },
+                        modifier = Modifier.testTag("today_kind_${f.name.lowercase()}"),
+                    )
+                }
+                if (state.wish != null) {
+                    SuggestionChip(onClick = { onFocus(null) }, label = { Text(stringResource(R.string.trt_kind_coach)) },
+                        modifier = Modifier.testTag("today_kind_coach"))
+                }
+            }
+            // Where, right with the kind (owner 2026-10-15: no hangboard there, no finger day); also on the card.
+            val day = state.today?.toString() ?: java.time.LocalDate.now().toString()
+            val currentPlace = TrainingPlaces.current(state.profile, day)?.id
+            // On a planned gym or rock day the question is about the exercises after it, not about the climbing.
+            val afterClimbing = state.suggestion?.let { s ->
+                !s.addOn && com.cruxcoach.athlete.logic.DayPlans.isClimb(s.plannedEntry) && SuggestionReason.PLANNED_CLIMB in s.reasons &&
+                    s.routine.items.any { !it.warmup }
+            } == true
+            Text(stringResource(if (afterClimbing) R.string.trt_next_place_climb else R.string.trt_next_place), style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 16.dp).testTag("today_next_place_title"))
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                (TrainingPlaces.of(state.profile) + TrainingPlaces.NO_GEAR).forEach { place ->
+                    FilterChip(
+                        selected = place.id == currentPlace,
+                        onClick = { if (place.id != currentPlace) onPlace(place.id) },
+                        label = { Text(com.cruxcoach.android.ui.training.common.placeLabel(place)) },
+                        leadingIcon = { Icon(com.cruxcoach.android.ui.training.common.placeIcon(place.kind), null, Modifier.size(18.dp)) },
+                        modifier = Modifier.testTag("today_next_place_${place.id}"),
+                    )
+                }
+            }
+            Text(stringResource(R.string.trt_next_level), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                FilterChip(selected = state.levelShift < 0, onClick = { onLevel(if (state.levelShift < 0) 0 else -1) },
+                    label = { Text(stringResource(R.string.trt_level_easier)) }, modifier = Modifier.testTag("today_level_easier"))
+                FilterChip(selected = state.levelShift > 0, onClick = { onLevel(if (state.levelShift > 0) 0 else 1) },
+                    label = { Text(stringResource(R.string.trt_level_harder)) }, modifier = Modifier.testTag("today_level_harder"))
+            }
+            // One set of each in turn instead of all sets of one exercise first, today only.
+            if (state.circuitPossible) {
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.trcirc_today_chip), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Switch(checked = state.circuitToday, onCheckedChange = onCircuit, modifier = Modifier.testTag("today_circuit"))
+                }
+            }
+            Button(onClick = onShuffle, modifier = Modifier.fillMaxWidth().padding(top = 20.dp).heightIn(min = 52.dp).testTag("today_next_shuffle")) {
+                Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.trt_next_shuffle))
+            }
+            // Wraps at the largest font instead of cutting "Ausrüstung" to a few letters.
+            FlowRow(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center) {
+                TextButton(onClick = onHurts, modifier = Modifier.testTag("today_next_hurts")) {
+                    Icon(Icons.Default.Healing, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_next_hurts))
+                }
+                TextButton(onClick = onEquipment, modifier = Modifier.testTag("today_next_equipment")) {
+                    Icon(Icons.Default.FitnessCenter, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_next_equipment))
+                }
+                val hasItems = state.suggestion?.routine?.items?.isNotEmpty() == true
+                TextButton(onClick = onEdit, enabled = hasItems, modifier = Modifier.testTag("today_suggestion_edit")) {
+                    Icon(Icons.Default.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_adjust_edit))
+                }
+                TextButton(onClick = onSave, enabled = hasItems, modifier = Modifier.testTag("today_suggestion_save")) {
+                    Icon(Icons.Default.BookmarkAdd, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trsg_save))
+                }
+            }
+            // No time today: a rest day, and the days around it planned anew (owner 2026-10-19).
+            Text(stringResource(R.string.trt_next_plan), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onRestToday, enabled = state.suggestion?.plannedEntry != com.cruxcoach.athlete.model.PLAN_REST,
+                    modifier = Modifier.testTag("today_rest_today")) {
+                    Icon(Icons.Default.Weekend, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_rest_today))
+                }
+                OutlinedButton(onClick = onPlanDays, modifier = Modifier.testTag("today_next_plan_days")) {
+                    Icon(Icons.Default.EditCalendar, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trdp_title))
+                }
+            }
+            // The depth for those who want it: goal and date, the week, focus and preferences, own start values.
+            TextButton(onClick = onCoach, modifier = Modifier.padding(top = 8.dp).testTag("today_adjust_coach")) {
+                Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_adjust_coach))
+            }
+        }
+    }
+}
+
+/**
+ * A tap on an exercise of today's card: what could take its place (its easier and harder variant
+ * first), or leave it out today, or never suggest it again. Every swap teaches the coach.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwapSheet(
+    state: TodayState,
+    slug: String,
+    alternatives: List<com.cruxcoach.athlete.logic.SessionSuggester.Alternative>,
+    onDismiss: () -> Unit,
+    onSwap: (String) -> Unit,
+    onDrop: () -> Unit,
+    onExclude: () -> Unit,
+    /** The exercise is new to the athlete (issue #68): "Kenne ich nicht" and its steps come first. */
+    isNew: Boolean = false,
+    /** What "Kenne ich nicht" puts in its place; null when nothing the athlete knows fits. */
+    familiar: com.cruxcoach.athlete.catalog.ExerciseDefinition? = null,
+    onDontKnow: (String) -> Unit = {},
+    onOpenSteps: () -> Unit = {},
+) {
+    val language = catalogLanguage()
+    val name = state.catalog.fallbackFor(slug).name(language)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("today_swap_sheet")) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+            Text(stringResource(R.string.trt_swap_title, name), style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp))
+            Spacer(Modifier.height(8.dp))
+            if (isNew) {
+                // Not knowing an exercise is no dislike: it is swapped for one the athlete knows, and nothing counts against it.
+                if (familiar != null) {
+                    ListItem(
+                        leadingContent = { com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(familiar, Modifier.size(40.dp)) },
+                        headlineContent = { Text(stringResource(R.string.trt_dont_know_to, familiar.name(language))) },
+                        supportingContent = { Text(stringResource(R.string.trt_dont_know_hint)) },
+                        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                        modifier = Modifier.clickable { onDontKnow(familiar.slug) }.testTag("today_swap_dont_know"),
+                    )
+                } else {
+                    Text(stringResource(R.string.trt_dont_know_none), style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("today_swap_dont_know_none"))
+                }
+                TextButton(onClick = onOpenSteps, modifier = Modifier.padding(horizontal = 8.dp).testTag("today_swap_steps")) {
+                    Icon(Icons.Default.Info, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.trt_new_how))
+                }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
+            if (alternatives.isEmpty()) {
+                Text(stringResource(R.string.trt_swap_none), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
+            alternatives.forEach { alt ->
+                val tag = when {
+                    alt.easier -> stringResource(R.string.trt_swap_easier)
+                    alt.harder -> stringResource(R.string.trt_swap_harder)
+                    else -> null
+                }
+                ListItem(
+                    leadingContent = { com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(alt.def, Modifier.size(40.dp)) },
+                    headlineContent = { Text(alt.def.name(language)) },
+                    supportingContent = {
+                        Text(listOfNotNull(tag, com.cruxcoach.android.ui.training.exercises.equipmentSummary(alt.def).takeIf { it.isNotBlank() })
+                            .joinToString(" · "))
+                    },
+                    colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                    modifier = Modifier.clickable { onSwap(alt.def.slug) }.testTag("today_swap_to_${alt.def.slug}"),
+                )
+            }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            // Where the week stands for this exercise's area, before it is left out (comparison review #13): a hint, no lock.
+            val area = com.cruxcoach.athlete.logic.WeeklyVolume.areaOf(state.catalog.fallbackFor(slug))
+            state.weekly.firstOrNull { it.area == area && !it.target.isOff && it.goal > 0 }?.let { p ->
+                Text(com.cruxcoach.android.ui.training.workouts.weeklyHintText(p), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp).testTag("today_swap_weekly"))
+            }
+            TextButton(onClick = onDrop, modifier = Modifier.padding(horizontal = 8.dp).testTag("today_swap_drop")) {
+                Icon(Icons.Default.RemoveCircleOutline, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.trt_swap_drop))
+            }
+            TextButton(onClick = onExclude, modifier = Modifier.padding(horizontal = 8.dp).testTag("today_swap_exclude")) {
+                Icon(Icons.Default.Block, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.trt_swap_exclude))
+            }
+        }
+    }
+}
+
+
+/** "Circuit · 3 rounds · 0:15 / 2:00" above today's circuit; a tap changes rounds and rests. */
+@Composable
+private fun CircuitGroupHeader(items: List<com.cruxcoach.athlete.model.RoutineItem>, circuit: Int, onClick: () -> Unit) {
+    val first = items.firstOrNull { it.circuit == circuit } ?: return
+    val rounds = com.cruxcoach.athlete.logic.Circuits.rounds(items, circuit)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(CruxCoachDesign.shapes.small).clickable(onClick = onClick)
+            .padding(horizontal = 4.dp).testTag("today_circuit_group"),
+    ) {
+        Icon(Icons.Default.Repeat, null, Modifier.size(16.dp), tint = CruxCoachDesign.colors.brandAccent)
+        Spacer(Modifier.width(4.dp))
+        Text(stringResource(R.string.trcirc_group, pluralStringResource(R.plurals.trcirc_rounds, rounds, rounds),
+            formatClock(first.circuitRestS ?: com.cruxcoach.athlete.logic.Circuits.DEFAULT_CIRCUIT_REST_S), formatClock(first.roundRestS ?: 120)),
+            style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = AccentOnCard,
+            modifier = Modifier.weight(1f))
+        Icon(Icons.Default.Edit, null, Modifier.size(16.dp))
+    }
+}
+
+/** Today's circuit: rounds, rest between the exercises and after each round – or no circuit after all. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CircuitSheet(
+    items: List<com.cruxcoach.athlete.model.RoutineItem>,
+    onDismiss: () -> Unit,
+    onSet: (Int?, Int?, Int?) -> Unit,
+    onOff: () -> Unit,
+) {
+    val key = items.firstOrNull { it.circuit != null }?.circuit ?: return onDismiss()
+    val first = items.first { it.circuit == key }
+    val rounds = com.cruxcoach.athlete.logic.Circuits.rounds(items, key)
+    val between = first.circuitRestS ?: com.cruxcoach.athlete.logic.Circuits.DEFAULT_CIRCUIT_REST_S
+    val after = first.roundRestS ?: 120
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("today_circuit_sheet")) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.trcirc_sheet_title), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.trcirc_explain), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            com.cruxcoach.android.ui.training.workouts.EditorStepper(stringResource(R.string.trwo_field_rounds), rounds, 1, 1, 10, "circuit_rounds") { v ->
+                onSet(v, between, after)
+            }
+            com.cruxcoach.android.ui.training.workouts.EditorStepper(stringResource(R.string.trcirc_rest_between), between, 5, 0, 120, "circuit_rest",
+                format = { formatClock(it) }) { v -> onSet(rounds, v, after) }
+            com.cruxcoach.android.ui.training.workouts.EditorStepper(stringResource(R.string.trcirc_rest_round), after, 15, 0, 600, "circuit_round_rest",
+                format = { formatClock(it) }) { v -> onSet(rounds, between, v) }
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = onOff, modifier = Modifier.heightIn(min = 48.dp).testTag("today_circuit_off")) {
+                    Text(stringResource(R.string.trcirc_dissolve))
+                }
+                Button(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp).testTag("today_circuit_done")) {
+                    Text(stringResource(R.string.tr_action_done))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A running comeback plan on Today (owner 2026-10-20): the morning value in one tap, the sessions due now, a hint when
+ * the plan has a note, and the notice it always carries.
+ */
+@Composable
+private fun ComebackTodayCard(c: ComebackToday, onOpen: () -> Unit, onMorning: (Int?) -> Unit, onStart: (Int, String) -> Unit) {
+    val injury = c.injury
+    val plan = injury.activePlan ?: return
+    val language = catalogLanguage()
+    Card(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("today_comeback_${injury.id}")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.cb_today_title,
+                listOfNotNull(regionLabel(injury.region), injury.side?.let { injurySideLabel(it) }).joinToString(" · ")),
+                style = MaterialTheme.typography.titleMedium)
+            if (plan.source == com.cruxcoach.athlete.model.PlanSource.OWN) Text(stringResource(R.string.cb_card_own), style = MaterialTheme.typography.bodySmall)
+            else {
+                val ladder = com.cruxcoach.athlete.logic.Comeback.ladder(injury)
+                val stage = com.cruxcoach.athlete.logic.Comeback.stage(injury, plan)
+                Text(stringResource(R.string.cb_stage_header, stage.index, ladder.stages.lastIndex, stage.title.of(language)),
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+            if (c.prompts > 0) Text(stringResource(R.string.cb_today_prompt), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("today_comeback_prompt"))
+            com.cruxcoach.android.ui.training.athlete.comeback.PainScale(stringResource(R.string.cb_today_question), c.entry?.morningPain,
+                "today_comeback_morning", onMorning)
+            c.due.forEach { d ->
+                val title = com.cruxcoach.android.ui.training.athlete.comeback.sessionTitle(d.spec.kind)
+                val name = stringResource(R.string.cb_session_name, title)
+                // "Starten" below the session when it leaves no room for it ("Sehnen-Ei/nheit" at the largest font).
+                LabelBesideOrAbove(label = { Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(end = 8.dp)) }) {
+                    FilledTonalButton(onClick = { onStart(d.index, name) }, modifier = Modifier.testTag("today_comeback_start_${d.index}")) {
+                        Text(stringResource(R.string.cb_session_start))
+                    }
+                }
+            }
+            Text(stringResource(R.string.cb_not_a_substitute), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}

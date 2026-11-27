@@ -58,6 +58,7 @@ import com.cruxcoach.android.ui.board.OwnPublishFeedback
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.domain.board.KilterGradeMapper
+import kotlin.math.roundToInt
 
 /**
  * "Meine Climbs" — the hub for every climb the user authored, grouped into
@@ -242,7 +243,7 @@ private fun EmptyHint(padding: PaddingValues, title: String, message: String) {
         Text(
             message,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
     }
@@ -365,7 +366,7 @@ private fun ClaimGradeDialog(
                 )
                 Slider(
                     value = gradeId.toFloat(),
-                    onValueChange = { gradeId = it.toInt() },
+                    onValueChange = { gradeId = it.roundToInt() },
                     valueRange = 10f..33f,
                     steps = 22,
                 )

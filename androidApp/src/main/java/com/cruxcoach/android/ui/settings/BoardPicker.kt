@@ -13,13 +13,16 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.AuroraBoardSelector
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.data.BoardGymShares
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.QuantumCatalogueSync
+import com.cruxcoach.data.repository.BoardLocationRepository
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.QuantumBoardModel
+import com.cruxcoach.domain.board.ShinyWallVariant
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -67,6 +70,8 @@ data class BoardPickerState(
      *  once its catalogue is loaded — variant boards (Tension/Decoy) and
      *  single-layout boards (Grasshopper/So iLL) alike (FEAT-031). */
     val auroraBrandSizes: Map<String, List<BoardSize>> = emptyMap(),
+    /** How common each option is in gyms, from the synced gym list; null until read. */
+    val gymShares: BoardGymShares? = null,
 )
 
 /**
@@ -82,6 +87,7 @@ class BoardPickerViewModel @Inject constructor(
     private val auroraBoardSelector: AuroraBoardSelector,
     private val quantumCatalogueSync: QuantumCatalogueSync,
     private val syncManager: BoardSyncManager,
+    private val boardLocationRepository: BoardLocationRepository,
 ) : ViewModel() {
 
     private val productSizes = MutableStateFlow(BoardConstants.KILTER_KNOWN_SIZES)
@@ -89,6 +95,7 @@ class BoardPickerViewModel @Inject constructor(
     private val auroraBrandSizes = MutableStateFlow<Map<String, List<BoardSize>>>(emptyMap())
 
     private val moonHoldSetData = MutableStateFlow<Boolean?>(null)
+    private val gymShares = MutableStateFlow<BoardGymShares?>(null)
     private val moonHoldSets = combine(MoonBoardVariant.entries.map { variant ->
         userPreferences.moonBoardHoldSets(variant).map { variant to it }
     }) { it.toMap() }
@@ -117,12 +124,29 @@ class BoardPickerViewModel @Inject constructor(
             auroraBrandSizes = auroraSizes,
         )
     }.let { boardState ->
-        combine(boardState, moonHoldSets, moonHoldSetData) { board, holds, hasData ->
-            board.copy(moonBoardHoldSets = holds, moonBoardHasHoldSetData = hasData)
+        combine(boardState, moonHoldSets, moonHoldSetData, gymShares) { board, holds, hasData, shares ->
+            board.copy(moonBoardHoldSets = holds, moonBoardHasHoldSetData = hasData, gymShares = shares)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), BoardPickerState())
 
     init {
+        // Two grouped counts over the gym list (a few thousand rows): cheap, and a failure
+        // only leaves the shares out.
+        viewModelScope.launch {
+            gymShares.value = withContext(Dispatchers.IO) {
+                try {
+                    BoardGymShares.from(
+                        boardLocationRepository.productSizeFrequency(),
+                        boardLocationRepository.boardCountByBrandAndLayout(),
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "gym shares unavailable", e)
+                    null
+                }
+            }
+        }
         // Prefer the synced DB sizes (both Kilter products); fall back to the
         // bundled known-sizes constant when the catalogue isn't imported yet.
         viewModelScope.launch {
@@ -237,6 +261,22 @@ class BoardPickerViewModel @Inject constructor(
         }
     }
 
+    fun selectShinyWall(variant: ShinyWallVariant, deferDownload: Boolean = false) {
+        viewModelScope.launch {
+            userPreferences.setBoardSelection(
+                BoardBrand.SHINYWALL.wireValue,
+                variant.layoutId.toInt(),
+                variant.productSizeId.toInt(),
+                null,
+            )
+            // The catalogue holds every variant, so one download serves any
+            // later variant switch; a cached catalogue stays usable offline.
+            if (deferDownload || BoardBrand.SHINYWALL !in userPreferences.boardDownloadBrands.first()) return@launch
+            if (withContext(Dispatchers.IO) { boardRepository.hasClimbsForBrand(BoardBrand.SHINYWALL.wireValue) }) return@launch
+            syncManager.loadBoardCatalogue(BoardBrand.SHINYWALL)
+        }
+    }
+
     fun selectAurora(board: BoardBrand, variant: BoardConstants.AuroraVariant?, productSizeId: Int? = null, deferDownload: Boolean = false) {
         viewModelScope.launch {
             val status = try {
@@ -307,13 +347,15 @@ internal fun BoardPickerDialog(
             selectedAuroraProductSizeId = state.selectedAuroraProductSizeId,
             loadedAuroraBrands = state.loadedAuroraBrands,
             auroraBrandSizes = state.auroraBrandSizes,
-            frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
+            frequency = state.gymShares?.kilterSizeFrequency ?: BoardConstants.DEFAULT_SIZE_FREQUENCY,
+            gymShares = state.gymShares,
             showAuroraBoards = true,
             prefill = prefill,
             mismatch = mismatch,
             onConfirmKilter = { size -> request(BoardBrand.KILTER) { viewModel.selectKilter(size) } },
             onConfirmMoonBoard = { variant, holds -> request(BoardBrand.MOONBOARD) { viewModel.selectMoonBoard(variant, holds) } },
             onConfirmQuantum = { model -> request(BoardBrand.QUANTUM) { viewModel.selectQuantum(model, deferDownloads) } },
+            onConfirmShinyWall = { variant -> request(BoardBrand.SHINYWALL) { viewModel.selectShinyWall(variant, deferDownloads) } },
             onConfirmAurora = { brand, variant, sizeId -> request(brand) { viewModel.selectAurora(brand, variant, sizeId, deferDownloads) } },
             onFindViaGym = onFindViaGym,
             onFindNearbyGym = onFindNearbyGym,

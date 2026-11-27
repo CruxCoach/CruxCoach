@@ -4,6 +4,872 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+Built, but switched off in 0.2.5: spray walls and the wall games (Knot among them) come with 0.2.6.
+
+### Added
+- Spray walls, from the main menu. Photograph your own wall (camera or photo
+  library, crop and turn), and the phone suggests the holds. Download the hold
+  model once (33 MB) and it finds holds of every colour with their real shape,
+  on the phone and offline from then on; without it, or if it cannot run, a
+  simpler detector suggests round holds. The model can be removed again under
+  Settings → Delete local data. Take all or one by one with a sensitivity
+  slider, then fix by hand (tap to pick, drag to move, slider to size, press
+  and hold or "Add" to place, undo/redo, pinch to zoom). Set problems with start, hand, foot and finish
+  holds, a name, an optional grade ("Project" without one) and a description;
+  sort and search them, and log sends and attempts in a private logbook. Every
+  hold edit, reset with a new photo and restore is kept as a version: problems
+  that lost a hold show "1 hold gone" with the hold drawn dashed, problems from
+  before a reset move to "Earlier" and open on their photo, and any version can
+  be restored. A wall stays on the phone unless you make it public: then its
+  photos, holds and problems are published with your CruxCoach account, others
+  find it under "Spray walls here" at its gym on the map and set problems on
+  it. The photos of a public wall must not show people. Withdrawing a wall
+  also deletes its photos from the Blossom servers; if that does not work, the
+  wall stays public (and is not deleted) so you can try again. Deleting a
+  public wall withdraws it first; while the wall is withdrawn and then
+  deleted, the app says "Withdrawing the wall, then deleting it …". Your
+  logbook is never published. Spray walls are not in the CruxCoach backup, the
+  data export or Android backups, so a private wall is lost with the phone.
+- Wall games, from the main menu or a problem's menu ("Play as a game"):
+  "Floor is lava" (lit rows rise from the bottom, five speeds), "Endurance" (a
+  problem appears row by row, five waiting times), "Hold thief" (a random
+  problem across the whole wall at 60 % down to 10 % hand holds; steal holds
+  to make it harder) and "Traverse" (a problem lights move by move from its
+  start to its top, only the last seven moves stay lit, adjustable tempo).
+  Countdown with beeps and a stopwatch; for Shiny Wall, Kilter, the other
+  Aurora boards and MoonBoard (not Quantum). Without a connected board the
+  game runs on the screen; games are never logged.
+- Knot, a new wall game for 1 to 8 players: a low field of colour stripes
+  lights up (four colours, three on the MoonBoard). After a beep the phone
+  calls a player, a hand or a foot and a colour ("Player 2 – right hand –
+  blue"), from recordings in English or German that come with the app, so no
+  speech engine is needed; the called holds blink. The field grows with the
+  number of climbers, so they get in each other's way, and stays low; as many
+  climb as the wall is wide (0.8 m each, 4 on a 12 ft board). Whoever comes
+  off taps their name: the last one on the wall wins, solo you count the
+  calls you hold. More players wait in line and step in for whoever comes
+  off; then the most calls held win. Three sliders, harder to the right: the
+  speed (10 to 3 seconds per call, or "Tap for the next call" for someone
+  below the wall), the spacing (close, medium, wide), which sets how far each
+  colour is from a climber, about 50, 75 or 100 cm, with the colours repeating
+  across the field, and the holds per colour (many, normal, few: 4 + 3, 3 + 2
+  or 2 + 1 hand and foot spots of each colour within every climber's reach).
+  The board preview follows the sliders, shows each climber's part and how
+  many holds light. With the board's catalogue, every game draws a fresh field
+  away from the last one's holds ("Draw again" for another), leaves out the
+  hardest hand holds and keeps the colours and the climbers' parts about
+  equally hard. Optional names, a
+  safety hint before the first game and a hint on steep walls. For Kilter,
+  the other Aurora boards and MoonBoard (not Shiny Wall or Quantum).
+
+### Fixed
+- Knot: every spacing is a real step. Medium and Wide widen the field where
+  it is too narrow for the colours to spread (solo about 1.2, 1.8 and 2.4 m),
+  until the colours really are farther apart than at the closer spacing; a
+  spacing is greyed out only when the wall has no room for it. A slider's
+  thumb no longer jumps back: it stops at the nearest step on offer, goes on
+  past a greyed step the way the finger moves (or a key or screen reader
+  steps) and stays put while the finger rests over one; a slider with only
+  one step on offer is shown disabled with the reason, and a holds step
+  greyed because the spacing would reach no farther says so.
+- Knot: the field is narrower, 0.6 m per climber and at least 1.2 m (1.2 m
+  for one or two climbers, 1.8 m for three), so the climbers get in each
+  other's way; where it doesn't fit in the middle of the wall, it moves up to
+  10 cm to one side. Hand spots go on hand holds only: never on Kilter's
+  screw-ons, and with the board's catalogue never on a hold its climbs use
+  mostly as a foot or rarely as a hand. The called holds no longer stay dark
+  when the board misses the end of a blink: half a second after every blink
+  the field goes out once more, a write that fails is tried again, and after
+  the end blink the wall is sent dark once more.
+- Knot, at the start positions: the screen shows the field that is lit, not
+  already the next game's; the speed slider works there; "Go" right after a
+  slider starts on that slider's field; and the next game keeps away from the
+  field as it lit. A colour's only foot hold within a climber's reach never
+  gets both feet, a drawn field never lights more holds than the board takes,
+  and the number of players stays adjustable when no field fits.
+
+## [0.2.5] - 2026-11-27
+
+### Added
+- Training & nutrition ships as a beta: the main menu marks it "Beta".
+- Board size check: not sure which size your Kilter or other Aurora-family board is,
+  or other holds light up than the app shows? The board picker and the climb's ⋯ menu
+  now light a few marked holds for a size, so you can compare with the board and switch
+  to the size that fits.
+- The board picker shows how common each board, Kilter size and MoonBoard version is in
+  gyms, from the gym list the app already loads. Picking a rare size or version asks you
+  to check that it is really your board; for the newest MoonBoard versions, which few gyms
+  list yet, it only asks you to compare the holds.
+- Shiny Wall support: pick your Shiny Wall Standard wall (Mini, Standard, Max,
+  Full or Max Full), browse its problems with the usual filters (grade, angle
+  0–60°, holds, benchmarks, status) plus its categories (technical, physical,
+  crimpy, endurance, cruxy, foot rules) and light them over Bluetooth from the
+  problem page, while browsing, in playlists and in shared sessions. Set your
+  own Shiny Wall problems in the editor, see the hold heatmap and use "Clean
+  holds". The Shiny Wall catalogue is refreshed every day from Shiny Wall's
+  standard routes (no drafts, no personal data) and is downloaded only once you
+  choose a Shiny Wall; offline sharing passes it on to phones with this version (older
+  versions never receive it, so they cannot mix it up). If a wall's Bluetooth name
+  suggests another variant, CruxCoach asks once per wall and remembers the
+  answer. The wall shows each hold as a photo, laid out the way the Shiny Wall
+  app draws it, instead of dots: on problem pages, in the editor and in the
+  board picker.
+- Shiny Wall account (Settings → Board accounts & imports): sign in with your Shiny Wall email
+  and password and import your Shiny Wall logbook (sends with their attempts,
+  projects and your grade), your favorites, your lists and your own routes.
+  Attempts on the day of a send count towards it; attempts on earlier days
+  stay projects of their own, one per day. Star ratings and comments stay in Shiny Wall.
+  Email and password go to Google's Firebase servers, which run Shiny Wall's
+  sign-in and data. Read-only: CruxCoach never changes anything in your Shiny
+  Wall account, keeps a sign-in token on the phone (never the password), and
+  "Import new entries" fetches what is new without duplicating or restoring
+  the entries and lists you deleted (deleting your Shiny Wall logbook data in
+  Settings starts afresh). Standard walls only; accounts that sign in with Google
+  can't connect.
+- Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
+  data is refreshed (2,933 venues).
+- Logbook overview: the logbook now opens with one card instead of six tiles:
+  your hardest send and hardest flash, the last 30 days against the 30 before
+  (climbing days, sends and hardest grade; green means more or harder), your
+  climbing days per week (from two weeks of history on) and your milestones (new grades, 50, 100, 250 and more
+  sends, your biggest day, weeks in a row). It appears as soon as the logbook has
+  loaded; tap it for the statistics, which show a loading sign until they are ready. The period
+  filter of the list moved into the logbook filter, next to result, board and
+  angle. Entries no longer repeat the date of their day, and at the largest font
+  sizes an entry puts its name and result below its grade instead of squeezing
+  them.
+- Statistics, reorganised so every number and chart appears once: the period
+  and board filters on top (each board chip shows its sends and best grade),
+  the period in six numbers with the change against the period before (sends,
+  tries, climbing days, problems, hardest grade, flash rate) and its bests
+  (hardest flash, most sends in one day, climbing days a week, most weeks in a
+  row), then progress (the rolling level, one line per board), grades (problems
+  per grade by flash, later send or still open, or every send with repeats in
+  your intensity-zone colours; tap a grade for its sends and the problems behind
+  them), tries, activity (calendar, climbing days per week, entries or sends over
+  time), angles and holds. The charts over time span the whole period, from your
+  first entry at the earliest until today, and count sends without a grade too.
+  A period without entries says so and offers the whole logbook. The statistics
+  and the session recap work at the largest font size and on narrow screens:
+  rows of numbers take fewer columns instead of breaking words, and labels and
+  chart axes grow with the text.
+- Tries until the send: per board, how many of your problems you flashed or sent
+  on the 2nd, 3rd, 4th–5th or a later try. Tries from earlier sessions count, so a
+  send after attempts on an earlier day is no flash.
+- Stats across boards: if you climb on more than one board, the statistics show
+  how many tries you need to send each grade on each board, as bars side by side,
+  and the average tries per month as a small line chart (months without a first
+  send stay as gaps; a long logbook scrolls sideways). Tries from earlier
+  sessions count until the first send; repeats do not. Values that rest on fewer
+  than three problems are drawn hollow; tap a board, grade or month for its
+  numbers. Each board keeps one colour everywhere. With enough data on two
+  boards, the statistics say how they feel for you ("MoonBoard feels about one
+  grade harder for you than Kilter"), estimated from your tries at the same
+  grades. The tries views also show if you climb on one board. Works with your
+  existing logbook.
+- Session recap: the button beside each day in the logbook, and the summary at
+  the end of a timed session, show one card with sends, flashes, tries, your
+  three hardest sends, the grades you sent and the milestones you reached,
+  ready to share as an image. Tries from earlier days count here too, so a
+  first-go send of an old project is no flash, and the card at the end of a
+  timed session shows only the milestones of that session.
+- Year in review: your climbing year across all your boards, imported logbooks
+  included, as pages you tap through: volume, boards and angles, your hardest
+  send per board, last year over the same span, your rhythm, highlights, the
+  holds you touched on your sends, off-board
+  training and your climber type (one of ten, picked by rules on your own
+  numbers, with the rule shown). Every page can be shared as an image drawn
+  on the phone, with your name, problem names and exact dates left out unless
+  you switch them on. From 1 December to 31 January a card on the start screen
+  and in the logbook invites you in (its X hides it for the year); all year the
+  statistics keep the review with a year picker. With little data it shows a
+  short "your year so far". A list view serves screen readers, and turning
+  animations off in the system turns them off here too. Computed on your phone;
+  nothing is uploaded.
+- Community: Settings → Community explains the CruxCoach community on Buzz
+  (talk to the developers, test new builds first, help shape what comes next)
+  and "Join on Buzz" opens community.cruxcoach.org/join in the browser. After a
+  new bug report or feature request, the confirmation offers the same link;
+  "Already a member" hides it for good. Buzz is a separate app with its own
+  account: nothing from CruxCoach is shared and nothing is sent.
+- Training and nutrition are simple by default, with the depth one tap away:
+  - Your start is one page with four answers, each one tap: how hard you boulder,
+    how long you have been climbing, your age band, and where you train with what.
+    Body data is asked where it is needed (nutrition, loads), not up front.
+  - "Today" shows your training at once. Every exercise says what you did last
+    time and what today adds ("+1 rep", "+5 s", "+1 kg"). One button starts it;
+    "Adjust" holds everything else: time, place, kind of training, easier or
+    harder, a circuit, single exercises. How you feel is one optional tap.
+  - In a training one tap logs a set: the answer to "How many more could you
+    have done?". Under the target stands what you did last time, and after the
+    last set what the next training plans. Timed holds are asked too.
+  - The summary opens with "Next time": per exercise today's sets and the next
+    plan, in the numbers the next training will show. At the top of an
+    exercise's range its next step is one tap away, and the coach suggests it
+    from then on; after a training that was too hard the next plan is lighter.
+  - The coach stays with your exercises, the same ones week after week, so their
+    progress shows. While you are new to training here it picks well-known
+    basics. "Another suggestion" and the variety setting still bring change.
+  - Progress that stood still now moves: body-weight exercises and timed holds
+    gain a repetition or a few seconds after a training with reserve, weights
+    step up at the top of the range, a weight step that is too big is answered
+    with repetitions first, and leg work is never planned "assisted".
+  - A training that was too hard plans one step back, and the step back stays
+    until it went well again. Nothing steps up by itself in a comeback
+    session, with an open injury, in the first weeks after a break or in a
+    lighter week; under 18 and in the first year of climbing only body-weight
+    work steps. A value you enter or test, and a load you change by hand, win
+    over the last training. Stretches and warm-ups keep their own numbers.
+  - Starter workouts and the warm-up before climbing use what your place has:
+    an exercise that needs missing equipment is replaced, not dropped.
+  - The week you plan counts from the day you plan it: earlier days are not
+    "missed". The coach's own week puts no finger training on the day before
+    climbing, and a climbing day is only called a board session for those who
+    climb on boards.
+  - The energy check only reads days logged as a whole: two main meals or
+    three meals.
+  - Progress opens with "My exercises": where each started and where it stands.
+  - Plainer words in German: "Kraftwert" for the value the coach plans from,
+    "Ausgleich" for antagonist work, "Leichte Woche", "% Körpergewicht".
+- Training beyond the board. A "Today" hub and an "Exercises"
+  library inside the new training area. The library has over 200 exercises written for
+  climbers – fingers, pulling, pushing and antagonists, core, legs and hips,
+  mobility, warm-up, power, endurance and technique – in German and English,
+  with "why it matters", steps, cues, typical mistakes, progression chains
+  ("easier / harder"), load areas and an equipment filter ("what do you have?").
+  Own exercises can be added.
+- A training logger: start from nine starter routines (board warm-up, finger
+  basics, pull & antagonist, antagonist 15 min, legs, core, mobility, a
+  baseline test and an injury routine) or an empty training. Every set is prefilled with last
+  time's values, one tap logs it, the rest timer starts by itself (the same
+  timer as the board player), and a full-screen hang/repeater timer counts
+  7:3 intervals with sound, vibration and optional voice. One-sided exercises
+  are logged per side; hangs show the load as % of body weight. Personal bests
+  are spotted calmly, a warm-up ramp can be inserted before heavy sets, and the
+  summary suggests the next step ("+1 kg", "try the harder variant").
+- Performance values: enter what you can do per exercise ("+20 kg × 5",
+  "32 kg for 10 s on 20 mm, right hand", "12 pull-ups", "45 s hollow hold") or
+  run a short test. Loads are then planned from them – loaded reps with two in
+  reserve, max hangs at about 90 %, repeaters at about 65 % of the 10-second
+  maximum – and a logged set that proves more raises the value automatically;
+  the first session with an exercise sets a starting value. Block lifts and
+  pick-ups without any value start with a careful estimated load (from a max
+  hang or pick-up value, else body weight and grade) instead of 0 kg; that
+  first session feels its way from 85 % of the guess, and each set's reserve
+  answer moves the next sets by about 10 % – up past the guess or down. The
+  warm-up fits what follows: the general warm-up is chosen for the session's
+  body parts, the hangboard ramp only comes before hangboard work, and the
+  first finger, pull, push and leg exercise starts with lighter sets of
+  itself (a 50/70/85 % ramp, or one set at half the reps or time). Starting
+  another training while one is open asks whether to continue it or end it.
+  The equipment tells one pick-up block from a second one (or an edge for both
+  hands): most lifting edges take one hand, so one block gets one-arm lifts,
+  and two-arm lifts show what goes on each block ("19 kg per block").
+- Places: home, gym, travelling or your own – each with what is there. One is
+  the default; Today's training suggests at the default place and offers the
+  others for the day ("At: Home ▾"), and the exercises follow that place's
+  equipment. With a single place there is nothing to pick.
+- Quick start: the first visit to Training or Nutrition asks the basics once
+  (body weight, height, birth year, sex; climbing grade, years of climbing,
+  equipment) – all optional, "Later" puts it off; the longer coach setup
+  stays a step of Today's checklist.
+- Exercise pictograms: every exercise row and the player show the movement
+  – hanging on a hangboard or bar, pull-up, block lift, push-up, squat,
+  hollow body, climbing on a wall … – with its equipment on a tile in its
+  category's colour, instead of a body map shrunk to 48 dp.
+- A simple training area: four tabs – Today, Training (workouts and exercises),
+  Nutrition and Progress (statistics, body, weekly review, start values). Today
+  shows what to do at least ("Set up in 3 steps": goal and week, equipment, body
+  weight), today's training with a one-line check-in, and "Your day" tiles that
+  log climbing, weight, food and water with one tap. Today's training is the
+  big card at the top with one start button; reasons, evidence and confidence
+  sit behind "Why?", and the check-in is one line until you open it. Whenever something is
+  missing, it is asked right there – a hint never sends you looking for it in
+  the settings. The training settings are an overview with the current value of
+  each topic; Settings → "Training & nutrition" opens them too. Settings in Training and Nutrition save themselves – a typed
+  value once typing pauses, a tap at once – without save buttons; the weight
+  goal and the equipment sheet keep every change and only close with "Done".
+- Stats: training days and minutes per week (board and off-board), a calendar
+  heatmap, load per structure, personal bests, body weight and strength to
+  weight; per exercise a chart of the estimated maximum over time (left and
+  right separately), volume per session, all sessions and bests.
+- Own standard workouts: create and edit them (exercises from a picker with
+  favourites first), copy and adapt starter routines, and a standard week that
+  assigns workouts, board sessions or rest to weekdays. Favourites sit at the
+  top of the library; "add to workout" works from every exercise.
+- A suggestion for today, built for climbers: from the week
+  plan, the check-in, injuries, finger load of the last two days, equipment,
+  favourites, performance values and the preferred duration, with the reasons
+  shown; start it, ask for another one, adapt it or save it as a workout.
+- Coach setup, a step of Today's checklist: four optional cards (goal, week, climbing
+  and experience, what suits you), prefilled from your board logbook and your
+  profile; start values are learned during training, estimated in two
+  questions, or measured in a guided test; a week plan proposed from your real
+  rhythm.
+- Suggestions use all your data: every climbing day is rated against your own
+  level (light, volume, hard, limit) and sets the recovery; finger, skin and
+  shoulder load over the last 7 vs 28 days; guardrails for young climbers,
+  beginners and masters; your focus, finger-training preference, style and
+  goal; what you liked, skipped or never want to see; training blocks with an
+  intro, build and deload week and a taper before a trip or competition.
+  Set prescriptions follow today's check-in, and the summary flags stalls,
+  declines and "too easy/too hard twice" with a swap to the next variant.
+- Climbing outside the board app (gym, rock, another board) can be logged in
+  a few taps and counts everywhere.
+- Climber profile: grade vs finger strength and grade vs pull strength next to
+  an orientation band, your own path over time, working grade and finger
+  strength on one timeline with their correlation, flash-to-max gap, load per
+  structure and your bottlenecks.
+- Board days: "create board session" opens the playlist generator preset for
+  the block and your focus.
+- Weekly volume plan per area (fingers, pull, push, legs, core, antagonists,
+  mobility); board days count; the daily suggestion fills what the week still
+  needs. Each area follows its recommended range or a target of your own
+  (tap the area; 0 switches it off). A "this week" view shows planned, done and missed days.
+- During training the next sets follow the last one: missed reps or no
+  reserve make them lighter, a big reserve heavier; "let go" in a hang records
+  the time actually held. "It hurts" swaps, lightens or ends the exercise.
+- Your word wins: a load changed during a training carries over to the
+  remaining sets, a done set opens again for a correction, and the next
+  set's load can be changed during the rest. A load written into a workout wins over
+  the plan. Workouts and exercises can be typed ("pull-ups 5×5 +20 kg, plank
+  3×60 s"); unknown names become own exercises. Own exercises and performance
+  values can be deleted, and a value can be entered as working sets ("5×5 at
+  +20 kg") instead of a maximum.
+- Today asks first how strong you feel and whether anything hurts; what hurts
+  is spared today without becoming an injury. "Another suggestion" picks the
+  kind of training, the place on the card changes for the day (also "no
+  equipment"), and the time on the card sets today's duration: shorter cuts
+  sets and exercises, longer adds exercises of the same kind (eight at most),
+  then sets – never more finger load,
+  and a deload week keeps its fewer sets.
+- Favourite exercises are chosen right next to "routine or variety" in the
+  coach setup: with a routine they are in almost every suggestion they fit,
+  with variety they come back regularly. The suggestion card stars them.
+- Well-known exercises first: the coach starts with exercises everyone knows and brings in more unusual
+  ones with experience, with at most one exercise new to you per training (two with "Open to unusual
+  exercises"). Today's card marks such an
+  exercise "New to you" with its steps one tap away, and the player opens with its steps the first time.
+  "Don't know it" in the swap sheet puts an exercise you know in its place without counting against it.
+  "Exercise choice" in the coach setup and the training settings: "Mostly classics", "Balanced" (the
+  default) or "Open to unusual exercises".
+- Today's card lists every exercise with its sets ("3 × 8"), the whole list
+  one tap away, and a tap on an exercise swaps it: its easier and harder
+  variant and the best other exercises of the same kind – through the same
+  checks as the suggestion (equipment of today's place, what hurts, injuries,
+  guardrails, never more finger work) –, "leave out today" or "never suggest".
+  An easier and an equally hard exercise come first, each marked easier or
+  harder, and a swap changes only that exercise today.
+- The coach learns from what you change, and shows it: a swap counts for the
+  exercise you picked and against the one you replaced (also when swapping to
+  the easier or harder variant during a training); a kind of training or a
+  duration you chose on two days of the same weekday becomes that weekday's
+  suggestion ("As usual on Monday: pull & push") on days without a week-plan
+  entry – the chips change it at once, safety rules still decide first; and a
+  load you lowered during a training is the planned load next time ("Next time
+  with your loads" in the summary), kept as a performance value from your
+  training that a stronger set raises again and that goes with its training.
+  Settings → "What the coach learned" lists all of it – your real training
+  length (to take over), your weekdays, exercises suggested more often and
+  less often, your own loads, never suggest – with "Forget" per item and
+  "Forget everything"; "Why?" links to it, and the player says "Your load
+  from last time" when a lowered load is planned.
+- In a training the shown exercise can be swapped (the same alternatives as
+  on Today's card, while none of its sets is done; the new one keeps the
+  sets) or skipped. A load changed on one set carries over to the next sets,
+  and the rest timer ends with the training.
+- Suggestions fit your level from the start: the grade and the years of
+  climbing from the quick start set it (a 7a boulderer with years of climbing
+  gets max hangs, not assisted hangs), the novice and youth guardrails stay.
+  First dumbbell, kettlebell and barbell lifts start at a light share of body
+  weight instead of 0 kg, and the reserve you answer after a first set counts
+  for its value.
+- The training is one page per exercise with all its sets: done sets say
+  what was done against the target (8/8 ✓, 6/8 ↓, 10/8 ↑) and open for a
+  correction; the set that is due holds the load and a row of results – one
+  tap logs "as planned", one tap logs "6 instead of 8"; planned sets can be
+  done in any order. The rest is a bar on the same page (the next set can be
+  changed during it, the reserve question sits on the set just done), "+ set"
+  and "end exercise" (with Undo) are one tap each, a strip moves between
+  exercises without counting a skip, and the end page asks how hard it was.
+  Free trainings open in the same view; the separate list view is gone.
+- Circuit training: one set of each exercise in turn, round after round. A
+  "Circuit" chip on Today's card turns the suggestion's pull, push, prehab,
+  core and leg work into a circuit (finger and power work stay before it),
+  with short rests between exercises, a longer one after each round, and
+  rounds that fill the chosen time; the workout editor joins exercises into
+  circuits. In the training a circuit is one page with its rounds ("Next:
+  push-ups", "Rest after round 1", "+ round", "end circuit").
+- The coach learns from what you change without overfitting: following a
+  suggestion counts as no preference (so the coach does not suggest its own
+  picks over and over), choosing an exercise does; an exercise you turn down
+  rests for 3 days, after repeated rejections 10 or 21 days, and gets no
+  "not done for a while" bonus while it is disliked – then the coach may
+  suggest it again ("What the coach learned" shows "resting until …"). Today's
+  choices survive a restart of the app, and a deleted training takes what was
+  learned from it along. Without a saved grade the board logbook's grade sets
+  the level.
+- Every decision can be taken back in one tap, and a decision taken back
+  teaches the coach nothing: a swap, "leave out today" and "never suggest"
+  on Today's card, skipping or removing an exercise in the training, "as
+  planned", "lighter week" and "swap in your workouts" in the summary, a
+  pain stop saved as an injury, a deleted climbing day. The third time the same exercise is turned
+  down, the card asks once "stop suggesting it?".
+- "Suggest it like this from now on?" after a training: when exercises of
+  today's suggestion were swapped or left out (on the card or in the
+  training), the summary asks once in one line ("2 exercises swapped –
+  suggest it like this from now on?"). "Yes" makes each chosen exercise the
+  first pick of its slot and rests the replaced one until the end of the
+  training block, three weeks at least – through every safety rule, with
+  Undo, and listed under "What the coach learned" with "Forget"; "Only
+  today" changes nothing beyond the usual light learning.
+- "Lighter" or "harder" chosen on two days within three weeks for the same
+  kind of training: the card asks once "one step easier from now on?" (or
+  more demanding). "Yes" keeps the step for that kind – today's chips still
+  move one step from there – with Undo, listed under "What the coach
+  learned" with "Forget"; "No" is not asked again for three weeks. "Back to
+  normal" on the chip survives a restart too.
+- The weekly targets show where exercises are left out or edited, as a hint
+  and never a lock: "leave out today" on the card and removing or skipping
+  an exercise in the training say "Pulling this week: 4/6 sets", and the
+  workout editor shows per area where the week stands and what the workout
+  adds ("· this workout +6").
+- When the board logbook shows a working grade clearly above the saved one
+  (one sub-grade at least), Today asks once "Your logbook shows 7a – take it
+  over as your grade?"; "Yes" saves it with Undo, "No" is not asked again
+  for that grade (a higher one asks again).
+- Today's form is visible and overridable: when the check-in or hard
+  climbing earlier today takes a set off or lowers a load, the card shows
+  the sets the training will plan and the training page says why ("day form
+  (sleep): one set less · load −5 %") with "as planned"; a session already
+  shortened for little sleep is not trimmed twice.
+- The coach looks ahead and stays consistent: no finger focus the day
+  before a board day or a usual climbing day (finger work you choose still
+  runs, with the hint); after a volume day the next day is no finger day
+  either; a planned or chosen board day while the fingers recover becomes a
+  light board session that says why; "easier"/"harder" also change your own
+  planned workout and a board day; alternatives in the training know what
+  the card knows (what you like, what you turned down lately).
+- Training, climbing and nutrition stay in step: a climbing day entered on
+  the tile, a Health Connect sync, a board session or a finished training
+  update Today's tile, the suggestion and the nutrition targets at once; a
+  watch session during a board session is not counted twice ("count anyway"
+  is one tap); a planned training sets today's targets from the morning
+  ("training day (planned: board 60 min)"), and the evening before a hard
+  day the carb info says so. The training summary shows when max finger work
+  is fine again and what today's food still needs, with "log food".
+- Nutrition: macro targets fit the calorie target – on hard days in a
+  deficit the deficit gets smaller so the carbohydrates fit, and the plan
+  says the real weekly pace; under 18 the energy card says adult thresholds
+  do not fit; the low-carb warning counts complete days only and names its
+  numbers; own targets outside the plausible range say why at the field.
+- Pain in the training says when it pauses climbing before it is saved, and
+  the swap spares what today's check-in says hurts.
+- Nutrition: "Log again" in the add sheet offers what the chosen meal usually
+  holds, with its usual amount – also quick entries and described meals – in
+  one tap, and a saved food's amount starts where it was last time.
+- Nutrition: the add sheet stays open while you log a meal – each food is
+  confirmed on top with what the meal holds now, "Undo" and "Done", and
+  "Cancel" at the amount comes back to your search. A meal of several foods is
+  saved as a dish once ("Saved as a dish: …" instead of a second dish of the
+  same name; a name another dish has replaces that dish), and dishes stand
+  first in the add sheet under "My dishes", logged with one tap – a dish reads
+  "1 portion (200 g)" in its row, in the confirmation and in the day's list. One word for
+  it: dish. Lines show energy, carbohydrates, protein and fat in the order of
+  the rings; a food's actions sit behind "⋮"; a new food asks for its amount
+  at once; an ingredient's amount is changed by a tap. The day's label names
+  the load, not the hardness: "Demanding day" in place of "Hard training day",
+  which also stood over a long volume day.
+- Back after a break (10+ days or illness): one or two shorter weeks without
+  maximal finger load, automatically; after a finger injury you marked as
+  over, the fingers stay below their limit for four weeks.
+- Training reminders on planned days; a body map and grip pictograms for every
+  exercise; a reward screen with new bests after each training.
+- Optional Health Connect link (Android 9 and newer; on Android 9–13 with the
+  Health Connect app), one card in the training settings with a switch per
+  direction: read last night's sleep as a check-in hint and climbing sessions
+  as climbing days, and send logged meals and water to Health Connect.
+  Nothing is uploaded. Experimental Tindeq Progressor support with live force
+  and a max-pull test.
+- Injury mode: note an injury with region, side and pain, and exercises that
+  load it are hidden or marked, wall climbing can be paused, and one-sided work
+  stays available for the healthy side – e.g. one-arm pick-ups on the right
+  hand plus bar pull-ups while a left finger is injured. Suggestions leave such
+  exercises out; when you add one yourself or start your own workout with one,
+  the app warns and offers "Add anyway". A past injury can be opened again or
+  deleted with its comeback diary, and a deletion has Undo.
+- Comeback plan after an injury: a training aid, not a medical device, for
+  building load back up together with your doctor or physio – not a substitute
+  for seeing a doctor.
+  Enter what you were told (onset, pop, swelling, warning signs, what was
+  checked, the finding) and pick the stage you agreed on; the plan shows the
+  usual stages for fingers, shoulder, elbow, wrist, ankle, knee, hamstring and
+  back with their sources, your pain rule, sessions for the injured and the
+  other side, a diary with a 14-day chart and a summary to share at the
+  appointment. Warning signs point you to a check (112 in an emergency); the
+  stage changes only when you tap. CruxCoach does not diagnose and does not
+  decide when an injury is over. Injuries, their pauses and the comeback diary
+  stay on this phone and go into an export or the encrypted backup only when
+  you switch them on.
+- Optional morning check-in (sleep, energy, skin, fingers, ill) that only ever
+  makes the day gentler and names the deciding reason; illness, injury and
+  holiday pauses; a weekly consistency streak in which rest days never count
+  against you; a weekly review with bests, load per structure, trends and
+  nutrition (logged days, protein and carbohydrate against the targets of the
+  week's training, iron, calcium and vitamin D).
+- Body tracking: back-dated entries, one value per day, a smoothed
+  trend weight instead of noisy daily numbers, circumferences, ape index,
+  strength-to-weight progress, and a "hide numbers" mode. Body stats from older
+  versions are taken over automatically. A "measurement round" enters weight,
+  body fat and circumferences for one date in one go; optional, calm reminders
+  for weighing (chosen weekdays and time) and a monthly measurement round.
+- Import from Waistline: its JSON database backup and its CSV diary export
+  (any language, comma or dot decimals, kg/lb/st, cm/in), with a preview,
+  keep-or-overwrite for existing days and a day/month choice when dates are
+  ambiguous.
+- Nutrition, a tab next to training under one main-menu entry "Training & nutrition": protein by body weight and carbohydrate
+  targets that follow the training day – board sessions and logged climbing
+  days count automatically, a light day less than a limit session – and a fat
+  target that fills the energy left, kept within 20–35 % of it (1 g per kg
+  without an energy target); energy, carbohydrate, protein and fat each have
+  a ring, in that order, and every target – energy, carbohydrate, protein, fat,
+  water – can follow the recommendation or be set by hand (in the settings, at
+  its ring, in the energy sheet; a low own calorie target is warned about with
+  its numbers),
+  plus water, quick entries, own foods, favourites and "same as yesterday".
+  Every value is in the open: an energy ring shows what you ate against your
+  estimated need (resting energy, everyday life and the day's training, each
+  shown), and while losing weight against a calorie target from your pace and
+  optional target weight. Nothing is locked; an energy card warns with the
+  numbers behind it – low BMI, loss faster than 1 % a week, a pace above 1 %,
+  a calorie target more than 25 % under the need or under resting energy,
+  logged days far under the need, very low carbohydrate on training days – and
+  points to professional help, the same card in Today, Nutrition, Body and the
+  weekly review. No red "over" states, no good or bad foods. It is
+  always on; a card explains the guard rails once on the first visit. Every
+  entry, meal and day shows protein, carbohydrate, fat and calories (calories
+  can be hidden; without logged kcal they are estimated from the macros, "≈").
+- Food photos: photograph a meal, and a model running only on the
+  phone lists the foods with estimated grams. Nutrients come from the German
+  food database BLS 4.0 (Max Rubner-Institut, CC BY 4.0, bundled offline);
+  every line can be checked, changed, searched or dropped before it is
+  logged, and water counts as drinking. Food names are matched with synonyms,
+  so "Nudeln" finds pasta (BLS: "Teigwaren") and "eggplant" finds aubergine.
+- Logging without a photo: "Find food" searches your own foods and the 7,140
+  BLS foods offline on every phone, and "Describe" turns a sentence such as
+  "2 slices of wholemeal bread with cheese and a glass of orange juice" into
+  the same checkable list – instantly, with the AI model as an optional
+  second opinion where it is installed.
+- Packaged products: "Find food" also searches 680,000 products from Open Food
+  Facts sold in German- and English-speaking countries, and its barcode button
+  scans a product – both answered on the phone, nothing is sent. Products
+  from your language region come first.
+- US units: Settings → Units next to the language (metric or US, chosen from
+  the phone's region on a first start; the same setting as in the training
+  settings). Loads and body weight are then in lb, lengths in in, food in oz,
+  water and drinks in fl oz – also on Today –, drinks can be logged in cups,
+  and a new food takes the per-portion values of a US label. Everything is
+  stored metric.
+- Logged foods can be changed: tap an entry to fix its amount or meal.
+- Recipes: put a dish together from any foods, split it into portions
+  (optionally by the cooked weight) and log it by the portion.
+- US foods: "Find food" also lists 7,793 generic foods from USDA FoodData
+  Central with their cup weights, so a cup of oats or rice is logged right.
+- Iron, calcium and vitamin D: a weekly estimate from your log next to the
+  EFSA reference values – information, not a diagnosis.
+- The product database is prepared in the background, and Settings → Delete
+  shows and frees the space it and the photo model take. The model (Qwen3.5 2B, or 4B on
+  phones with 8 GB) is downloaded once on request and checked against its
+  hash; the photo never leaves the device. On phones with too little memory
+  or an older processor the button stays greyed out and says why.
+- Training, body and nutrition data live in a separate encrypted database per
+  account and are included in the cloud backup and the manual export –
+  injuries, illness and injury pauses and the comeback diary only when you
+  switch them on. When that
+  database cannot be read, the logbook still exports and restores, and the
+  message says what is missing; a backup from a newer version restores too,
+  without the values this version does not know.
+- Plan days: today and the next two weeks, one tap per day – rest day, a
+  climbing day (gym bouldering, gym rope, rock or other; easy, volume, hard or
+  limit), a board session, a training, or swap two days. A change holds for
+  that date only; the standard week stays. The coach fits the free days around
+  the climbing: no finger training before a hard day, legs and core before a
+  limit day, recovery after it, and it says so in the planner. A day left open
+  shows what the coach proposes for it, planned around your own days, and the
+  coach's proposal for the next seven days stands above them. Two hard days in
+  a row or finger training before one are pointed out, nothing is locked. A
+  training that gives way is offered the next free day that fits it. "Rest day
+  today" sits in "Another suggestion", with Undo. On a planned climbing day
+  Today shows its warm-up and a short block for afterwards, and the nutrition
+  targets count the climbing.
+- The coach notices the usual workout: one of your own workouts done on two
+  of the same weekday (or in three of the last four trainings) becomes that
+  day's suggestion – as you do it, each exercise with its next step – on days
+  the plan leaves free; a choice made today still wins. On a weekday the
+  standard week leaves empty it offers once to put the workout there ("No
+  thanks" holds for six weeks), and the learned page lists usual workouts with
+  "Forget". A usual workout started from Today stays recognisable. Variety 0
+  means no pull towards new exercises at all.
+- Typed workouts are read as free text: several exercises per line or in
+  sentences ("Klimmzüge 5x5 +20 kg Liegestütze 3x15, dann Plank 3x60 s"),
+  numbers before or after the name, "and"/"then"/"je" lists, "left and right",
+  dumbbell pairs ("2x16 kg"), labels ("Bauch: …") and warm-ups written in a
+  sentence. Circuits can be written freely – "Zirkel 3 Runden: …", "3 Runden:"
+  over a list, "… als Zirkel", "5 rounds of …", "3x ( … )", "im Wechsel mit",
+  "Supersatz" – with their rests ("between exercises", "after each round", a
+  "Pause 90 s" line under the list); the preview shows them grouped. Typos
+  matter little (double letters, ck/k, swapped letters), and a weak name is
+  not matched just because the numbers fit. The catalogue gained sit-ups
+  with and without weight, incline dumbbell press, single-arm lat pulldown,
+  seated cable row, triceps pushdown and reverse flys. Long texts stay
+  smooth.
+- The review after a photo or a typed meal corrects amounts in one tap:
+  ×½, ×¾, ×1¼ and ×1½ for any food, whole pieces (−1 / +1, "≈ 2 pcs, 120 g
+  each") for foods people count – the photo model is about a quarter off per
+  food, measured on a benchmark. A food the table lacks can be chosen
+  from the product database in the review (protein powders, bars, branded
+  foods); an unmatched line starts that search with its own name.
+- Typed meals need few format rules: "2 eier 1 banane 200ml milch" or
+  "Banane Apfel Birne" are split into their foods without commas, "1/2",
+  "eine halbe" and "2 x" are understood, "Käsebrot" becomes bread and cheese,
+  and what goes into a coffee or onto bread gets a realistic amount (a splash
+  of milk, a spoon of sugar or honey, 10 g of oil). Plain
+  words find the plain food (bananas, berries, cucumber, cake, sugar); protein
+  shakes and bars, which the food table does not have, are left unmatched
+  rather than matched to protein bread.
+- Foods people count – a banana, an apple, an egg, a roll – offer pieces
+  next to grams when picked from the food database ("1 piece (120 g)"),
+  also when they were saved to my foods before; grams stay one tap away.
+- After a first set the training says "Starting value learned" and names
+  maxima in words ("max. 1 rep at +35 kg", "10 s at 74 kg").
+- Performance values are hard to throw off: one set raises a value by at
+  most 10 % (a second set of the same training that shows as much confirms
+  more), so a typo such as "50 reps" does not jump the next plan; a quick
+  self-estimate is replaced by the best set of the first training with the
+  exercise, also when that is lower; and on holds the seconds answered as
+  "how many more?" count as time held. Loads planned from an existing value
+  do not change.
+- LED effects for the Kilter Board, contributed by Dapeebb (PR #21): the
+  holds of the lit climb can pulse, flash between the CruxCoach and Kilter
+  colors, jump through the colors or travel through a rainbow. Choose one under
+  Settings → Board & Bluetooth → LED effects or from a climb's menu; a change
+  shows on the wall at once. "None", the default, keeps the normal colors. The
+  two strobes change color at most three times a second, ask once before their
+  first use and ask again while Android's "Remove animations" is on. What you
+  send, route playback and hold
+  cleaning always come first, automatic disconnect still releases the board on
+  time, and an effect ends after 15 minutes on the same climb. For filming,
+  "Keep running in other apps" (off by default) keeps it going while another
+  app is open, with a notification to stop it.
+- PaintBox, contributed by Hugie (PR #77): paint pictures on your board with
+  its LEDs, every hold a pixel. In Settings, under Extras: pick a color, tap or
+  swipe holds on and off, undo and redo, and save named pictures on the phone.
+  Send a picture once, or turn on live painting and the board follows every
+  stroke; it pauses when the connection drops, in the background and on a
+  board change. A photo from the phone can become hold colors: it is fitted to
+  the board and settled on the holds, so that a logo comes out even and, if
+  it mirrors, mirrored; drag, zoom and turn it, and Snap to holds settles it
+  again. Each hold takes the color that covers most of it, thin lines become
+  unbroken chains of holds, a glow is left out, and the photo's background
+  stays dark, found at its edge or tapped by you. The pipette takes the color
+  of a painted hold as the brush color, also a color a photo brought that the
+  color sheet does not name.
+  Kilter and the other Aurora boards
+  take every color within their power limits, MoonBoard green, blue and red,
+  Quantum four colors with up to 92 LEDs each; Shiny Wall is not supported yet.
+- A climb's page counts your logs on its two logging buttons: "Try (4)" and
+  "Top (2)" are your tries and tops of this climb over all days and angles.
+  The try that topped counts as the top.
+- Sorted at random, the button above the climb list reads "Shuffle again" and
+  deals a new order (in every other sort it stays "Random" and opens one climb
+  by chance, now with a dice). The same button stands in the filter where the
+  other sorts have their direction. Asked for in the developer chat.
+
+### Fixed
+- An exercise's record "estimated max" counts the reps you had in reserve, as
+  your strength value does: the same set no longer reads "2 × 3.1 kg" in one
+  place and "2 × 3 kg" in the other.
+- With the largest font a climb's page shows the ascent count in thousands
+  ("106k") instead of cutting the number off.
+- Sharing the board ("Share with board apps"): a climb the sharing phone lights
+  itself no longer cuts off the phones connected through it. Each of its own
+  sends stopped the sharing for a moment; the others lost the board, and until
+  they were back the sharing phone lit every climb it swiped to, also with
+  "Multiple connections" set to "Tap to send".
+- Board picker: choosing the board that is already chosen from the list no
+  longer clears the size or version below it; "Confirm" went grey until the
+  size was tapped again.
+- Main menu: during an unfinished guided tour, a tap beside the open menu or
+  a swipe closes it again; only Back or a menu entry did.
+- Logbook: the day headings write the date in the app language ("Thu, Dec
+  17, 2026"); they were German in English too.
+- Year in review: the note on the share sheet no longer says the image
+  carries "nothing else" than your numbers; it names what the switches below
+  it add (your name, problem names, the exact days of your climbs).
+- Weekly review: a week without a weigh-in no longer reads "Trend weight:
+  0 kg this week"; the line is left out.
+- Injuries: the pause rows write their dates like the injury card above
+  ("09.11.2026", "Nov 9, 2026"), not as "2026-11-09".
+- Tapping a screen's back arrow several times in a row no longer ends on a
+  black screen that only closing the app got rid of. The arrow now stops at
+  the first screen, as the system's Back always did.
+- The hang timer's spoken countdown can find the phone's text-to-speech engine
+  on Android 11 and newer: the app now declares that it looks for one. Without
+  an engine the timer still beeps and vibrates; no engine is required.
+- Settings → Board catalogues no longer shows loaded catalogues as "not loaded"
+  with a download button for the first seconds after opening; the boards show a
+  small loading sign until their counts are read.
+- The Kilter Homewall 10x12 picture shows the real holds; it showed grey
+  placeholder discs at 24 positions on the lower rows.
+- Training: exercises you type into a training that an injury rules out are no
+  longer only reported as left out; the message offers "Add anyway", as when you
+  pick such an exercise from the catalogue.
+- MoonBoard: hold cleaning with many holds shows them in sections, as many as the
+  LED box takes at once (about 40 to 52). A MoonBoard box showed a single LED for a
+  frame of more than 52; the app no longer sends a frame that big to it, and a climb
+  that needs more LEDs says so instead.
+- Training: "Why this suggestion?" no longer says fingers have the most left to do
+  this week when their week is already met (for example during an injury that
+  pauses climbing); it names the area that is behind, or says the fingers have
+  had their sessions, or that the week plans no finger training.
+- A phone that never touched nearby sharing now asks "Release connection?" when
+  someone nearby wants the board, instead of rejecting every request. The sharing
+  text already said that nearby users can ask.
+- Logbook statistics: with the hold heatmap on "All Climbs" (or start, hand, foot
+  or finish holds), every period or board tap read every climb of the board again,
+  several reads at a time, until the app ran out of memory and closed. The heat is
+  now read once per mode and board, one read at a time.
+- Logbook statistics: the "All Climbs" heatmap (and start, hand, foot and finish
+  holds) took minutes on a phone and said "No data" meanwhile. The climbs are now
+  read one by one and their holds counted without holding them all in memory, and
+  the card shows "Counting the holds…" until the heat is there.
+- Quantum boards are marked experimental where you pick or connect one: they
+  are not yet tested on a real Quantum board. A climb now lights as an ordinary
+  player route, one route in one colour for as long as the board's own auto-off
+  time (31 minutes if it names none), instead of a route that stays on until
+  removed. The board's answer counts: a route it takes is sent, a refusal (colour
+  or hold taken, board full) shows its reason. A route the board takes but does
+  not list stays in the layer rack as "sent; the board does not list it" until
+  its time is over, and removing it always turns it off. PaintBox lights every
+  colour of a picture. A board whose grid size or answers differ slightly from
+  what the app expects is no longer refused.
+- After a catalogue import the app frees the temporary database file at once. A Tension
+  import left about 180 MB in it until the next write, on a phone with little space left.
+- Encrypted backups have more than one storage server again. `cdn.hzrd149.com`, one of
+  the two servers up to 0.2.4, stopped taking uploads on 10 November 2026. Backups
+  and profile pictures now go to `nostr.download`,
+  `blossom.data.haus` and `blossom.yakihonne.com`. A backup that an earlier version
+  stored on the old server is still found when you restore, and it is deleted there
+  when a newer backup replaces it or when you delete your backup from the servers.
+- Your phone no longer keeps the name "CruxCoach…" in your car or headphones after
+  sharing a board with other apps. The phone carries that name only while sharing runs
+  on a connected board; when either ends, for whatever reason, its own Bluetooth name
+  comes back at once. If CruxCoach crashed, was ended by the system or was updated, or
+  the phone restarted while sharing, the name now comes back on its own – right after the restart
+  or update, at the next Bluetooth connection, or the next time CruxCoach starts –
+  instead of only when you open CruxCoach again. The phone's own name can no longer be
+  lost when sharing fails to start, or when two CruxCoach apps are installed. Swiping
+  CruxCoach away from the recent apps now ends sharing, and so does connecting the phone
+  to a car (car audio or hands-free; headphones and speakers do not): the sharing card
+  then says "Sharing stopped: your phone connected to a car" and sharing does not start
+  again on its own while the car stays connected. Settings → Sharing nearby says
+  that the phone is called "CruxCoach…" over Bluetooth while sharing; if its name has
+  not come back yet, it offers "Restore name now". When CruxCoach does not know the
+  earlier name, it suggests the device name from the phone settings, lets you change
+  it, and renames the phone only once you confirm.
+- Catalogue updates no longer wait 15 seconds per board when one Nostr relay accepts the
+  connection but never answers. Once two relays have sent the catalogue's signed manifest,
+  the others get two more seconds, then the update goes on with the newest manifest it has.
+- Training: every weight field now says what the number means, on every screen, in
+  English and German, kg and lb. The labels read "Weight per dumbbell", "Dumbbell weight",
+  "Total incl. bar", "Total incl. block", "Total, both hands", "Weight on the stack" and
+  "Added weight", and values read the way you enter them: "2 × 16 kg", "+12 kg",
+  "15 kg assisted". Dumbbells are logged per dumbbell. Volume, % body weight, the
+  estimated one-rep max and records count both dumbbells of a pair, so a set of 2 × 16 kg
+  no longer counts as 16 kg; older dumbbell sets are read the same way. Exercise steps
+  say what to log, one-sided exercises show "Sets per side" in the workout editor, and
+  your own dumbbell or kettlebell exercises can use one or two. In typed workouts,
+  "2x16 kg" is 16 kg per dumbbell on dumbbell work, +32 kg added on body-weight work
+  and 32 kg in total on a two-arm pick-up.
+- A tap on a slider with marks no longer lands one mark low: the injury pain could show and
+  save 3 with the thumb on 4. This applies to every slider with marks, among them pain, the board
+  filter's grade range and the climb editor's grade.
+- Training: a suggested training no longer plans more of an area than the week still allows. One
+  legs-and-core day could hold 16 leg sets against a weekly maximum of 10, and the short block after
+  climbing could add antagonist sets on every climbing day. In a week with no room left for that kind of
+  work, the coach suggests an easy 20-minute mobility session instead of a few sets. Found by a new
+  simulation that runs synthetic athletes through the training logic for months.
+- Training: new users who climb regularly no longer see "finger load rising" in their first four weeks.
+  The 28-day normal now counts from the first logged day once 14 days are logged; until then the careful
+  start (no max finger work) stays.
+- Training: deleting an injury ends its injury pause when no other injury is open, as
+  "It's over" does. A pause that started the same day goes away entirely. Undo brings the
+  pause back.
+- Training: once the week's training days (climbing included) are used up, Today suggests mobility or
+  rest. "Train anyway" on that card gives the training Today would have suggested without the day limit,
+  for the rest of the day. The short daily sessions of a comeback plan do not use up a day.
+- Training: after a training in which every work set of a strength exercise was answered "3+", the next
+  one plans at least two weight steps more, so a start that was too light catches up. Not for finger work,
+  and not during an injury, the return after a break, a comeback plan or for climbers under 18 or in their
+  first year. Below 10 kg a load rises by at most one step per training.
+- Training: the weekly plan counts the climbing still planned this week. A training early in the week
+  leaves room for the pull and core work of the climbing days ahead, and says so. When the week has no
+  room left for pull and push but legs or core are still short, Today suggests legs and core instead of
+  mobility, and the other way round. Without a hangboard, pick-up block or board, the finger goal is at
+  most your climbing days a week, and push and legs count only the training days without climbing.
+- Training: around an injury of one arm or leg, a one-sided exercise that also loads the other side (an
+  archer push-up or pull-up, an assisted one-arm pull-up or hang, a kneeling stretch for an injured knee,
+  lunges and split squats) is no longer offered for the healthy side only while the injury rules it out.
+- Comeback plan: the weekly look back reads the seven days before it and that morning. It offers the
+  next stage only after the stage's sessions on at least three days (or on as many as the stage plans,
+  when that is fewer) and while the week's middle morning pain is within the stage's rule, and says
+  which of the two is missing. A week without a morning value asks for this morning's pain first;
+  skipped, the stage stays. A rise of 1 in morning pain that stays within the rule is no longer a
+  warning, and a painful week at the first stage proposes repeating it instead of "not enough entries".
+- Comeback plan: a strength session starts from the last strength session's loads, no longer from the
+  light tendon holds done earlier the same day (and the other way round).
+- Injuries: pain on the injury card and in the training's pain sheet now goes from 0 to 10, like the
+  comeback diary, instead of stopping at 9. Pain you saved before keeps its number.
+- "Privacy notice" and "Source code" in Settings → About no longer close the app on a
+  phone without a browser; a short message says that no app can open the link. The
+  community links do the same.
+- "Request account data from Moon" in the MoonBoard import no longer closes the app on
+  a phone without an email app; a message says so, and the screen names the address to
+  send the copied request to.
+- Orange and status colours are easier to read, above all in the light theme: orange and
+  green, yellow or red labels, chips and banners, buttons on coloured cards and secondary
+  text now stand out clearly from what they sit on.
+- Appearance & language no longer jumps when the unit choice appears a moment after the
+  page opens, so a tap meant for the next row no longer lands on a unit.
+- The hold search in German counts "Griffe" and "Boulder", like the rest of the app, and one
+  hold or one climb is no longer counted in the plural ("1 hold → 12 climbs").
+- "Share with board apps" in the connection sheet is off until you share for the first time.
+  It showed on with "Starts as soon as a board is connected." although sharing starts by
+  itself only after that first time. Until then, Settings → Sharing nearby says so under
+  "Share the board with other apps".
+- At the largest font, the data export's "None", the LED colour choice, the board picker's
+  title and the unread count in "Bugs and feature requests" no longer break into single
+  letters or get cut off.
+- English texts use sentence case and one spelling (catalogue, favourites, colour, Wi-Fi);
+  the statistics say "Tries" throughout. The German export list says "Begehungen",
+  "Boulderlisten" and "Entwürfe", and "Über CruxCoach" no longer has an English line.
+- Messages can be copied: in announcements, the developer chat, the threads of bug reports
+  and feature requests, the report lists and the crash report, press and hold a text to
+  select it, with Copy and Select all. Web links in it (http and https) open in the browser.
+  A tap on a card still opens it or marks an announcement read.
+- The default relays use nostr.mom and purplerelay.com instead of
+  nostr-pub.wellorder.net and nostr.oxtr.dev, which no longer answer; messages to and from
+  the developer and bug and crash reports had only two working relays left. The saved relay
+  list swaps them too; relays from your own relay list stay as they are.
+- A crash report is cut to fit one message (about 12 KB; the start and the end of the
+  stack trace stay), so it reaches every relay: relay.primal.net refuses larger messages,
+  and a very large report could not be sent at all.
+- "Stop sharing" in the sharing notification now holds while the board stays connected. With
+  sharing that starts by itself, the next climb you sent started it again; now the next
+  connection does, as before. Until then the sharing card says so and offers "Share again".
+
 ## [0.2.4] - 2026-10-25
 
 ### Added

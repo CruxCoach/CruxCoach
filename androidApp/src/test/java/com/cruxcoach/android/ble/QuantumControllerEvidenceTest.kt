@@ -161,10 +161,40 @@ class QuantumControllerEvidenceTest {
     }
 
     @Test
-    fun `fff5 metadata rejects missing unknown and internally inconsistent records`() {
+    fun `fff5 metadata rejects missing and unknown records`() {
         assertEquals(null, parseQuantumControllerMetadata(ByteArray(40)))
+        assertEquals(null, parseQuantumControllerMetadata(ByteArray(42)))
         assertEquals(null, parseQuantumControllerMetadata(metadata(99, 15, 15)))
-        assertEquals(null, parseQuantumControllerMetadata(metadata(1, 15, 15)))
+        assertEquals(null, parseQuantumControllerMetadata(metadata(5, 15, 15)))
+    }
+
+    @Test
+    fun `fff5 size the app does not know for the model is kept, not refused`() {
+        // The type byte names the model; the grid sizes come from product data.
+        val parsed = parseQuantumControllerMetadata(metadata(1, 15, 15))
+        assertEquals(QuantumBoardModel.M, parsed?.model)
+        assertFalse(parsed!!.sizeMatchesModel)
+        assertTrue(parseQuantumControllerMetadata(metadata(1, 12, 12))!!.sizeMatchesModel)
+    }
+
+    @Test
+    fun `fff5 auto-off time sets how long a played route stays lit`() {
+        assertEquals(31, parseQuantumControllerMetadata(metadata(0, 15, 15))?.playMinutes)
+        assertEquals(0, parseQuantumControllerMetadata(metadata(0, 15, 15))?.autoOffSeconds)
+        val fifteenMinutes = parseQuantumControllerMetadata(metadata(0, 15, 15, autoOffSeconds = 900))
+        assertEquals(900, fifteenMinutes?.autoOffSeconds)
+        assertEquals(15, fifteenMinutes?.playMinutes)
+        assertEquals(16, parseQuantumControllerMetadata(metadata(0, 15, 15, autoOffSeconds = 901))?.playMinutes)
+    }
+
+    @Test
+    fun `an answer is a refusal only for the command just written`() {
+        val refused = QuantumBroadcast.Exception(QuantumCommand.BOARD_SWIPE, 7)
+        assertEquals(QuantumCommandFailure.COLOR_TAKEN, quantumAnswerFailure(refused, QuantumCommand.BOARD_SWIPE))
+        assertEquals(null, quantumAnswerFailure(refused, QuantumCommand.TURN_OFF_BY_USER))
+        assertEquals(null, quantumAnswerFailure(QuantumBroadcast.RouteList(QuantumCommand.BOARD_SWIPE, emptyList()), QuantumCommand.BOARD_SWIPE))
+        assertEquals(null, quantumAnswerFailure(null, QuantumCommand.BOARD_SWIPE))
+        assertEquals(QuantumCommandFailure.REFUSED, quantumAnswerFailure(QuantumBroadcast.Exception(QuantumCommand.BOARD_SWIPE, 3), QuantumCommand.BOARD_SWIPE))
     }
 
     @Test
@@ -196,6 +226,7 @@ class QuantumControllerEvidenceTest {
             QUANTUM_NOTIFICATION_INVALID,
             quantumNotificationFrameSize(byteArrayOf(1, 0x41, 5, 0)),
         )
+        // Reassembly keeps the reserved byte as its resync check.
         assertEquals(
             QUANTUM_NOTIFICATION_INVALID,
             quantumNotificationFrameSize(byteArrayOf(1, 0x47, 0, 1)),
@@ -212,6 +243,24 @@ class QuantumControllerEvidenceTest {
                 byteArrayOf(1, 0x47, BoardLayerManager.MAX_LAYER_IDENTITIES.toByte(), 0),
             ),
         )
+    }
+
+    @Test
+    fun `a complete notification is one answer even with bytes after its frame`() {
+        val accumulator = QuantumNotificationAccumulator()
+        val recovered = accumulator.consume(byteArrayOf(1, 0x47, 0, 0, 0x12, 0x01)).single()
+        assertEquals(listOf<Byte>(1, 0x47, 0, 0, 0x12, 0x01), recovered.bytes.toList())
+        assertFalse(recovered.crossedCallbackBoundary)
+        assertEquals(
+            QuantumBroadcast.RouteList(QuantumCommand.REQUEST_USER_ROUTE_LIST, emptyList()),
+            QuantumBoardBroadcastParser.parse(recovered.bytes),
+        )
+        // Nothing is left over to start a false frame with the next notification.
+        assertEquals(listOf<Byte>(1, 0x45, 0, 1, 0, 0), accumulator.consume(byteArrayOf(1, 0x45, 0, 1, 0, 0)).single().bytes.toList())
+        // A complete notification with a non-zero reserved byte is one answer, which the parser then refuses.
+        val odd = accumulator.consume(byteArrayOf(1, 0x47, 0, 1)).single()
+        assertEquals(listOf<Byte>(1, 0x47, 0, 1), odd.bytes.toList())
+        assertEquals(null, QuantumBoardBroadcastParser.parse(odd.bytes))
     }
 
     @Test
@@ -385,28 +434,6 @@ class QuantumControllerEvidenceTest {
     }
 
     @Test
-    fun `projection confirmation requires exact route user and color`() {
-        val confirmed = QuantumControllerState(
-            players = listOf(player(ownUser)),
-            revision = 4,
-            authoritativeRevision = 4,
-            authoritative = true,
-        )
-        assertTrue(isQuantumProjectionConfirmed(confirmed, emptyList(), route.uppercase(), ownUser, 0xff00ffff.toInt()))
-        assertFalse(isQuantumProjectionConfirmed(confirmed, emptyList(), route, foreignUser, 0x00ffff))
-        assertFalse(isQuantumProjectionConfirmed(confirmed, emptyList(), route, ownUser, 0x00ff00))
-        assertFalse(
-            isQuantumProjectionConfirmed(
-                confirmed.copy(lastFailure = QuantumCommandFailure.COLOR_TAKEN),
-                emptyList(),
-                route,
-                ownUser,
-                0x00ffff,
-            ),
-        )
-    }
-
-    @Test
     fun `authoritative player guard is order insensitive but exact`() {
         val expected = listOf(
             player(ownUser),
@@ -450,45 +477,6 @@ class QuantumControllerEvidenceTest {
         )
     }
 
-    @Test
-    fun `scoped removal keeps foreign players and confirms only target absence`() {
-        val before = QuantumControllerState(
-            players = listOf(player(ownUser), player(foreignUser)),
-            revision = 20,
-            authoritativeRevision = 20,
-            authoritative = true,
-        )
-        assertFalse(isQuantumScopedRemovalConfirmed(before, before.players, ownUser))
-
-        val after = before.copy(
-            players = listOf(player(foreignUser)),
-            revision = 21,
-            authoritativeRevision = 21,
-        )
-        assertTrue(isQuantumScopedRemovalConfirmed(after, before.players, ownUser))
-        assertFalse(isQuantumScopedRemovalConfirmed(after.copy(players = emptyList()), before.players, ownUser))
-        assertFalse(isQuantumScopedRemovalConfirmed(after.copy(authoritative = false), before.players, ownUser))
-    }
-
-    @Test
-    fun `projection confirmation rejects loss of a pre-existing foreign player`() {
-        val before = listOf(player(foreignUser))
-        val target = player(ownUser)
-        val complete = QuantumControllerState(
-            players = listOf(before.single(), target),
-            revision = 31,
-            authoritativeRevision = 31,
-            authoritative = true,
-        )
-
-        assertTrue(isQuantumProjectionConfirmed(complete, before, route, ownUser, 0x00ffff))
-        assertFalse(
-            isQuantumProjectionConfirmed(
-                complete.copy(players = listOf(target)), before, route, ownUser, 0x00ffff,
-            ),
-        )
-    }
-
     private fun player(userId: String) = QuantumActivePlayer(
         routeId = route,
         userId = userId,
@@ -496,12 +484,14 @@ class QuantumControllerEvidenceTest {
         color = 0x00ffff,
     )
 
-    private fun metadata(type: Int, columns: Int, rows: Int): ByteArray =
+    private fun metadata(type: Int, columns: Int, rows: Int, autoOffSeconds: Int = 0): ByteArray =
         ByteArray(41).apply {
             this[34] = type.toByte()
             this[35] = (columns ushr 8).toByte()
             this[36] = columns.toByte()
             this[37] = (rows ushr 8).toByte()
             this[38] = rows.toByte()
+            this[39] = (autoOffSeconds ushr 8).toByte()
+            this[40] = autoOffSeconds.toByte()
         }
 }

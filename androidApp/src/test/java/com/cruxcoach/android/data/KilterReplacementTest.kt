@@ -118,6 +118,35 @@ class KilterReplacementTest {
         assertFalse(unsyncedAscent("send") == null)
     }
 
+    @Test fun only_kilter_entries_queue_a_deletion_for_kilter() {
+        bid("kilter-try", synced = true)
+        ascent("kilter-send", synced = true)
+        // Entries of other boards are marked synced so the upload never takes them; Kilter has none of them.
+        repo.insertBid(
+            uuid = "shiny-try", climbUuid = "climb-b", angle = 40, isMirror = false, bidCount = 1, comment = null,
+            climbedAt = "2026-10-07T18:00:00", synced = true, climbName = "B", difficultyAverage = null,
+            boardBrand = "shinywall", externalId = "shinywall:history:a",
+        )
+        repo.insertAscent(
+            uuid = "moon-send", climbUuid = "climb-c", angle = 40, isMirror = false, attemptId = 0, bidCount = 1,
+            quality = null, difficulty = null, isBenchmark = false, comment = null, climbedAt = "2026-10-07T18:00:00",
+            synced = true, gymUuid = null, wallUuid = null, productLayoutUuid = null, climbName = "C",
+            difficultyAverage = null, climbFrames = "", framesCount = 0, boardBrand = "moonboard", layoutId = null,
+            externalId = null,
+        )
+
+        repo.updateBid("shiny-try", 2, "edited")
+        repo.updateAscent("moon-send", bidCount = 3, quality = null, comment = null)
+        assertTrue(repo.pendingLogDeletions().isEmpty(), "an edit of another board's entry replaces nothing on Kilter")
+
+        listOf("kilter-try", "shiny-try").forEach(repo::deleteBid)
+        listOf("kilter-send", "moon-send").forEach(repo::deleteAscent)
+        assertEquals(setOf("kilter-try", "kilter-send"), repo.pendingLogDeletions().toSet())
+        // A row that is gone already may still be on Kilter.
+        repo.deleteBid("unknown")
+        assertTrue("unknown" in repo.pendingLogDeletions())
+    }
+
     @Test fun imported_entries_are_found_by_their_external_id_prefix() {
         repo.insertBid(
             uuid = "imp", climbUuid = "climb-a", angle = 40, isMirror = false, bidCount = 1, comment = null,

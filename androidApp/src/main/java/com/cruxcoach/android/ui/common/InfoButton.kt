@@ -24,13 +24,18 @@ import com.cruxcoach.android.R
 
 /** Optional explanation, independently clickable beside an action or setting. */
 @Composable
-internal fun InfoButton(title: String, text: String, modifier: Modifier = Modifier) {
+internal fun InfoButton(
+    title: String,
+    text: String,
+    modifier: Modifier = Modifier,
+    tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
     var open by rememberSaveable(title) { mutableStateOf(false) }
     IconButton(onClick = { open = true }, modifier = modifier.size(48.dp)) {
         Icon(
             Icons.Outlined.Info,
             contentDescription = stringResource(R.string.action_show_info, title),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = tint,
             modifier = Modifier.size(20.dp),
         )
     }

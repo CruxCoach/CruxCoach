@@ -41,13 +41,14 @@ internal object BoardProjectionPolicy {
             connectionCapacity == BoardConnectionCapacity.SINGLE &&
             projectionSurvivesDisconnect
 
-    /** MoonBoard climbs carry wire-ready frames instead of Aurora hold rows. */
+    /** MoonBoard and Shiny Wall climbs go out from their frames instead of
+     *  Aurora hold rows. */
     fun hasSendablePayload(
         brand: BoardBrand?,
         holdCount: Int,
         frames: String?,
     ): Boolean = when (brand) {
-        BoardBrand.MOONBOARD -> !frames.isNullOrBlank()
+        BoardBrand.MOONBOARD, BoardBrand.SHINYWALL -> !frames.isNullOrBlank()
         null -> false
         else -> holdCount > 0
     }

@@ -16,6 +16,7 @@ import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.ShinyWallVariant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.concurrent.ConcurrentHashMap
@@ -100,6 +101,13 @@ class BoardCleaningLog(
             val positions = if (brand == BoardBrand.MOONBOARD) {
                 val variant = layoutId?.let(MoonBoardVariant::fromLayoutId) ?: MoonBoardVariant.MOONBOARD_2016
                 MoonBoardFrameEncoder.cleaningPositions(frames, variant)
+            } else if (brand == BoardBrand.SHINYWALL) {
+                // Placement ids carry the variant, which the cleaning encoder
+                // needs for the full state vector.
+                val variant = layoutId?.let(ShinyWallVariant::fromLayoutId) ?: return@mapNotNull null
+                BoardClimbParser.parseMultiFrames(frames).flatten()
+                    .map { it.placementId }
+                    .filterTo(mutableSetOf()) { variant.indexOf(it) != null }
             } else {
                 val holds = BoardClimbParser.parseMultiFrames(frames).flatten().let { holds ->
                     if (entry.isMirror && layoutId != null &&

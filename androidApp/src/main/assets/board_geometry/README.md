@@ -16,6 +16,14 @@ manifests (pubkey, event id, BIP-340 signature, d-tag and chunk SHA-256
 checked like the app does), using the importer's own SQL. Checked on device:
 Kilter and So iLL rows are identical to a real catalogue import.
 
+Shiny Wall (`shinywall.sqlite3`) is different: no catalogue chunk carries its
+geometry, so the APK is its only source and the app replaces the stored rows
+whenever an update ships a different file (`BundledBoardGeometry.BUNDLE_OWNED`).
+It is built by `scripts/build_shinywall_geometry.py` from a hold table derived
+from the Shiny Wall app's own layout data (positions only: no images, no
+routes, no user data); placeholder indices of the controller's state vector
+have no row.
+
 Not included: Quantum (authorised eWalls snapshot; bundling in the APK needs
 an owner decision) and MoonBoard (geometry bundled with its images).
 
@@ -36,3 +44,4 @@ geometry") and `THIRD_PARTY_LICENSES.md`.
 | soill | 592852a162a5d805a8985c6296e65fc99c3c513da61797e48a2290602aeb99ec | 1789818532 | soill-full | 04a896f9a773c8c71b81c74ab58eec2d7d22b692a50e8c57ab7330b7d6a18212 |
 | tension | 063c4b66ff562fe8e3c22a77492203891b60615534427a29468c1b2af87972bc | 1790222624 | tension-full | d769fa0e21761e4e61b543f0eae2dc82ac85e2fcb44a9a69d4e1d34da6617444 |
 | touchstone | bceb8ca2130926e42e691fc73c23bf79f074d24aa86a3d26b37c6e0d1c487500 | 1789818534 | touchstone-full | 60e953f7144bc27f7ddaefe71a1bcebcb5bccf49b519a6138fea6a8da9073712 |
+| shinywall | derived hold table (scripts/build_shinywall_geometry.py) | – | shinywall_geometry_v1 | see `bundle_source` in the file |

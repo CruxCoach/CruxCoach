@@ -39,6 +39,7 @@ import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
 import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -177,10 +178,10 @@ internal fun SessionChipContent(
                         formatSessionTime(sessionState.elapsedSeconds),
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Bold,
-                        color = timerColor
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     if (sessionState.isPaused) {
-                        Text(" ⏸", style = MaterialTheme.typography.bodySmall, color = WarningYellow.copy(alpha = 0.7f))
+                        Text(" ⏸", style = MaterialTheme.typography.bodySmall, color = CruxCoachDesign.colors.caution)
                     }
                     Spacer(Modifier.width(10.dp))
                 }
@@ -201,7 +202,7 @@ internal fun SessionChipContent(
                         "${session.currentIndex + 1}/${session.queue.size}",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Bold,
-                        color = OrangeAccent
+                        color = CruxCoachDesign.colors.onBrandAccentContainer
                     )
                     Spacer(Modifier.width(5.dp))
                     Text(
@@ -288,7 +289,9 @@ internal fun SessionChipContent(
         val boardDiffers = effectiveOnBoard != null &&
             effectiveOnBoard.climbUuid.isNotBlank() &&
             effectiveOnBoard.climbUuid != session.queue.getOrNull(session.currentIndex)?.climbUuid
-        if (session.externalBoardOverride || boardDiffers) {
+        // A climb the board refused for its size says why the wall shows another one.
+        val tooBig = playbackState.currentClimbTooBig
+        if (tooBig || session.externalBoardOverride || boardDiffers) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = WarningYellow.copy(alpha = 0.10f)),
@@ -301,7 +304,9 @@ internal fun SessionChipContent(
                     Icon(Icons.Default.SignalCellularAlt, null, tint = WarningYellow, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        if (session.externalBoardOverride || effectiveOnBoard == null) {
+                        if (tooBig) {
+                            stringResource(R.string.ble_queue_too_big)
+                        } else if (session.externalBoardOverride || effectiveOnBoard == null) {
                             stringResource(R.string.ble_external_board_override)
                         } else {
                             stringResource(
@@ -314,8 +319,8 @@ internal fun SessionChipContent(
                             )
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = WarningYellow,
-                        maxLines = 1,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = if (tooBig) 2 else 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )

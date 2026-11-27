@@ -86,6 +86,8 @@ class LocalShareService : Service() {
                         snapshotDir = cacheDir,
                         apkVersionCode = BuildConfig.VERSION_CODE.toLong(),
                         apkVersionName = BuildConfig.VERSION_NAME,
+                        shinyWallCatalogue = com.cruxcoach.android.data.ShinyWallCatalogueStore.file(this)
+                            .takeIf { it.isFile },
                     )
                     localServer.onAutoShutdown = {
                         mainHandler.post {

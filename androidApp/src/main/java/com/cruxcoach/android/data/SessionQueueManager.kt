@@ -17,6 +17,7 @@ import com.cruxcoach.android.ble.reservedLayerColors
 import com.cruxcoach.android.ble.hasCompleteQuantumLedMapping
 import com.cruxcoach.android.ble.hasConfirmableQuantumDiodeCount
 import com.cruxcoach.android.ble.matchesQuantumPlayers
+import com.cruxcoach.android.ble.removePaintBoxLayers
 import com.cruxcoach.android.ble.planKey
 import com.cruxcoach.android.ui.board.BoardSendModePolicy
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
@@ -107,9 +108,17 @@ data class SessionQueueState(
     val externalBoardClimb: QueueItem? = null,
     /** Recoverable board identity/configuration failure from playlist delivery. */
     val boardMismatch: BoardConfigurationMismatch? = null,
+    /** The last climb the board refused for more LEDs than it lights at once; the wall kept what it showed. */
+    val tooBigForBoard: QueueItem? = null,
 ) {
     val isActive: Boolean get() = role != SessionRole.NONE
     val currentClimb: QueueItem? get() = queue.getOrNull(currentIndex)
+    /** The current climb is not on the wall because the board can't show that many holds at once
+     *  (the same climb and angle; a changed rest time keeps it). */
+    val currentClimbTooBig: Boolean
+        get() = tooBigForBoard != null && currentClimb?.let {
+            it.climbUuid == tooBigForBoard.climbUuid && it.angle == tooBigForBoard.angle
+        } == true
     /** What is physically projected, including an identified external write. */
     val projectedClimb: QueueItem?
         get() = if (externalBoardOverride) externalBoardClimb else currentClimb
@@ -883,11 +892,14 @@ class SessionQueueManager(
                     if (climb.frames.isBlank()) return@withLock
                     val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
                         ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                    val sent = bleConnection.sendMoonBoardClimb(
-                        climb.frames,
-                        variant,
-                        userPreferences.moonBoardLedMode.first(),
-                    )
+                    val ledMode = userPreferences.moonBoardLedMode.first()
+                    // The box shows so many LEDs at once: a bigger climb is refused, and the player says so.
+                    if (!com.cruxcoach.domain.board.MoonBoardFrameEncoder.fits(climb.frames, variant, ledMode)) {
+                        _state.update { it.copy(tooBigForBoard = item) }
+                        Log.w(TAG, "sendCurrentClimbToBoard: MoonBoard climb ${item.climbUuid.take(8)} too big for one frame")
+                        return@withLock
+                    }
+                    val sent = bleConnection.sendMoonBoardClimb(climb.frames, variant, ledMode)
                     if (sent) {
                         advertisePrivatePlaylistProjection(climb, item)
                         markCurrentClimbProjected(key)
@@ -899,6 +911,12 @@ class SessionQueueManager(
                 if (holds.isEmpty()) return@withLock
                 val sent = if (climb.brand == BoardBrand.QUANTUM) {
                     sendQuantumPlaylistLayer(climb, item, holds)
+                } else if (climb.brand == BoardBrand.SHINYWALL) {
+                    // One state vector for the climb's own variant; an unknown
+                    // layout is skipped rather than sent to a guessed variant.
+                    val variant = com.cruxcoach.domain.board.ShinyWallVariant.fromLayoutId(climb.layoutId)
+                        ?: return@withLock
+                    bleConnection.sendShinyWallClimb(holds, variant)
                 } else {
                     val productSizeId = userPreferences.boardProductSizeId.first()
                     // Brand-scope the LED map + colours, keyed off the CLIMB's own
@@ -920,6 +938,7 @@ class SessionQueueManager(
                         holds,
                         ledMap,
                         roleColors,
+                        climbUuid = climb.uuid,
                         expectedBrand = climb.brand,
                     )
                 }
@@ -1024,6 +1043,12 @@ class SessionQueueManager(
         if (!layers.assignPreviewIfCurrent(layer, expectedCurrent)) return false
         val expectedPlan = layer.planKey()
 
+        // Every check passed: the climb replaces this phone's PaintBox picture,
+        // as on every other board. The refresh below sees the freed players.
+        if (bleConnection.removePaintBoxLayers(layers, expectedBoard) == null) {
+            layers.failProjection(expectedPlan)
+            return false
+        }
         // Catalogue hydration above may take disk time. Pull truth again at
         // the write boundary and repeat every safety predicate so a second
         // client cannot occupy the last slot/colour/hold in that interval.
@@ -1056,7 +1081,11 @@ class SessionQueueManager(
             expectedQuantumPlayers = expectedPlayers,
             expectedQuantumBoard = expectedBoard,
         )
-        if (sent) layers.confirmProjection(expectedPlan) else layers.failProjection(expectedPlan)
+        if (sent) {
+            layers.confirmProjection(expectedPlan, bleConnection.quantumUnlistedUntil(routeUuid, layer.userUuid, color))
+        } else {
+            layers.failProjection(expectedPlan)
+        }
         return sent
     }
 
@@ -1165,7 +1194,7 @@ class SessionQueueManager(
     private fun markCurrentClimbProjected(key: String) {
         lastSentClimbKey = key
         val changed = _state.value.awaitingExplicitSend
-        _state.update { it.copy(awaitingExplicitSend = false, boardMismatch = null) }
+        _state.update { it.copy(awaitingExplicitSend = false, boardMismatch = null, tooBigForBoard = null) }
         if (changed) onSessionInfoChanged?.invoke()
         val hadExternalOverride = _state.value.externalBoardOverride
         if (hadExternalOverride) {

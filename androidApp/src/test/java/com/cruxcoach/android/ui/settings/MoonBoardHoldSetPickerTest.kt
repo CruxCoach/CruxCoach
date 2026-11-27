@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.settings
 
 import app.cash.turbine.test
+import kotlin.time.Duration.Companion.seconds
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.CatalogueRevisionSource
 import com.cruxcoach.android.data.UserPreferences
@@ -80,7 +81,7 @@ class MoonBoardHoldSetPickerTest {
         val prefs = createTestUserPreferences(backgroundScope)
         onMasters2019(prefs)
 
-        vm(prefs).state.test {
+        vm(prefs).state.test(timeout = FLOW_TIMEOUT) {
             val state = awaitItem { it.variant != null }
             assertEquals(masters2019, state.variant)
             assertTrue("a fresh install owns the complete setup", state.isCompleteSetup)
@@ -96,7 +97,7 @@ class MoonBoardHoldSetPickerTest {
         onMasters2019(prefs)
         val viewModel = vm(prefs)
 
-        viewModel.state.test {
+        viewModel.state.test(timeout = FLOW_TIMEOUT) {
             awaitItem { it.variant != null }
             viewModel.setExpanded(true)
             viewModel.toggleSet(21L) // Wooden Holds — the board from issue #9
@@ -117,7 +118,7 @@ class MoonBoardHoldSetPickerTest {
         prefs.setMoonBoardHoldSets(masters2019, listOf(17L, 18L))
         val viewModel = vm(prefs)
 
-        viewModel.state.test {
+        viewModel.state.test(timeout = FLOW_TIMEOUT) {
             awaitItem { it.variant != null && !it.isCompleteSetup }
             viewModel.setExpanded(true)
             viewModel.selectCompleteSetup()
@@ -137,7 +138,7 @@ class MoonBoardHoldSetPickerTest {
         prefs.setMoonBoardHoldSets(masters2019, listOf(17L))
         val viewModel = vm(prefs)
 
-        viewModel.state.test {
+        viewModel.state.test(timeout = FLOW_TIMEOUT) {
             awaitItem { it.variant != null && it.selectedSetIds == setOf(17L) }
             viewModel.toggleSet(17L)
 
@@ -156,7 +157,7 @@ class MoonBoardHoldSetPickerTest {
         val prefs = createTestUserPreferences(backgroundScope)
         prefs.setMoonBoardSelection(MoonBoardVariant.MOONBOARD_2010.layoutId.toInt())
 
-        vm(prefs).state.test {
+        vm(prefs).state.test(timeout = FLOW_TIMEOUT) {
             val state = awaitItem { it.loaded }
             // One set is not a choice; a lone checkbox that cannot be unticked
             // would be worse than nothing (edge case 5).
@@ -171,7 +172,7 @@ class MoonBoardHoldSetPickerTest {
         val prefs = createTestUserPreferences(backgroundScope)
         prefs.setBoardSelection("kilter", layoutId = 1, productSizeId = 10)
 
-        vm(prefs).state.test {
+        vm(prefs).state.test(timeout = FLOW_TIMEOUT) {
             val state = awaitItem { it.loaded }
             assertNull(state.variant)
             cancelAndIgnoreRemainingEvents()
@@ -184,7 +185,7 @@ class MoonBoardHoldSetPickerTest {
         onMasters2019(prefs)
 
         repo.moonBoardHoldSetMaskPresent = false
-        vm(prefs).state.test {
+        vm(prefs).state.test(timeout = FLOW_TIMEOUT) {
             val blocked = awaitItem { it.variant != null }
             assertFalse(
                 "without hold-set data in the catalogue the picker is disabled",
@@ -209,7 +210,7 @@ class MoonBoardHoldSetPickerTest {
         repo.moonBoardHoldSetMaskPresent = false
         val viewModel = vm(prefs)
 
-        viewModel.state.test {
+        viewModel.state.test(timeout = FLOW_TIMEOUT) {
             val blocked = awaitItem { it.variant != null }
             assertFalse(
                 "the sync run has only been claimed; no data yet",
@@ -248,7 +249,7 @@ class MoonBoardHoldSetPickerTest {
         repo.moonBoardHoldSetMaskPresent = true
         val viewModel = vm(prefs)
 
-        viewModel.state.test {
+        viewModel.state.test(timeout = FLOW_TIMEOUT) {
             awaitItem { it.isCompleteSetup }
             viewModel.setExpanded(true)
 
@@ -281,7 +282,7 @@ class MoonBoardHoldSetPickerTest {
         val woodenOff = countWithMask(HoldSetMask.excludedMask(universe, universe - 21L))
         assertEquals("the Wooden climb drops, the unknown one stays", 2L, woodenOff)
 
-        viewModel.state.test {
+        viewModel.state.test(timeout = FLOW_TIMEOUT) {
             val complete = awaitItem { it.counts != null && it.isCompleteSetup }
             assertEquals(3L, complete.counts!!.total)
             assertEquals(
@@ -334,5 +335,13 @@ class MoonBoardHoldSetPickerTest {
             if (predicate(item)) return item
         }
         error("no matching state emitted")
+    }
+
+    private companion object {
+        /**
+         * The view model loads on real IO threads: on a busy CI runner the first state can take longer than
+         * Turbine's 3 s default (publisher run 39285375976 failed "the picker reports the catalogue gate" that way).
+         */
+        val FLOW_TIMEOUT = 15.seconds
     }
 }

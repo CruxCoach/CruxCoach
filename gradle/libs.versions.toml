@@ -24,6 +24,8 @@ zxing = "3.5.4"
 camerax = "1.4.2"
 quartz = "1.05.1"
 okhttp = "4.12.0"
+# ONNX Runtime (MIT): runs the spray-wall hold segmentation model on the phone.
+onnxruntime = "1.31.1"
 security-crypto = "1.1.0"
 appcompat = "1.7.0"
 biometric = "1.1.0"
@@ -33,6 +35,8 @@ turbine = "1.2.1"
 coil = "2.7.0"
 compose-richtext = "0.20.0"
 maplibre = "11.10.0"
+# Health Connect (FEAT-070): read-only sleep + exercise sessions; needs compileSdk 34+.
+health-connect = "1.1.0"
 
 [libraries]
 # Compose BOM
@@ -96,6 +100,7 @@ quartz-android = { group = "com.vitorpamplona.quartz", name = "quartz-android", 
 
 # OkHttp (WebSocket for Nostr relay communication)
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
 # OkHttp MockWebServer — used in unit tests to fake the Kilter Keycloak / API endpoints.
 okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
 # okhttp-tls — lets MockWebServer serve https in unit tests. The competition
@@ -125,6 +130,10 @@ compose-richtext-ui-material3 = { group = "com.halilibo.compose-richtext", name 
 # MapLibre Native Android — vector map rendering for FEAT-006 board locations.
 # OpenFreeMap-backed style URL, no API key required.
 maplibre-android-sdk = { group = "org.maplibre.gl", name = "android-sdk", version.ref = "maplibre" }
+
+# Health Connect client (FEAT-070 coach: sleep for the check-in, climbing sessions
+# from watches). Read-only; every call is guarded when the provider is missing.
+health-connect-client = { group = "androidx.health.connect", name = "connect-client", version.ref = "health-connect" }
 
 # Testing
 kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }

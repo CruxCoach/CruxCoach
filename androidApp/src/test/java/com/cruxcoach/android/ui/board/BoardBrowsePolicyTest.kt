@@ -36,7 +36,7 @@ class BoardBrowsePolicyTest {
 
     @Test
     fun `existing board filter values are unchanged`() {
-        for (brand in BoardBrand.entries.filter { it != BoardBrand.QUANTUM }) {
+        for (brand in BoardBrand.entries.filter { it != BoardBrand.QUANTUM && it != BoardBrand.SHINYWALL }) {
             assertEquals(
                 ClimbTypeFilter.ROUTE,
                 BoardBrowsePolicy.climbType(brand, ClimbTypeFilter.ROUTE),
@@ -52,9 +52,23 @@ class BoardBrowsePolicyTest {
     }
 
     @Test
-    fun `Quantum rule bits never alter another board exclusion mask`() {
+    fun `Shiny Wall keeps benchmarks but has no route or BoardSesh filters`() {
+        assertEquals(
+            ClimbTypeFilter.BOULDER,
+            BoardBrowsePolicy.climbType(BoardBrand.SHINYWALL, ClimbTypeFilter.ROUTE),
+        )
+        assertEquals(true, BoardBrowsePolicy.benchmarkOnly(BoardBrand.SHINYWALL, true))
+        assertEquals(
+            OriginFilter.ALL,
+            BoardBrowsePolicy.origin(BoardBrand.SHINYWALL, OriginFilter.BOARDSESH),
+        )
+    }
+
+    @Test
+    fun `route tag bits never alter another board exclusion mask`() {
         assertEquals(17L, BoardBrowsePolicy.exclusionMask(BoardBrand.QUANTUM, 4L, 17L))
-        BoardBrand.entries.filter { it != BoardBrand.QUANTUM }.forEach { brand ->
+        assertEquals(1L shl 9, BoardBrowsePolicy.exclusionMask(BoardBrand.SHINYWALL, 4L, 1L shl 9))
+        BoardBrand.entries.filter { !BoardBrowsePolicy.usesRouteTagMask(it) }.forEach { brand ->
             assertEquals(4L, BoardBrowsePolicy.exclusionMask(brand, 4L, 17L), brand.name)
         }
     }

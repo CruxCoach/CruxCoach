@@ -19,4 +19,22 @@ class UserPreferencesNearbyClimbSharingTest {
 
         assertFalse(preferences.nearbyClimbSharing.first())
     }
+
+    @Test
+    fun `release requests follow nearby sharing until set themselves`() = runTest {
+        val preferences = createTestUserPreferences(backgroundScope)
+
+        // Sharing is on by default and says others can ask to release the board.
+        assertTrue(preferences.allowRemoteDisconnect.first())
+
+        preferences.setNearbyClimbSharing(false)
+        assertFalse(preferences.allowRemoteDisconnect.first())
+
+        preferences.setNearbyClimbSharing(true)
+        assertTrue(preferences.allowRemoteDisconnect.first())
+
+        preferences.setAllowRemoteDisconnect(false)
+        assertFalse(preferences.allowRemoteDisconnect.first())
+        assertTrue(preferences.nearbyClimbSharing.first())
+    }
 }

@@ -29,31 +29,31 @@ class BoardStatsHelpTest {
 
     @Test fun `accessible actions preserve period and reach long chart choices`() {
         val app = ApplicationProvider.getApplicationContext<Application>()
-        val selected = mutableStateOf(GradeChartView.FLASH_SEND_ATTEMPT)
+        val selected = mutableStateOf(ActivityView.CALENDAR)
         var periodChanges = 0
         val stats = BoardLogbookStats(
+            totalSends = 3,
+            totalAttempts = 6,
             gradeOutcomes = listOf(GradeOutcomeEntry("6a", 15, 1, 2, 3)),
-            outcomeDistribution = OutcomeDistribution(1, 2, 3),
-            uniqueClimbsByGrade = listOf(UniqueClimbEntry("6a", 15, 3, 5)),
+            activityMap = mapOf(java.time.LocalDate.now() to 2),
+            entriesOverTime = listOf(VolumeBucket(java.time.LocalDate.now(), 7, 1, 2, 0, 0)),
         )
         compose.setContent {
             MaterialTheme {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
                     Box(Modifier.fillMaxSize()) {
-                        BoardStatsSheet(
-                            stats = stats,
-                            statsInterval = StatsTimeInterval.ALL,
-                            gradeChartView = selected.value,
-                            timeChartView = TimeChartView.SENDS_OVER_TIME,
-                            distributionChartView = DistributionChartView.ANGLE,
-                            gradeScale = GradeScale.V_SCALE,
-                            onIntervalSelect = { periodChanges++ },
-                            onGradeChartViewSelect = { selected.value = it },
-                            onTimeChartViewSelect = {},
-                            onDistributionChartViewSelect = {},
-                            onCustomDateRange = { _, _ -> periodChanges++ },
-                            onDismiss = {},
-                        )
+                        BoardStatsSheet(onDismiss = {}) { modifier ->
+                            BoardStatsSheetContent(
+                                stats = stats,
+                                statsInterval = StatsTimeInterval.ALL,
+                                gradeScale = GradeScale.V_SCALE,
+                                activityView = selected.value,
+                                onActivityViewSelect = { selected.value = it },
+                                onIntervalSelect = { periodChanges++ },
+                                onCustomDateRange = { _, _ -> periodChanges++ },
+                                modifier = modifier,
+                            )
+                        }
                     }
                 }
             }
@@ -68,13 +68,12 @@ class BoardStatsHelpTest {
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("info_dialog").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(app.getString(R.string.action_close)).assertIsDisplayed().performSemanticsAction(SemanticsActions.OnClick) { it() }
         compose.runOnIdle { assertEquals(0, periodChanges) }
-        compose.onNodeWithText(app.getString(R.string.board_stats_flash_send_attempt))
+        compose.onNodeWithText(app.getString(R.string.board_stats_grades_title)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(app.getString(R.string.board_stats_activity))
             .performScrollTo().assertIsDisplayed().onParent()
             .performSemanticsAction(SemanticsActions.OnClick) { it() }
-        compose.onNodeWithText(app.getString(R.string.ux_sent_climbs_grade))
+        compose.onNodeWithText(app.getString(R.string.board_stats_entries_over_time))
             .performScrollTo().assertIsDisplayed().performSemanticsAction(SemanticsActions.OnClick) { it() }
-        compose.runOnIdle { assertEquals(GradeChartView.UNIQUE_CLIMBS, selected.value) }
-        compose.onNodeWithText(app.getString(R.string.ux_sent_climbs))
-            .performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { assertEquals(ActivityView.ENTRIES, selected.value) }
     }
 }

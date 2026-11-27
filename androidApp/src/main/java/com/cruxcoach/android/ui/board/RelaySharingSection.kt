@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import com.cruxcoach.android.ui.common.InfoButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -144,12 +145,16 @@ fun RelaySharingSection(
                     modifier = Modifier.testTag("relay_share_switch"),
                 )
             }
+            // Stopped in the car or from the notification: sharing waits for the next board connection.
+            val stoppedUntilNextConnection = !state.enabled &&
+                (state.error == RelayError.STOPPED_FOR_CAR || state.stoppedForConnection)
             val status = when {
                 state.enabled -> stringResource(
                     R.string.relay_chip_text,
                     state.boardName ?: connectedBoard.displayName,
                     state.clientCount,
                 )
+                stoppedUntilNextConnection -> stringResource(R.string.relay_status_stopped_for_car)
                 sharingOn -> stringResource(R.string.relay_status_waiting)
                 disclosureSeen -> stringResource(R.string.relay_share_description)
                 else -> stringResource(R.string.relay_disclosure_text)
@@ -160,6 +165,12 @@ fun RelaySharingSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, end = 8.dp),
             )
+            if (stoppedUntilNextConnection) {
+                TextButton(
+                    onClick = viewModel::shareAgain,
+                    modifier = Modifier.testTag("relay_share_again"),
+                ) { Text(stringResource(R.string.relay_share_again)) }
+            }
             state.advertisedName?.takeIf { state.enabled }?.let { name ->
                 Text(
                     stringResource(R.string.relay_advertised_as, name),
@@ -178,6 +189,8 @@ internal fun relayErrorText(error: RelayError, detail: String?): String {
         RelayError.SERVER_START_FAILED -> stringResource(R.string.relay_error_server)
         RelayError.ADVERTISE_FAILED -> stringResource(R.string.relay_error_advertise)
         RelayError.NAME_SET_FAILED -> stringResource(R.string.relay_error_name)
+        RelayError.NAME_IN_USE -> stringResource(R.string.relay_error_name_in_use)
+        RelayError.STOPPED_FOR_CAR -> stringResource(R.string.relay_error_stopped_for_car)
         RelayError.BOARD_LOST -> stringResource(R.string.relay_error_board_lost)
         RelayError.UNSUPPORTED_BOARD -> stringResource(R.string.relay_error_unsupported_board)
         RelayError.FORWARD_FAILED -> stringResource(R.string.relay_error_forward_failed)

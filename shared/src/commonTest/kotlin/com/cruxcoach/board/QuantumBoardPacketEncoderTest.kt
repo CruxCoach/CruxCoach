@@ -40,25 +40,75 @@ class QuantumBoardPacketEncoderTest {
         assertEquals(expectedCrc, QuantumBoardPacketEncoder.crc16Modbus(frame.copyOf(19)))
     }
 
-    @Test fun `repeated route projection always releases user before activation`() {
-        val user = "00112233-4455-6677-8899-aabbccddeeff"
-        val first = QuantumBoardPacketEncoder.replaceUserRoute(
-            "11111111-2222-3333-4444-555555555555", user, listOf(1, 2, 3),
+    private fun hex(text: String): ByteArray =
+        text.replace(" ", "").chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+
+    private val player = "3f2a9c1e-7b4d-4e8a-9c21-5d6e7f8a9b0c"
+
+    @Test fun `turn off user matches the golden vector`() {
+        assertContentEquals(
+            hex("01 43 3f2a9c1e7b4d4e8a9c215d6e7f8a9b0c 00 ae3a"),
+            QuantumBoardPacketEncoder.turnOffUser(player),
         )
-        val repeated = QuantumBoardPacketEncoder.replaceUserRoute(
-            "11111111-2222-3333-4444-555555555555", user, listOf(4, 5, 6),
+    }
+
+    @Test fun `play is one BOARD_SWIPE that matches the golden XL vector`() {
+        // XL/M "Vector 1", 12 holds, green, 31 minutes.
+        val frame = QuantumBoardPacketEncoder.play(
+            routeId = "d44b3cc3-ab86-4ed5-8509-640b252a17c2",
+            userId = player,
+            diodes = listOf(2010, 3012, 1046, 1048, 2039, 2045, 3023, 3033, 6110, 6122, 3052, 6131),
+            color = 0x00ff00,
         )
-        val switched = QuantumBoardPacketEncoder.replaceUserRoute(
-            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", user, listOf(7, 8, 9),
+        assertContentEquals(
+            hex(
+                "01 44 d44b3cc3ab864ed58509640b252a17c2 3f2a9c1e7b4d4e8a9c215d6e7f8a9b0c 00ff00 001f 00 18" +
+                    "07da 0bc4 0416 0418 07f7 07fd 0bcf 0bd9 17de 17ea 0bec 17f3 5ae3",
+            ),
+            frame,
         )
-        listOf(first, repeated, switched).forEach { transition ->
-            assertEquals(0x43, transition.first()[1].toInt() and 0xff)
-            assertEquals(0x41, transition[1][1].toInt() and 0xff)
-            assertContentEquals(
-                QuantumBoardPacketEncoder.uuidBytes(user),
-                transition.first().copyOfRange(2, 18),
-            )
+    }
+
+    @Test fun `play matches the golden Belay vector`() {
+        // Belay "First Easy", 23 holds on strings 4, 5, 14 and 15.
+        val frame = QuantumBoardPacketEncoder.play(
+            routeId = "3d265119-5911-42c3-9559-3acdf77963cb",
+            userId = player,
+            diodes = listOf(
+                4013, 4031, 4067, 4073, 4091, 4098, 5038, 5046, 5057, 5082, 14013, 14028,
+                14039, 14046, 14057, 14064, 14068, 14073, 14081, 15009, 15027, 15093, 14095,
+            ),
+            color = 0x00ff00,
+            minutes = 31,
+        )
+        assertContentEquals(
+            hex(
+                "01 44 3d265119591142c395593acdf77963cb 3f2a9c1e7b4d4e8a9c215d6e7f8a9b0c 00ff00 001f 00 2e" +
+                    "0fad 0fbf 0fe3 0fe9 0ffb 1002 13ae 13b6 13c1 13da 36bd 36cc 36d7 36de 36e9 36f0" +
+                    "36f4 36f9 3701 3aa1 3ab3 3af5 370f 7300",
+            ),
+            frame,
+        )
+    }
+
+    @Test fun `play lasts the controller's auto-off time in whole minutes`() {
+        assertEquals(31, QuantumBoardPacketEncoder.playMinutes(null))
+        assertEquals(31, QuantumBoardPacketEncoder.playMinutes(0))
+        assertEquals(1, QuantumBoardPacketEncoder.playMinutes(59))
+        assertEquals(30, QuantumBoardPacketEncoder.playMinutes(1800))
+        assertEquals(31, QuantumBoardPacketEncoder.playMinutes(1801))
+        val frame = QuantumBoardPacketEncoder.play(
+            QuantumBoardPacketEncoder.ZERO_UUID, player, listOf(1), 0xff00ff,
+            minutes = QuantumBoardPacketEncoder.playMinutes(1800),
+        )
+        assertContentEquals(byteArrayOf(0, 30), frame.copyOfRange(37, 39))
+    }
+
+    @Test fun `play refuses more diodes than one frame holds`() {
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            QuantumBoardPacketEncoder.play(QuantumBoardPacketEncoder.ZERO_UUID, player, (1..93).toList(), 0x00ff00)
         }
+        assertEquals(227, QuantumBoardPacketEncoder.play(QuantumBoardPacketEncoder.ZERO_UUID, player, (1..92).toList(), 0x00ff00).size)
     }
 
     @Test fun `activate chunks at 92 diodes and every frame has valid crc`() {
@@ -81,7 +131,7 @@ class QuantumBoardPacketEncoderTest {
         assertContentEquals(
             byteArrayOf(0xff.toByte(), 0xff.toByte()),
             frames.first().copyOfRange(37, 39),
-            "match the eWalls 2.0.14 route-play default used for active players",
+            "ACTIVATE_WALL defaults to lit until removed",
         )
     }
 
@@ -151,8 +201,26 @@ class QuantumBoardPacketEncoderTest {
             QuantumBroadcast.Exception(com.cruxcoach.domain.board.QuantumCommand.ACTIVATE_WALL, 7),
             QuantumBoardBroadcastParser.parse(exception),
         )
-        assertEquals(null, QuantumBoardBroadcastParser.parse(exception + byteArrayOf(0)))
         assertEquals(null, QuantumBoardBroadcastParser.parse(byteArrayOf(1, 0x47, 1, 0)))
+        assertEquals(null, QuantumBoardBroadcastParser.parse(byteArrayOf(2, 0x47, 0, 0)))
+        assertEquals(null, QuantumBoardBroadcastParser.parse(byteArrayOf(1, 0x47, 5, 0) + ByteArray(5 * 37)))
+    }
+
+    @Test fun `answers longer than their frame still parse`() {
+        // Firmware that appends a CRC or padding must not make every answer unreadable.
+        val exception = byteArrayOf(1, 0xc4.toByte(), 7)
+        assertEquals(
+            QuantumBroadcast.Exception(com.cruxcoach.domain.board.QuantumCommand.BOARD_SWIPE, 7),
+            QuantumBoardBroadcastParser.parse(exception + byteArrayOf(0x12, 0x34)),
+        )
+        val body = byteArrayOf(1, 0x47, 1, 0) +
+            QuantumBoardPacketEncoder.uuidBytes("11111111-2222-3333-4444-555555555555") +
+            QuantumBoardPacketEncoder.uuidBytes(player) +
+            byteArrayOf(0x07, 0x08, 0, 0xff.toByte(), 0)
+        val list = QuantumBoardBroadcastParser.parse(body + byteArrayOf(0x55, 0x66)) as QuantumBroadcast.RouteList
+        assertEquals(player, list.players.single().userId)
+        assertEquals(0x0708, list.players.single().remainingSeconds)
+        assertEquals(0x00ff00, list.players.single().color)
     }
 
     @Test fun `empty route snapshot matches exact simulator vector`() {
@@ -169,6 +237,8 @@ class QuantumBoardPacketEncoderTest {
             null,
             QuantumBoardBroadcastParser.parse(byteArrayOf(1, 0x47, 0, 1)),
         )
+        // An echo of our own route list request is no empty board.
+        assertEquals(null, QuantumBoardBroadcastParser.parse(QuantumBoardPacketEncoder.requestRouteList()))
     }
 
     @Test fun `only Quantum opts into four independent layers`() {

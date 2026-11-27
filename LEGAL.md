@@ -2,9 +2,9 @@
 
 ## What This Project Is
 
-CruxCoach is a free, open-source climbing app for use with the Kilter Board and MoonBoard climbing training systems. It provides climb browsing, BLE board control, session tracking, logbook management, progress analytics, Kilter account sync, and CruxCoach-community climb authoring. It is non-commercial and maintained by volunteers.
+CruxCoach is a free, open-source climbing app for use with the Kilter Board, MoonBoard and Shiny Wall climbing training systems. It provides climb browsing, BLE board control, session tracking, logbook management, progress analytics, Kilter account sync, a read-only Shiny Wall account import, and CruxCoach-community climb authoring. It is non-commercial and maintained by volunteers.
 
-The legal reasoning below is written primarily around the Kilter Board (the project's original target). The same principles — factual/functional climb data, community-created content, referential trademark use, and interoperability via BLE — apply equally to the MoonBoard; MoonBoard-specific provenance details are still being documented.
+The legal reasoning below is written primarily around the Kilter Board (the project's original target). The same principles — factual/functional climb data, community-created content, referential trademark use, and interoperability via BLE — apply equally to the MoonBoard and Shiny Wall. MoonBoard-specific provenance details are still being documented; the Shiny Wall catalogue, wall images and geometry have their own sections below.
 
 ---
 
@@ -50,6 +50,7 @@ CruxCoach distributes board reference data and community-created climb data via 
 | Climbs (hold sequences + grades) | Community-created factual data | User-generated content | Factual data, created by climbers |
 | Climb statistics (difficulty averages, ascent counts) | Aggregated community data | Community activity metrics | Statistical facts |
 | Gym & wall locations (FEAT-015) | Public-business directory data | [`@hangtime/climbing-boards`](https://www.npmjs.com/package/@hangtime/climbing-boards) (Kilter PowerSync `global_gyms` mirror + StoreRocket contact records) | Factual / functional information about commercial gym entities, used to render the in-app board-locations map. No user personal data. |
+| Shiny Wall catalogue (hold sequences, grades, angles, route names, aggregate statistics) | Community-created factual data | Shiny Wall's published standard routes, refreshed every day | See [below](#shiny-wall-catalogue). Drafts and personal data are never included. |
 
 ### What we do NOT distribute
 
@@ -112,6 +113,25 @@ endorsement. See the in-directory
 [`README.md`](androidApp/src/main/assets/board_images/README.md) for origin,
 per-board rights holders, and removal-request contacts.
 
+### Bundled Shiny Wall wall images
+
+The Shiny Wall Standard variants are drawn from images under
+[`androidApp/src/main/assets/board_images/shinywall/`](androidApp/src/main/assets/board_images/shinywall/).
+CruxCoach composes each image itself
+([`scripts/build_shinywall_images.py`](scripts/build_shinywall_images.py))
+from the cut-out hold photos of the official Shiny Wall app, placed at the
+variant's hold positions on a plain dark background. No other artwork, logo
+or brand colours are included.
+
+The hold photos remain the property of **Shiny Wall**. Inclusion is limited
+to referential visualization and hardware interoperability. CruxCoach claims
+no ownership, affiliation, or endorsement. See the in-directory
+[`README.md`](androidApp/src/main/assets/board_images/README.md) for
+provenance and removal-request contacts, and
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the maintained
+attribution inventory. Deleting the `shinywall/` folder removes the images;
+the app then draws the holds as dots.
+
 ### Bundled board geometry
 
 The hold positions, board sizes, layout-image references and LED addresses of
@@ -130,6 +150,29 @@ of data. CruxCoach claims no ownership, affiliation or endorsement. Quantum
 geometry is not bundled. Per-board provenance is in the in-directory
 [`README.md`](androidApp/src/main/assets/board_geometry/README.md), attribution
 and removal contacts in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+
+Shiny Wall is the exception: no catalogue chunk carries its geometry, so the
+APK is its only source. `shinywall.sqlite3` holds the hold positions of the
+Shiny Wall Standard variants, a numeric table derived from the Shiny Wall
+app's own layout data for interoperability (positions only: no images,
+routes or user data).
+
+### Bundled hold-type labels
+
+The APK also carries one label file per board under
+[`androidApp/src/main/assets/hold_types/`](androidApp/src/main/assets/hold_types/),
+with a hold-type label for every placement. The files hold labels only, with
+no images and no climbs. CruxCoach made the labels from the board pictures in
+the app; placements without a usable picture have no type.
+
+The label files are licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Credit them as
+"Hold types by CruxCoach (https://github.com/CruxCoach/CruxCoach), CC BY 4.0".
+The app's code stays under GPL-3.0. The labels describe the boards; the
+boards, their holds and their images belong to their makers, as set out in
+the sections on the bundled images above. The format and the licence are in
+the in-directory
+[`README.md`](androidApp/src/main/assets/hold_types/README.md).
 
 ### Map rendering & tile data
 
@@ -172,6 +215,17 @@ correctness and removal at the dataset level. Gym operators or rights
 holders may request removal at any time via the contacts in `SECURITY.md`,
 which are forwarded upstream where applicable.
 
+### Shiny Wall catalogue
+
+The Shiny Wall catalogue is a signed CruxCoach catalogue
+(`cruxcoach/shinywall-db`), refreshed every day from Shiny Wall's published
+standard routes: hold sequences, grades, angles, route names and aggregate
+statistics (average grade and rating, assessment counts). Drafts and personal
+data are never included: no account or author identifiers and no free-text
+descriptions. The app downloads it only once a user chooses a Shiny Wall.
+Shiny Wall keeps all rights in its routes; removal requests can be sent via
+the contacts in `SECURITY.md`.
+
 ### Integrity & verifiability
 
 All data chunks are content-addressed by their SHA-256 hash and served via the Blossom protocol. A Nostr manifest event (Kind 30078, NIP-78) published to public relays contains the hash, size, and download URLs for each chunk, enabling any client to verify data integrity independently.
@@ -182,7 +236,7 @@ All data chunks are content-addressed by their SHA-256 hash and served via the B
 
 We respect the climbing community and the people who create climbs.
 
-- Where climb creator information is available, we attribute the creator by their username.
+- Where a catalogue carries the climb creator's username, we show it with the climb. The Shiny Wall catalogue carries no author identifiers, so Shiny Wall routes are shown without a creator.
 - We do not claim authorship of climbs we did not create.
 - If you are the creator of a climb and would like it removed from this project, please open an issue or contact us. We will remove it from all data sources under our control. Note that due to the decentralised nature of the Nostr/Blossom protocol, we cannot guarantee removal from third-party mirrors or relays.
 
@@ -194,7 +248,9 @@ We respect the climbing community and the people who create climbs.
 
 CruxCoach communicates with Kilter Board hardware over standard Bluetooth Low Energy (BLE) using the Nordic UART Service (NUS), a widely documented BLE GATT service. The board hardware openly advertises this service through standard GATT service discovery. Sending BLE packets to a documented, publicly discoverable service on purchased hardware does not reproduce any copyrighted code and does not constitute a restricted act under copyright law.
 
-No technological protection measures are circumvented. NUS is a communication protocol, not an access control mechanism.
+Shiny Wall controllers are reached the same way: the controller exposes a writable GATT characteristic over BLE, without pairing or authentication, and CruxCoach writes to it which holds to light in which colours.
+
+No technological protection measures are circumvented. NUS and the Shiny Wall characteristic are communication channels, not access control mechanisms.
 
 EU and German law independently establish the right to analyse and interoperate with lawfully acquired products:
 - **§ 69e UrhG** (implementing EU Software Directive 2009/24/EC, Article 6): statutory right to decompile for interoperability, non-waivable per § 69g(2) UrhG
@@ -203,11 +259,36 @@ EU and German law independently establish the right to analyse and interoperate 
 
 ### Trademark
 
-"Kilter Board" and "Kilter" are trademarks of Kilter Grips, LLC. "MoonBoard" and "Moon" are trademarks of Moon Climbing Ltd. CruxCoach uses these marks solely to indicate compatibility with the respective board hardware, as permitted under **§ 23(1) No. 3 MarkenG** (referential use to indicate intended purpose) and **Art. 14(1)(c) EUTMR (2017/1001)**.
+"Kilter Board" and "Kilter" are trademarks of Kilter Grips, LLC. "MoonBoard" and "Moon" are trademarks of Moon Climbing Ltd. "Shiny Wall" is a trademark of its owner. CruxCoach uses these marks solely to indicate compatibility with the respective board hardware, as permitted under **§ 23(1) No. 3 MarkenG** (referential use to indicate intended purpose) and **Art. 14(1)(c) EUTMR (2017/1001)**.
 
 The board-locations map (FEAT-015) additionally displays the names of other board brands (e.g. Tension, Grasshopper, Decoy, So iLL, Touchstone, Aurora, 12climb) and the **egym Wellpass** membership brand, purely to label third-party gym/board locations. These names are trademarks of their respective owners and are used referentially under the same provisions; CruxCoach claims no affiliation with, endorsement by, or sponsorship from any of them.
 
-CruxCoach is an independent, community-developed open-source project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected with Kilter Grips, LLC, Aurora Climbing, Moon Climbing Ltd, egym, or any board manufacturer. All product and company names are trademarks of their respective holders.
+CruxCoach is an independent, community-developed open-source project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected with Kilter Grips, LLC, Aurora Climbing, Moon Climbing Ltd, Shiny Wall, egym, or any board manufacturer. All product and company names are trademarks of their respective holders.
+
+---
+
+## Shiny Wall Account Import
+
+Connecting a Shiny Wall account (*Settings → Board accounts & imports*) is optional. Shiny Wall's sign-in and data run on Google's Firebase servers, so that is where the app connects to:
+
+- **Sign-in:** the email address and password go to Google's Firebase sign-in servers (`identitytoolkit.googleapis.com`), which return sign-in tokens; the tokens are renewed at `securetoken.googleapis.com`. CruxCoach never stores the password.
+- **What is read:** from Shiny Wall's database on Google's servers (`firestore.googleapis.com`), only the signed-in user's own data: the profile (username, favourites, own lists), the activity history (the logbook) and the routes the user published. Star ratings and comments are not imported.
+- **Nothing is written back:** the app only reads. It never creates, changes or deletes anything in the Shiny Wall account.
+- **On the phone:** imported entries and lists become ordinary entries in CruxCoach's encrypted logbook and are handled like the rest of it (export, and the encrypted backup if the user enabled it). The sign-in tokens, the Shiny Wall user id and the account name (username or email address) are kept in encrypted preferences that are excluded from Android backup and device transfer. To keep deleted entries and lists deleted and avoid duplicates, the app also keeps, per Shiny Wall user id, the time of the newest imported entry (never later than the import itself), the ids and times of the history entries it has handled from the seven days before it, and the ids of the lists it has created.
+- **Disconnect** deletes the sign-in tokens, the account name and the time of the last import from the phone. Imported entries and lists stay until the user deletes them. The note of what was imported stays too (filed under the Shiny Wall user id), so that connecting the same account again does not bring back deleted entries or lists; it goes when the user deletes the Shiny Wall logbook data (*Settings → Delete local data*), when the app's data is cleared or the app is uninstalled.
+- Nothing from the account goes to the CruxCoach maintainers or to any server of theirs.
+
+---
+
+## Training Aid, Not a Medical Device
+
+Training & nutrition, the injury mode and the comeback plan support the user's own training decisions. The comeback plan is a training aid, not a medical device (Regulation (EU) 2017/745):
+
+> CruxCoach's comeback plans are training aids for climbers. They help you plan and log a gradual return to climbing load after a break or an injury, using general load stages published in climbing-medicine literature. They do not diagnose, assess, treat or monitor injuries, do not decide when an injury has healed, and are not a medical device. If you have warning signs, or are unsure what the injury is, see a doctor or physiotherapist. If a professional has given you a plan, follow theirs.
+
+> Die Comeback-Pläne in CruxCoach sind Trainingshilfen für Kletternde. Sie helfen dir, die Rückkehr zur Kletterbelastung nach einer Pause oder Verletzung schrittweise zu planen und zu protokollieren – mit allgemeinen Belastungsstufen aus der klettermedizinischen Literatur. Sie stellen keine Diagnose, beurteilen oder behandeln keine Verletzungen, entscheiden nicht, wann etwas verheilt ist, und sind kein Medizinprodukt. Bei Warnzeichen oder wenn du nicht weißt, was du hast: ärztlich oder physiotherapeutisch abklären lassen. Hast du einen Plan von einer Fachperson, gilt der.
+
+The app does not choose a stage from symptoms and does not move a plan on by itself; the user picks the stage agreed with their doctor or physio, and warning signs only ever point to a medical check. Injuries, illness pauses and the comeback diary stay on the phone unless the user includes them in an export or the encrypted backup.
 
 ---
 

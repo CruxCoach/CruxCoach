@@ -14,6 +14,11 @@ object BoardBleUuids {
     /** 41-byte eWalls 2.0.14 controller record: type at byte 34, then
      * big-endian columns/rows at bytes 35..38. */
     val QUANTUM_METADATA_CHAR: UUID = UUID.fromString("0000FFF5-0000-1000-8000-00805F9B34FB")
+    /** Shiny Wall write characteristic. Its service is not fixed, so it is
+     *  looked up across all services. It is also the ESP32 Arduino example
+     *  UUID, so it never identifies a Shiny Wall on its own: the scanner
+     *  requires a Shiny Wall advertised name. */
+    val SHINY_WALL_WRITE_CHAR: UUID = UUID.fromString("beb5483e-36e1-4688-b7f5-ea07361b26a8")
     val CLIENT_CHARACTERISTIC_CONFIG: UUID = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB")
 
     /** Red Bear Lab UART service spoken by pre-2017 MoonBoard LED kits.

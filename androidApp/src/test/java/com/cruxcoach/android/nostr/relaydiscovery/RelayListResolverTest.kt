@@ -205,6 +205,37 @@ class RelayListResolverTest {
         assertEquals(poolStateAfterFirst, poolStateAfterSecond)
     }
 
+    @Test
+    fun `a saved list with retired defaults is served and saved with the current ones`() = runTest {
+        val userRelay = RelayConfig("wss://my.relay.example.com", source = RelaySource.USER_NIP65)
+        val saved = ResolvedRelayList(
+            relays = listOf(userRelay) + listOf(
+                "wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net",
+                "wss://nostr-pub.wellorder.net", "wss://nostr.oxtr.dev",
+            ).map { RelayConfig(it, source = RelaySource.DEFAULT) },
+            resolvedAtEpochMs = 0L,
+            hasUserList = true,
+        )
+        val f = makeFixture(this, cacheRead = saved, cacheStale = false)
+
+        val result = f.resolver.current()
+
+        val expected = listOf(userRelay.url) + NostrConfig.DEFAULT_RELAYS.map { it.url }
+        assertEquals(expected, result.relays.map { it.url })
+        coVerify(exactly = 1) { f.cache.write(result) }
+        coVerify(exactly = 0) { f.fetcher.fetch(any(), any(), any()) }
+        assertEquals(expected.toSet(), f.pool.writeRelays().map { it.url }.toSet())
+    }
+
+    @Test
+    fun `a saved list with the current defaults is not saved again`() = runTest {
+        val saved = resolvedList().let { it.copy(relays = it.relays + NostrConfig.DEFAULT_RELAYS) }
+        val f = makeFixture(this, cacheRead = saved, cacheStale = false)
+
+        assertEquals(saved, f.resolver.current())
+        coVerify(exactly = 0) { f.cache.write(any()) }
+    }
+
     companion object {
         private const val FAKE_PUBKEY =
             "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"

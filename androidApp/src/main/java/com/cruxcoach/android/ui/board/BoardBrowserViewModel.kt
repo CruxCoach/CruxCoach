@@ -6,6 +6,8 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardLayerManager
 import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.led.AnimationPauseOwner
+import com.cruxcoach.android.led.LedAnimationEngine
 import android.util.Log
 import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.android.nostr.NostrSigner
@@ -354,8 +356,14 @@ internal object BoardBrowsePolicy {
     fun productSizeId(brand: BoardBrand, selectedId: Int): Int =
         if (brand.usesProductSizeEdgeFit) selectedId else 0
 
+    /** Families whose catalogue stores route rules/tags as missing bits in
+     *  `hsm` (Quantum rules, Shiny Wall categories); their filter mask rides
+     *  the same exclusion predicate as MoonBoard's hold sets. */
+    fun usesRouteTagMask(brand: BoardBrand): Boolean =
+        brand == BoardBrand.QUANTUM || brand == BoardBrand.SHINYWALL
+
     fun exclusionMask(brand: BoardBrand, holdSetMask: Long, quantumRuleMask: Long): Long =
-        if (brand == BoardBrand.QUANTUM) quantumRuleMask else holdSetMask
+        if (usesRouteTagMask(brand)) quantumRuleMask else holdSetMask
 
     fun overlapFilter(
         brand: BoardBrand,
@@ -539,7 +547,7 @@ internal fun BoardBrowserState.onBoardSwitch(
         climbTypeFilter = BoardBrowsePolicy.climbType(brand, filter.climbTypeFilter),
         benchmarkOnly = BoardBrowsePolicy.benchmarkOnly(brand, filter.benchmarkOnly),
         originFilter = BoardBrowsePolicy.origin(brand, filter.originFilter),
-        quantumRuleMask = if (brand == BoardBrand.QUANTUM) filter.quantumRuleMask else 0L,
+        quantumRuleMask = if (BoardBrowsePolicy.usesRouteTagMask(brand)) filter.quantumRuleMask else 0L,
         quantumOverlapFilter = if (brand == BoardBrand.QUANTUM) filter.quantumOverlapFilter
         else QuantumOverlapFilter.OFF,
     ),
@@ -589,7 +597,8 @@ class BoardBrowserViewModel @Inject constructor(
     private val nostrSigner: NostrSigner,
     private val playbackCoordinator:
         com.cruxcoach.android.data.PlaylistPlaybackCoordinator,
-    val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState
+    val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
+    private val ledAnimationEngine: LedAnimationEngine
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BoardBrowserState())
@@ -755,7 +764,7 @@ class BoardBrowserViewModel @Inject constructor(
                         climbTypeFilter = BoardBrowsePolicy.climbType(snapBrand, climbType),
                         benchmarkOnly = BoardBrowsePolicy.benchmarkOnly(snapBrand, snap.benchmarkOnly),
                         originFilter = BoardBrowsePolicy.origin(snapBrand, originFilter),
-                        quantumRuleMask = if (snapBrand == BoardBrand.QUANTUM) snap.quantumRuleMask else 0L,
+                        quantumRuleMask = if (BoardBrowsePolicy.usesRouteTagMask(snapBrand)) snap.quantumRuleMask else 0L,
                         quantumOverlapFilter = if (snapBrand == BoardBrand.QUANTUM) {
                             QuantumOverlapFilter.fromWire(snap.quantumOverlapFilter)
                         } else QuantumOverlapFilter.OFF,
@@ -1209,6 +1218,13 @@ class BoardBrowserViewModel @Inject constructor(
         searchClimbs(debounceMs = SEARCH_TYPING_DEBOUNCE_MS)
     }
 
+    /** A new random order of the same matches: the list starts again at its top with other climbs. */
+    fun reshuffle() {
+        if (_state.value.filter.sortField != ClimbSortField.RANDOM) return
+        invalidateRandomCache()
+        searchClimbs()
+    }
+
     fun updateSortField(field: ClimbSortField) {
         // Unconditional: a fresh RANDOM pick must re-roll even when RANDOM
         // is already selected, and leaving RANDOM frees the dead shuffle.
@@ -1303,10 +1319,19 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun toggleQuantumRuleFilter(rule: QuantumRuleFilter) {
         if (BoardBrand.fromWire(_state.value.filter.boardBrand) != BoardBrand.QUANTUM) return
+        toggleRouteTagBit(rule.bit)
+    }
+
+    fun toggleShinyWallTagFilter(tag: com.cruxcoach.domain.board.ShinyWallTag) {
+        if (BoardBrand.fromWire(_state.value.filter.boardBrand) != BoardBrand.SHINYWALL) return
+        toggleRouteTagBit(tag.bit)
+    }
+
+    private fun toggleRouteTagBit(bit: Long) {
         invalidateRandomCache()
         _state.update { state ->
             val current = state.filter.quantumRuleMask
-            state.copy(filter = state.filter.copy(quantumRuleMask = current xor rule.bit))
+            state.copy(filter = state.filter.copy(quantumRuleMask = current xor bit))
         }
         persistFilters()
         searchClimbs()
@@ -1441,7 +1466,7 @@ class BoardBrowserViewModel @Inject constructor(
         BrowserOriginFilter.apply(climbs, filter)
 
     private fun applyQuantumRuleFilter(climbs: List<ClimbWithStats>, f: BrowserFilterState): List<ClimbWithStats> {
-        val mask = if (BoardBrand.fromWire(f.boardBrand) == BoardBrand.QUANTUM) f.quantumRuleMask else 0L
+        val mask = if (BoardBrowsePolicy.usesRouteTagMask(BoardBrand.fromWire(f.boardBrand))) f.quantumRuleMask else 0L
         return if (mask == 0L) climbs else climbs.filter { (it.hsm and mask) == 0L }
     }
 
@@ -2284,6 +2309,9 @@ class BoardBrowserViewModel @Inject constructor(
             // stale active-board pref must not push Kilter frames — or the
             // trailing clearBoard() — to a different board still on the link.
             if (bleConnection.connectedBoardBrand.value != BoardBrand.KILTER) return@safeLaunch
+            // Whole-board frames on its own 250 ms cadence: the selected LED
+            // animation would fight it for the same LEDs.
+            ledAnimationEngine.pause(AnimationPauseOwner.EASTER_ANIMATION)
             _isAnimating.value = true
             try {
                 val animSizeId = userPreferences.boardProductSizeId.first()
@@ -2324,6 +2352,7 @@ class BoardBrowserViewModel @Inject constructor(
                 // poisoned with the uncaught exception.
                 android.util.Log.w("BoardBrowserVM", "easter animation failed", e)
             } finally {
+                ledAnimationEngine.resume(AnimationPauseOwner.EASTER_ANIMATION)
                 _isAnimating.value = false
             }
         }
@@ -2387,14 +2416,12 @@ class BoardBrowserViewModel @Inject constructor(
             viewModelScope.safeLaunch(TAG) {
                 val gradeScale = userPreferences.gradeScale.first()
                 val summary = withContext(Dispatchers.IO) {
-                    val ascents = SessionSummaryBuilder.sessionRows(
-                    personalBoardRepo, session.startedAt, session.endedAt ?: session.startedAt
-                )
-                    // True flashes need the FULL history — a first-try repeat
-                    // of an old project must not count as a flash.
-                    val flashUuids =
-                        BoardStatsComputer.trueFlashUuids(personalBoardRepo.getUserAscentsAll())
-                    SessionSummaryBuilder.build(ascents, zoneManager.zones.value, gradeScale, flashUuids)
+                    // True flashes need the FULL history with its attempts — a
+                    // first-try repeat of an old project must not count as a flash.
+                    SessionSummaryBuilder.forSession(
+                        personalBoardRepo, session.startedAt, session.endedAt ?: session.startedAt,
+                        zoneManager.zones.value, gradeScale,
+                    )
                 }
                 _lastSessionSummary.value = summary
             }

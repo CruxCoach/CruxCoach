@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exercise library, detail and custom exercises (FEAT-066). -->
+<resources>
+    <string name="trx_title_pick">Add exercise</string>
+    <string name="trx_search_hint">Search exercises</string>
+    <string name="trx_search_clear">Clear search</string>
+    <string name="trx_filter_mine">My equipment</string>
+    <string name="trx_filter_mine_hint">Tell CruxCoach first what you have.</string>
+    <string name="trx_filter_no_climbing">No climbing</string>
+    <string name="trx_filter_finger_free">Finger-friendly</string>
+    <string name="trx_filter_favorites">Favourites</string>
+    <string name="trx_filter_all_categories">All</string>
+    <string name="trx_filters_injury_note">Filters adapted to your injury – you can switch them off.</string>
+    <plurals name="trx_count">
+        <item quantity="one">%d exercise</item>
+        <item quantity="other">%d exercises</item>
+    </plurals>
+    <string name="trx_no_results">No exercise matches these filters.</string>
+    <string name="trx_create_custom">Own exercise</string>
+    <string name="trx_open_detail">Show details for %1$s</string>
+    <string name="trx_favorite_add">Add to favourites</string>
+    <string name="trx_favorite_remove">Remove from favourites</string>
+    <string name="trx_difficulty">Difficulty %1$d of 5</string>
+    <string name="trx_badge_avoid">avoid</string>
+    <string name="trx_badge_caution">careful</string>
+    <string name="trx_badge_only_left">left only</string>
+    <string name="trx_badge_only_right">right only</string>
+    <string name="trx_pick_rejected">This exercise loads your injured area.</string>
+    <string name="trx_custom_badge">own</string>
+
+    <!-- Detail -->
+    <string name="trx_why">Why climbers do it</string>
+    <string name="trx_steps">How to</string>
+    <string name="trx_cues">Cues</string>
+    <string name="trx_mistakes">Typical mistakes</string>
+    <string name="trx_equipment">Equipment</string>
+    <string name="trx_loads">Loads</string>
+    <string name="trx_unilateral">One side at a time</string>
+    <string name="trx_contraindications">Take care with: %1$s</string>
+    <string name="trx_safety_title">Safety</string>
+    <string name="trx_progression">Progression</string>
+    <string name="trx_progression_hint">Easier on the left, harder on the right.</string>
+    <string name="trx_current">current</string>
+    <string name="trx_history">Your history</string>
+    <string name="trx_bests">Best values</string>
+    <string name="trx_best_any">Any edge</string>
+    <string name="trx_best_overall">Overall</string>
+    <string name="trx_e1rm">est. max %1$s</string>
+    <plurals name="trx_reps">
+        <item quantity="one">%d\u00A0rep</item>
+        <item quantity="other">%d\u00A0reps</item>
+    </plurals>
+    <string name="trx_reps_short">%d×</string>
+    <string name="trx_add_to_running">Add to training</string>
+    <string name="trx_start_with">Start with it</string>
+    <string name="trx_injury_avoid">Your injury (%1$s): the coach leaves this exercise out for now. You can still add it yourself.</string>
+    <string name="trx_injury_caution">Your injury (%1$s): only pain-free, with reduced load.</string>
+    <string name="trx_injury_one_side">Your injury (%1$s): train the %2$s side only.</string>
+    <string name="trx_not_found">This exercise no longer exists.</string>
+    <string name="trx_region_finger">Finger</string>
+    <string name="trx_region_pulley">Pulleys</string>
+    <string name="trx_side_left_lower">left</string>
+    <string name="trx_side_right_lower">right</string>
+
+    <!-- Custom exercise -->
+    <string name="trx_custom_title">Own exercise</string>
+    <string name="trx_custom_name">Name</string>
+    <string name="trx_custom_delete">Delete exercise</string>
+    <string name="trx_custom_delete_title">Delete “%1$s”?</string>
+    <string name="trx_custom_delete_text">It leaves the library, your workouts and its strength value. Sets you logged stay in your history.</string>
+    <string name="trx_custom_guessed">Area, kind and weight are filled in from the name; tap below to change them.</string>
+    <string name="trx_custom_name_required">Please enter a name.</string>
+    <string name="trx_custom_category">Category</string>
+    <string name="trx_custom_kind">How you log it</string>
+    <string name="trx_custom_load">Weight</string>
+    <string name="trx_custom_unilateral">Log per side (left / right)</string>
+    <string name="trx_custom_equipment">Equipment needed</string>
+    <string name="trx_custom_domains">What it loads</string>
+    <string name="trx_custom_implements">How many at once</string>
+    <string name="trx_custom_one_dumbbell">One dumbbell</string>
+    <string name="trx_custom_two_dumbbells">Two dumbbells</string>
+    <string name="trx_custom_one_kettlebell">One kettlebell</string>
+    <string name="trx_custom_two_kettlebells">Two kettlebells</string>
+    <string name="trx_custom_implements_one">You log the weight printed on it.</string>
+    <string name="trx_custom_implements_two">You log the weight of one of them, e.g. 2\u00A0×\u00A016\u00A0kg; volume and % body weight count both.</string>
+    <string name="trx_custom_note">Note (optional)</string>
+    <string name="trx_kind_reps">Repetitions</string>
+    <string name="trx_kind_load_reps">Repetitions with weight</string>
+    <string name="trx_kind_time">Timed hold</string>
+    <string name="trx_kind_hang">Hang / pick-up</string>
+    <string name="trx_kind_interval">Intervals (on/off)</string>
+    <string name="trx_kind_climb">On the wall</string>
+    <string name="trx_load_none">No weight</string>
+    <string name="trx_load_bodyweight">Bodyweight</string>
+    <string name="trx_load_bodyweight_plus">Bodyweight ± added</string>
+    <string name="trx_load_external">Lifted weight</string>
+    <string name="trx_section_favorites">Favourites</string>
+    <string name="trx_section_all">All exercises</string>
+    <string name="trx_add_to_workout">Add %1$s to a training or workout</string>
+    <string name="trx_to_workout">To workout</string>
+    <plurals name="trx_filter_categories_count">
+        <item quantity="one">%1$d category</item>
+        <item quantity="other">%1$d categories</item>
+    </plurals>
+    <string name="trx_filter_categories_all">All categories</string>
+</resources>

@@ -440,7 +440,12 @@ class CruxRelayDisclosureTest {
             }
             true
         }
-        val manager = CruxRelayManager(
+        val nameGuard = RelayAdapterNameGuard(
+            context = context,
+            adapterProvider = { adapter },
+            scope = backgroundScope,
+        )
+        CruxRelayManager(
             context = context,
             relayServer = mockk<RelayGattServer>(relaxed = true),
             advertiser = mockk<ClimbBleAdvertiser>(relaxed = true),
@@ -448,7 +453,7 @@ class CruxRelayDisclosureTest {
             projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true),
             userPreferences = preferences,
             scope = backgroundScope,
-            adapterProvider = { adapter },
+            nameGuard = nameGuard,
         )
         context.getSharedPreferences(CruxRelayManager.PREFS, Context.MODE_PRIVATE)
             .edit()
@@ -456,7 +461,7 @@ class CruxRelayDisclosureTest {
             .putString(CruxRelayManager.KEY_ORIGINAL_NAME, "Test phone")
             .commit()
 
-        assertTrue(manager.restoreAdapterName())
+        assertTrue(nameGuard.giveBack())
         assertTrue(adapterName == "Test phone")
         assertFalse(
             context.getSharedPreferences(CruxRelayManager.PREFS, Context.MODE_PRIVATE)

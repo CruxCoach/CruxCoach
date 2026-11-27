@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nutrition / fueling (FEAT-068): always on, "fuel, not diet". -->
+<resources>
+    <string name="trf_intro_title">Nutrition: energy for training</string>
+    <string name="trf_intro_p1">Enough energy is the base for strength, skin and recovery. CruxCoach shows what your training needs – also while you lose weight.</string>
+    <string name="trf_intro_protein">Protein follows your body weight (about 1.4–2.0\u00A0g per kg).</string>
+    <string name="trf_intro_carbs">Carbohydrates follow your training: more on board and strength days, less on rest days – automatically from your sessions.</string>
+    <string name="trf_intro_no_budget" formatted="false">Every value in the open: your estimated energy need, what you ate and, while losing weight, your calorie target. CruxCoach warns when you lose faster than 1\u00A0% of your weight per week or your deficit gets large. No good or bad foods.</string>
+    <string name="trf_intro_hidden">Calories are shown with every value; you can hide them in the settings.</string>
+    <string name="trf_intro_private">Everything stays encrypted on your device – unless you switch on the backup or Health Connect yourself.</string>
+    <string name="trf_intro_got_it">Got it</string>
+
+    <string name="trf_today">Today</string>
+    <string name="trf_yesterday">Yesterday</string>
+    <string name="trf_prev_day">Previous day</string>
+    <string name="trf_next_day">Next day</string>
+    <string name="trf_needs_weight">Log your body weight and CruxCoach works out your targets for protein, carbohydrates, fat and water.</string>
+    <string name="trf_protein">Protein</string>
+    <string name="trf_protein_info">For climbers 1.4–2.0\u00A0g of protein per kg body weight a day, spread over several meals, is usually enough. Your range: %1$d–%2$d\u00A0g.</string>
+    <string name="trf_carbs_info">Carbohydrates fuel hard moves and recovery. For your day (%1$s) CruxCoach suggests %2$s\u00A0g per kg. For climbers the literature names 3–7\u00A0g per kg depending on load.</string>
+    <string name="trf_day_planned">%1$s (planned: %2$s)</string>
+    <string name="trf_planned_board">board %1$d\u00A0min</string>
+    <string name="trf_planned_training">training %1$d\u00A0min</string>
+    <string name="trf_carbs_tomorrow_hard">Demanding day tomorrow: a carb-rich dinner tonight helps.</string>
+    <string name="trf_carbs_planned">Planned today: %1$s. Until it is done, today\'s targets already count it – what you eat before a session fuels it. Earlier days and the energy card count only what you logged.</string>
+    <string name="trf_water">Water</string>
+    <string name="trf_hc_switch">Send meals and water to Health Connect</string>
+    <string name="trf_hc_hint">Each logged food and glass of water is written to Health Connect; changed or deleted entries are updated there when you open nutrition. Switching this off keeps what was already written in Health Connect; delete it there if you want.</string>
+    <string name="trf_meal_save">Save as a dish</string>
+    <string name="trf_meal_save_text">The %1$d foods become one dish. Next time you log it with one tap.</string>
+    <string name="trf_meal_saved">Dish saved. When you log food, it is at the top under “My dishes”.</string>
+    <string name="trf_meal_saved_as">Saved as a dish: %1$s</string>
+    <string name="trf_meal_name_taken">“%1$s” already exists. Saving replaces that dish – or type another name.</string>
+    <string name="trf_meal_replace">Replace</string>
+    <string name="trf_recipe_new">Dish</string>
+    <string name="trf_recipe_title">Dish</string>
+    <string name="trf_recipe_edit">Edit dish</string>
+    <string name="trf_recipe_name">Name of the dish</string>
+    <string name="trf_recipe_name_taken">Another dish already has this name.</string>
+    <string name="trf_recipe_amount_change">Change amount</string>
+    <string name="trf_recipe_ingredients">Ingredients (raw weight)</string>
+    <string name="trf_recipe_add">Add ingredient</string>
+    <string name="trf_recipe_add_confirm">Add</string>
+    <string name="trf_recipe_pick">Choose an ingredient</string>
+    <string name="trf_recipe_only_weighed">This food has no weight – choose one measured in grams.</string>
+    <string name="trf_recipe_portions">Portions</string>
+    <string name="trf_recipe_cooked">Cooked weight (%1$s, optional)</string>
+    <string name="trf_recipe_cooked_hint">Weigh the finished dish if you can: pasta and rice gain water, meat loses it. Without it the portions split the raw weight.</string>
+    <string name="trf_recipe_per_portion">Per portion (%1$s): %3$s\u00A0g carbs · %2$s\u00A0g protein · %4$s\u00A0g fat</string>
+    <string name="trf_foods_usda_title">US foods (USDA)</string>
+    <string name="trf_usda_attribution">Food data: USDA FoodData Central (public domain)</string>
+    <string name="trf_micro_title">Iron, calcium, vitamin D · 7\u00A0days</string>
+    <string name="trf_micro_iron">Iron</string>
+    <string name="trf_micro_calcium">Calcium</string>
+    <string name="trf_micro_vitamin_d">Vitamin D</string>
+    <string name="trf_micro_value">%1$s / %2$s\u00A0%3$s a day</string>
+    <plurals name="trf_micro_coverage">
+        <item quantity="one">Estimated from %1$d\u00A0%% of what you logged on %2$d\u00A0day. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</item>
+        <item quantity="other">Estimated from %1$d\u00A0%% of what you logged on %2$d\u00A0days. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</item>
+    </plurals>
+    <string name="trf_micro_info">An estimate from the foods you logged, next to the EFSA reference values for adults: iron 16\u00A0mg for women before menopause, 11\u00A0mg otherwise; calcium 1000\u00A0mg up to 24\u00A0years, then 950\u00A0mg; vitamin D 15\u00A0µg, which the skin also makes in summer sun. Climbers who eat little are short of these first. Staying low for weeks is worth a talk with a doctor or sports dietitian – especially with tiredness or injuries. This is not a diagnosis.</string>
+    <string name="trf_entry_edit">Edit</string>
+    <string name="trf_edit_title">Edit entry</string>
+    <string name="trf_water_add">+%1$s</string>
+    <string name="trf_progress_volume">%1$s / %2$s</string>
+    <string name="trf_amount_with_unit">%1$s\u00A0%2$s</string>
+    <string name="trf_unit_oz">oz</string>
+    <string name="trf_unit_floz">fl oz</string>
+    <string name="trf_unit_cups">cups</string>
+    <string name="trf_kcal_value">%1$d\u00A0kcal</string>
+    <string name="trf_kcal_estimated">≈\u00A0%1$d\u00A0kcal</string>
+    <string name="trf_value_g">%1$d\u00A0g</string>
+    <string name="trf_to_go">%1$d\u00A0g to go</string>
+    <string name="trf_reached">Target reached</string>
+    <string name="trf_fat">Fat</string>
+    <string name="trf_fat_info" formatted="false">Fat carries the vitamins A, D, E and K and is needed for hormones. Sports nutrition guidance for athletes recommends about 20–35\u00A0% of energy from fat; less than 20\u00A0% is not advised. The share is calculated from the protein, carbohydrate and fat you logged.</string>
+    <string name="trf_fat_target_energy">Fat target: fat fills the energy that protein and carbohydrates leave of your energy target, at least 20\u00A0%% and at most 35\u00A0%% of it (today %1$d–%2$d\u00A0g).</string>
+    <string name="trf_fat_target_weight">Fat target: about 1\u00A0g per kg body weight (%1$d–%2$d\u00A0g). With your height and birth year it follows your energy target instead.</string>
+    <string name="trf_fat_share_today">Today %1$d\u00A0%% of your energy comes from fat.</string>
+    <string name="trf_progress_g">%1$d / %2$d\u00A0g</string>
+    <string name="trf_my_foods">My foods</string>
+    <string name="trf_copy_previous">Same as yesterday</string>
+    <string name="trf_copy_confirm_title">Copy the previous day\'s entries?</string>
+    <plurals name="trf_copy_confirm_text">
+        <item quantity="one">%d entry will be copied.</item>
+        <item quantity="other">%d entries will be copied.</item>
+    </plurals>
+    <string name="trf_copy_confirm">Copy</string>
+    <string name="trf_entry_macros">C\u00A0%2$s · P\u00A0%1$s · F\u00A0%3$s</string>
+    <string name="trf_entry_macros_g">C\u00A0%2$s · P\u00A0%1$s · F\u00A0%3$s\u00A0g</string>
+    <string name="trf_entry_portions">%1$s\u00A0× portion</string>
+    <string name="trf_entry_menu">Options for %1$s</string>
+    <string name="trf_deleted">Entry deleted</string>
+    <string name="trf_water_removed">Water removed</string>
+    <string name="trf_undo">Undo</string>
+
+    <string name="trf_qa_title">Quick entry</string>
+    <string name="trf_qa_name">What did you eat?</string>
+    <string name="trf_qa_default_name">Meal</string>
+    <string name="trf_qa_meal">Meal</string>
+    <string name="trf_qa_protein">Protein (g)</string>
+    <string name="trf_qa_carbs">Carbohydrates (g)</string>
+    <string name="trf_qa_fat">Fat (g)</string>
+    <string name="trf_qa_kcal">Energy (kcal)</string>
+    <string name="trf_qa_optional">All values are optional – estimating is perfectly fine.</string>
+    <string name="trf_qa_remember">Also save as a food</string>
+
+    <string name="trf_find_food">Find food</string>
+    <string name="trf_foods_bls_title">Food database (BLS)</string>
+    <string name="trf_foods_bls_hint">Type at least two letters to search 7,140 foods of the German food composition database.</string>
+    <string name="trf_foods_bls_none">No match in the database.</string>
+    <string name="trf_foods_searching">Searching …</string>
+    <string name="trf_foods_products_title">Packaged products (Open Food Facts)</string>
+    <string name="trf_products_preparing">Setting up the product database on this device – once, a few seconds …</string>
+    <string name="trf_off_attribution">Product data: Open Food Facts contributors (ODbL)</string>
+    <string name="trf_scan">Scan barcode</string>
+    <string name="trf_scan_hint">Hold the barcode inside the frame. The code is looked up on this device only.</string>
+    <string name="trf_scan_permission">Scanning needs the camera. Nothing is recorded or sent.</string>
+    <string name="trf_scan_not_found_title">Product not found</string>
+    <string name="trf_scan_not_found">%1$s is not in the product database on this device. You can add it as your own food.</string>
+    <string name="trf_scan_create">Add it myself</string>
+    <string name="trf_create_barcode">Barcode %1$s</string>
+    <string name="trf_describe">Describe</string>
+    <string name="trf_describe_title">Describe a meal</string>
+    <string name="trf_describe_placeholder">e.g. 2 slices of wholemeal bread with cheese and a glass of orange juice</string>
+    <string name="trf_describe_hint">Amounts like “80\u00A0g”, “2 slices” or “a glass” make the result more precise. You can also dictate with the keyboard’s microphone.</string>
+    <string name="trf_describe_go">Analyse</string>
+    <string name="trf_foods_empty">No saved foods yet. Create one or save a quick entry.</string>
+    <string name="trf_food_per_portion">per portion</string>
+    <string name="trf_food_per_100">per 100\u00A0g</string>
+    <string name="trf_food_favorite">Mark as favourite</string>
+    <string name="trf_food_unfavorite">Remove from favourites</string>
+    <string name="trf_food_delete_confirm_title">Delete “%1$s”?</string>
+    <string name="trf_food_delete_confirm_text">It disappears from your foods; entries you already logged stay as they are.</string>
+
+    <string name="trf_amount_title">How much?</string>
+    <string name="trf_amount_portions">Portions</string>
+    <string name="trf_amount_grams">Grams</string>
+    <string name="trf_amount_add">Log</string>
+    <string name="trf_amount_serving">1 portion = %1$s</string>
+
+    <string name="trf_create_title">New food</string>
+    <string name="trf_create_name">Name</string>
+    <string name="trf_create_brand">Brand (optional)</string>
+    <string name="trf_create_per100">Nutrition per 100\u00A0g (optional)</string>
+    <string name="trf_create_per_serving">Nutrition per portion (optional, needs the portion size)</string>
+    <string name="trf_create_values_100g">Per 100\u00A0g</string>
+    <string name="trf_create_values_serving">Per portion (US label)</string>
+    <string name="trf_create_serving_g">Portion size in g (optional)</string>
+    <string name="trf_create_serving_label">Portion name (optional, e.g. bar)</string>
+
+    <!-- Log again what a meal usually holds (UX review 2026-10-16) -->
+    <string name="trf_recent_title">Log again</string>
+    <string name="trf_recent_log">Log %1$s again</string>
+    <string name="trf_recent_logged">Logged: %1$s</string>
+
+    <!-- Adding several foods to a meal, and dishes in one tap (Nokia walk 2026-11-22) -->
+    <plurals name="trf_logged_meal">
+        <item quantity="one">%2$s: %1$d entry</item>
+        <item quantity="other">%2$s: %1$d entries</item>
+    </plurals>
+    <string name="trf_dishes_title">My dishes</string>
+    <string name="trf_dishes_all">Show all %1$d dishes</string>
+    <string name="trf_dish_log">Log %1$s</string>
+    <!-- A dish's amount: its portions, then their weight – "1 portion (200 g)" -->
+    <string name="trf_amount_portions_weight">%1$s (%2$s)</string>
+    <string name="trf_one_portion">1\u00A0portion</string>
+    <string name="trf_food_new">Food</string>
+    <string name="trf_food_choose_amount">Choose amount</string>
+    <string name="trf_food_is_favorite">Favourite</string>
+</resources>

@@ -80,7 +80,13 @@ data class BackupSettingsState(
         /** Restore completed — carries authenticated payload counts rather
          *  than only newly inserted rows. UUID-deduplicated local rows are
          *  therefore reported as present, not misleadingly as missing. */
-        data class RestoreSucceeded(val logbookEntries: Int, val lists: Int, val linksPending: Boolean = false) : Snackbar
+        data class RestoreSucceeded(
+            val logbookEntries: Int,
+            val lists: Int,
+            val linksPending: Boolean = false,
+            /** The training, body and nutrition part could not be written; the rest is in. */
+            val trainingFailed: Boolean = false,
+        ) : Snackbar
         data object BackupSucceeded : Snackbar
         /**
          * [reason] is the structured BackupException reason — the UI
@@ -306,6 +312,7 @@ class BackupSettingsViewModel @Inject constructor(
                             logbookEntries = result.logbookEntriesInBackup,
                             lists = result.listsInBackup,
                             linksPending = result.imported.pendingOwnClimbs > 0 || it.catalogueLoading,
+                            trainingFailed = result.imported.athleteFailed,
                         ),
                     )
                 }

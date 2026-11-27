@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertisingSetCallback
 import android.content.BroadcastReceiver
@@ -10,6 +11,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
@@ -25,7 +27,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,7 +35,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Why the relay failed or stopped — mapped to localized strings in the UI
@@ -43,6 +43,15 @@ enum class RelayError {
     SERVER_START_FAILED,
     ADVERTISE_FAILED,
     NAME_SET_FAILED,
+
+    /** The phone already carries a CruxCoach sharing name this app did not set
+     *  (another CruxCoach app shares, or an earlier name never came back). */
+    NAME_IN_USE,
+
+    /** The phone connected to a car, so sharing ended (see [RelayCarPolicy]).
+     *  Not a failure: shown as the reason, and sharing does not restart on its
+     *  own while that car stays connected. */
+    STOPPED_FOR_CAR,
     BOARD_LOST,
     UNSUPPORTED_BOARD,
 
@@ -68,6 +77,8 @@ data class CruxRelayState(
      * so this state is rendered at the navigation root, not only in the
      * connection sheet. */
     val pendingDisclosure: Boolean = false,
+    /** Sharing was stopped from the notification: automatic sharing waits for the next board connection. */
+    val stoppedForConnection: Boolean = false,
 )
 
 /**
@@ -81,9 +92,9 @@ data class CruxRelayState(
  * climbs atomic). Queue and relay have independent lifecycles; the narrow
  * [BoardProjectionCoordinator] notification only prevents stale projection UI.
  *
- * The advertised name is set via the GLOBAL, persistent [android.bluetooth.BluetoothAdapter.setName]
- * (no per-advertiser API), snapshotted to a crash-safe flag so an abrupt death
- * still restores the phone's real Bluetooth name on next launch.
+ * The advertised name is the phone's GLOBAL, persistent Bluetooth name (no
+ * per-advertiser API). [RelayAdapterNameGuard] lends it for exactly as long as
+ * the relay advertises and gives it back on every path, abrupt ones included.
  *
  * NOTE: behaviour is validated on-device only (official app + real board) — see
  * docs/specs/0.2.2/FEAT-044 §10.
@@ -96,21 +107,21 @@ class CruxRelayManager(
     private val projectionCoordinator: BoardProjectionCoordinator,
     private val userPreferences: UserPreferences,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
-    private val adapterProvider: () -> BluetoothAdapter? = {
+    adapterProvider: () -> BluetoothAdapter? = {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
     },
+    /** The app shares one guard (see AppModule); tests get their own. */
+    private val nameGuard: RelayAdapterNameGuard =
+        RelayAdapterNameGuard(context, adapterProvider, scope),
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
-        internal const val PREFS = "cruxrelay"
-        internal const val KEY_NAME_DIRTY = "adapter_name_dirty"
-        internal const val KEY_ORIGINAL_NAME = "adapter_name_original"
-        private const val NAME_PROPAGATE_TIMEOUT_MS = 2_000L
+        internal const val PREFS = RelayAdapterNameGuard.PREFS
+        internal const val KEY_NAME_DIRTY = RelayAdapterNameGuard.KEY_NAME_DIRTY
+        internal const val KEY_ORIGINAL_NAME = RelayAdapterNameGuard.KEY_ORIGINAL_NAME
         private const val ADVERTISE_START_TIMEOUT_MS = 3_000L
     }
 
-    private val adapter get() = adapterProvider()
-    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val _state = MutableStateFlow(CruxRelayState())
     val state: StateFlow<CruxRelayState> = _state.asStateFlow()
     // Not persisted: this is runtime state, rebuilt on every process from the
@@ -127,36 +138,61 @@ class CruxRelayManager(
     /** Board identity for the disclosure currently shown. A consent answer
      * must never carry across a disconnect/reconnect to a different wall. */
     private var pendingDisclosureBoardAddress: String? = null
-    /** A cancelled automatic disclosure stays cancelled for this physical
-     * connection. Board writes briefly transition CONNECTED -> SENDING ->
-     * CONNECTED and must not turn that transition into another prompt. */
+    /** A cancelled automatic disclosure, or a stop from the notification, stays for this
+     * physical connection. Board writes briefly transition CONNECTED -> SENDING ->
+     * CONNECTED and must not turn that transition into another prompt or start. */
     private var autoDisclosureDismissedBoardAddress: String? = null
     private var pendingDisclosureIsAutomatic = false
     /** Set when the caller showed the disclosure inline, so the deliberate tap is the consent. */
     private var disclosureShownInline = false
-    private val bluetoothStateReceiver = object : BroadcastReceiver() {
+    /** A car this process saw connect and not yet disconnect. */
+    private var connectedCar: String? = null
+    private val carReceiver = object : BroadcastReceiver() {
+        @SuppressLint("MissingPermission")
         override fun onReceive(receiverContext: Context?, intent: Intent?) {
-            if (intent?.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
-            if (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR) ==
-                BluetoothAdapter.STATE_ON
-            ) {
-                // The first process-start restore can legitimately run while
-                // Bluetooth is off. Retain the recovery record and retry once
-                // the adapter is authoritative again.
-                restoreAdapterNameIfDirty()
+            val action = intent?.action ?: return
+            val device = IntentCompat.getParcelableExtra(
+                intent,
+                BluetoothDevice.EXTRA_DEVICE,
+                BluetoothDevice::class.java,
+            ) ?: return
+            val address = runCatching { device.address }.getOrNull() ?: return
+            when (action) {
+                BluetoothDevice.ACTION_ACL_CONNECTED -> onBluetoothDevice(
+                    address,
+                    // Unknown without the permission: then nothing happens.
+                    runCatching { device.bluetoothClass?.deviceClass }.getOrNull(),
+                    connected = true,
+                )
+                BluetoothDevice.ACTION_ACL_DISCONNECTED ->
+                    onBluetoothDevice(address, null, connected = false)
             }
         }
     }
     init {
-        // Crash-safe: a previous run may have died with the adapter name still
-        // changed. Restore it before anything else.
-        restoreAdapterNameIfDirty()
+        // Exported on purpose: these come from the Bluetooth process, which a
+        // not-exported receiver never hears; both are protected broadcasts.
         ContextCompat.registerReceiver(
             context,
-            bluetoothStateReceiver,
-            IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
+            carReceiver,
+            IntentFilter().apply {
+                addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+                addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+            },
+            ContextCompat.RECEIVER_EXPORTED,
         )
+        // The phone carries the sharing name only while the relay runs on a
+        // connected board. Whenever sharing is off or the board link is not up,
+        // whatever the reason, the name goes back: also one a previous run left
+        // behind, and one an interrupted stop never returned. Free when nothing
+        // is out.
+        scope.launch {
+            combine(enabledFlow, bleConnection.connectionState) { enabled, st ->
+                !enabled || st !in setOf(ConnectionState.CONNECTED, ConnectionState.SENDING)
+            }.distinctUntilChanged().collect { mustNotShare ->
+                if (mustNotShare) nameGuard.returnUnless { running }
+            }
+        }
         // The relay runs only while enabled AND the real board link is up
         // (WAIT_BEFORE_ADVERTISE). A falling board link disables sharing
         // entirely, so it never outlives the connection it was started for.
@@ -200,18 +236,33 @@ class CruxRelayManager(
             combine(
                 userPreferences.relayManualStart,
                 bleConnection.connectionState,
-            ) { manual, st -> !manual && st == ConnectionState.CONNECTED }
+            ) { manual, st ->
+                when {
+                    manual -> false
+                    st == ConnectionState.CONNECTED -> true
+                    // SENDING is the same board link in the middle of the host's own
+                    // write: no reason to start and none to stop. Read as "board gone",
+                    // every climb the host lit stopped the relay and dropped its guests,
+                    // and with no guest left the host's send mode fell back to the
+                    // single-connection one.
+                    st == ConnectionState.SENDING -> null
+                    else -> false
+                }
+            }
                 .distinctUntilChanged()
                 .collect { shouldShare ->
-                    if (shouldShare) {
-                        if (!enabledFlow.value) requestAutomaticEnable()
-                    } else {
-                        // The switch is authoritative: switching it off stops sharing right
-                        // away, and a lost board link stops it too.
-                        if (bleConnection.connectionState.value == ConnectionState.DISCONNECTED) {
-                            autoDisclosureDismissedBoardAddress = null
+                    when (shouldShare) {
+                        true -> if (!enabledFlow.value) requestAutomaticEnable()
+                        false -> {
+                            // The switch is authoritative: switching it off stops sharing right
+                            // away, and a lost board link stops it too.
+                            if (bleConnection.connectionState.value == ConnectionState.DISCONNECTED) {
+                                autoDisclosureDismissedBoardAddress = null
+                                _state.update { it.copy(stoppedForConnection = false) }
+                            }
+                            disable()
                         }
-                        disable()
+                        null -> Unit
                     }
                 }
         }
@@ -223,6 +274,7 @@ class CruxRelayManager(
 
     private fun requestEnable(disclosureShown: Boolean) {
         autoDisclosureDismissedBoardAddress = null
+        _state.update { it.copy(stoppedForConnection = false) }
         pendingDisclosureIsAutomatic = false
         // Bound to this very request: an early rejection must not leave a consent behind.
         disclosureShownInline = disclosureShown
@@ -251,6 +303,7 @@ class CruxRelayManager(
                 if (!enabledFlow.value) requestEnableWithShownDisclosure()
             } else {
                 userPreferences.setRelayManualStart(true)
+                _state.update { it.copy(stoppedForConnection = false) }
                 disable()
             }
         }
@@ -260,6 +313,9 @@ class CruxRelayManager(
         val board = bleConnection.connectedBoard ?: return
         val address = board.address
         if (autoDisclosureDismissedBoardAddress == address) return
+        // Sharing ended because the phone is in a car: not again on its own while
+        // that car is connected. A deliberate "share" by the user still works.
+        if (connectedCar != null) return
         // When scanning is available, BoardCapacityProbe will shortly replace
         // UNKNOWN with authoritative true/false evidence. Waiting prevents a
         // multi-connect wall from showing a consent dialog whose confirm action
@@ -351,6 +407,15 @@ class CruxRelayManager(
         _state.update { it.copy(pendingDisclosure = false) }
     }
 
+    /** The notification's "Stop sharing": ends sharing and keeps automatic sharing from starting it again
+     * on this board connection, which the host's next send would otherwise do (it passes CONNECTED again).
+     * A new connection, or the user's own "share", starts sharing as usual. */
+    fun stopForThisConnection() {
+        autoDisclosureDismissedBoardAddress = bleConnection.connectedBoard?.address
+        disable()
+        _state.update { it.copy(stoppedForConnection = true) }
+    }
+
     /** One-tap stop used by every UI/service surface. */
     fun disable() {
         disclosureJob?.cancel()
@@ -378,6 +443,24 @@ class CruxRelayManager(
 
     fun clearError() {
         _state.update { it.copy(error = null, errorDetail = null) }
+    }
+
+    /**
+     * A Bluetooth device connected or disconnected. A car ends sharing at once
+     * and with it the borrowed name; headphones, speakers and devices of
+     * unknown class change nothing ([RelayCarPolicy]).
+     */
+    internal fun onBluetoothDevice(address: String, deviceClass: Int?, connected: Boolean) {
+        if (!connected) {
+            if (connectedCar.equals(address, ignoreCase = true)) connectedCar = null
+            return
+        }
+        if (!RelayCarPolicy.isCar(deviceClass)) return
+        connectedCar = address
+        if (!enabledFlow.value && !running) return
+        Log.i(TAG, "Phone connected to a car: sharing ends")
+        disable()
+        _state.update { it.copy(error = RelayError.STOPPED_FOR_CAR, errorDetail = null) }
     }
 
     private suspend fun reconcile(
@@ -477,14 +560,22 @@ class CruxRelayManager(
         }
         running = true
 
-        // 1) Snapshot + set the transparent adapter name (crash-safe). An
-        // unset name would advertise the relay under the phone's own name —
-        // abort instead of impersonating nothing recognizable.
+        // 1) Borrow the phone's name for the transparent board name (recorded
+        // first, crash-safe). An unset name would advertise the relay under the
+        // phone's own name — abort instead.
         val desired = RelayBoardName.transparentBoard(board.displayName, board.apiLevel)
-        if (!snapshotAndSetAdapterName(desired)) {
-            Log.e(TAG, "adapter name change did not propagate")
-            abortStart(RelayError.NAME_SET_FAILED, null)
-            return
+        when (val lend = nameGuard.lend(desired)) {
+            RelayNameLend.LENT -> Unit
+            RelayNameLend.ALREADY_SHARING_NAME -> {
+                Log.w(TAG, "phone already carries a sharing name this app did not set")
+                abortStart(RelayError.NAME_IN_USE, null)
+                return
+            }
+            else -> {
+                Log.e(TAG, "adapter name change failed: $lend")
+                abortStart(RelayError.NAME_SET_FAILED, null)
+                return
+            }
         }
 
         // 2) Keep the real board link parked while this independent transport
@@ -620,81 +711,27 @@ class CruxRelayManager(
         identifyJob?.cancel(); identifyJob = null
         bleConnection.releaseKeepAlive(BoardConnectionOwner.RELAY)
 
+        // Nothing advertises the sharing name any more: give the phone its own
+        // name back before the slower server teardown, so a process killed in
+        // between leaves as little as possible behind.
         advertiser.stopRelayAdvertising()
+        nameGuard.giveBack()
         relayServer.stop()
 
-        restoreAdapterName()
         _state.update { it.copy(advertising = false, clientCount = 0, advertisedName = null, boardName = null) }
         Log.i(TAG, "CruxRelay stopped; direct board connection preserved")
     }
 
-    // --- Adapter name snapshot / restore (crash-safe) ---
-
-    /** @return true once [desired] is live on the adapter — false on Bluetooth
-     *  off or a setName that never propagated (surfaced as NAME_SET_FAILED). */
-    @SuppressLint("MissingPermission")
-    internal suspend fun snapshotAndSetAdapterName(desired: String): Boolean {
-        val a = adapter ?: return false
-        val dirty = prefs.getBoolean(KEY_NAME_DIRTY, false)
-        val original = if (dirty) {
-            prefs.getString(KEY_ORIGINAL_NAME, null)
-        } else {
-            runCatching { a.name }.getOrNull()
+    /**
+     * The app's task was swiped away, and on many phones the process goes with
+     * it. Stop advertising and send the phone's own name back first, at once,
+     * then wind sharing down the orderly way (which verifies the name).
+     */
+    fun stopBeforeProcessMayEnd() {
+        if (running) {
+            advertiser.stopRelayAdvertising()
+            nameGuard.giveBackNow()
         }
-        // Never mutate a device-global setting unless its exact prior value is
-        // durably known. Otherwise even an orderly stop cannot restore it.
-        if (original.isNullOrBlank()) return false
-        if (!dirty) {
-            val persisted = withContext(Dispatchers.IO) {
-                prefs.edit()
-                    .putString(KEY_ORIGINAL_NAME, original)
-                    .putBoolean(KEY_NAME_DIRTY, true)
-                    .commit()
-            }
-            if (!persisted) return false
-        }
-        if (runCatching { a.name }.getOrNull() == desired) return true
-        if (!runCatching { a.setName(desired) }.getOrDefault(false)) return false
-        // setName is async — wait (bounded) for it to propagate before advertising,
-        // since the scan-response name is read from the adapter.
-        withTimeoutOrNull(NAME_PROPAGATE_TIMEOUT_MS) {
-            while (runCatching { adapter?.name }.getOrNull() != desired) delay(100)
-        }
-        return runCatching { adapter?.name }.getOrNull() == desired
-    }
-
-    @SuppressLint("MissingPermission")
-    internal suspend fun restoreAdapterName(): Boolean {
-        if (!prefs.getBoolean(KEY_NAME_DIRTY, false)) return true
-        val original = prefs.getString(KEY_ORIGINAL_NAME, null)
-        if (original.isNullOrBlank()) return false
-        val a = adapter ?: return false
-        val before = runCatching { a.name }.getOrNull()
-        val accepted = before == original ||
-            runCatching { a.setName(original) }.getOrDefault(false)
-        if (accepted && before != original) {
-            // BluetoothAdapter.setName() is asynchronous on real controllers.
-            // Keep the crash-recovery marker until Android reports the original
-            // name, just as the relay start waits for its advertised name.
-            withTimeoutOrNull(NAME_PROPAGATE_TIMEOUT_MS) {
-                while (runCatching { adapter?.name }.getOrNull() != original) delay(100)
-            }
-        }
-        val restored = accepted && runCatching { adapter?.name }.getOrNull() == original
-        if (!restored) {
-            Log.w(TAG, "Adapter-name restore did not apply; retaining recovery record")
-            return false
-        }
-        return prefs.edit()
-            .remove(KEY_NAME_DIRTY)
-            .remove(KEY_ORIGINAL_NAME)
-            .commit()
-    }
-
-    @SuppressLint("MissingPermission")
-    internal fun restoreAdapterNameIfDirty() {
-        // On a fresh process, a set dirty flag means a prior run died without
-        // restoring — put the phone's real Bluetooth name back.
-        scope.launch { restoreAdapterName() }
+        disable()
     }
 }

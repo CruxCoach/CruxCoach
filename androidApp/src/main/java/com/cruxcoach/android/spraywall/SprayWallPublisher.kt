@@ -1,0 +1,224 @@
+package com.cruxcoach.android.spraywall
+
+import android.util.Log
+import com.cruxcoach.android.nostr.NostrKeyStore
+import com.cruxcoach.android.nostr.NostrRelayPool
+import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.nostr.SignerMode
+import com.cruxcoach.android.nostr.backup.BlossomUploader
+import com.cruxcoach.android.nostr.profile.ProfileImageUploader
+import com.cruxcoach.domain.spraywall.SprayNostrEvent
+import com.cruxcoach.domain.spraywall.SprayWallVersion
+import com.vitorpamplona.quartz.nip01Core.core.Event
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Publishes public spray walls (FEAT-078) over Nostr with the climber's own
+ * identity: the photo of every version goes to Blossom, then one event per
+ * version (never replaced), the wall head, and the climbs set on public
+ * walls. Ascents are never published; private walls never leave the phone.
+ *
+ * Nothing here creates a Nostr identity: without one (local key or Amber)
+ * publishing waits and the wall shows "not published yet".
+ */
+@OptIn(FlowPreview::class)
+@Singleton
+class SprayWallPublisher @Inject constructor(
+    private val repository: SprayWallRepository,
+    private val photos: SprayWallPhotoStore,
+    private val nostrSigner: NostrSigner,
+    private val keyStore: NostrKeyStore,
+    private val pool: NostrRelayPool,
+    private val uploader: ProfileImageUploader,
+    private val blossom: BlossomUploader,
+) {
+    sealed interface Outcome {
+        data class Done(val versions: Int, val climbs: Int) : Outcome
+        data object NoIdentity : Outcome
+        data class Failed(val reason: String) : Outcome
+    }
+
+    /** The last run's outcome, for the wall screen's "not published yet" hint and its retry. */
+    private val _last = MutableStateFlow<Outcome?>(null)
+    val last: StateFlow<Outcome?> = _last.asStateFlow()
+
+    private val mutex = Mutex()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** A local key or a configured Amber signer. Never creates one. */
+    fun hasIdentity(): Boolean = nostrSigner.getStoredSignerMode() == SignerMode.AMBER || keyStore.hasKey()
+
+    /** The identity's public key, or null without one. */
+    fun myPubkey(): String? = if (hasIdentity()) runCatching { nostrSigner.getPublicKeyHex() }.getOrNull() else null
+
+    /** Publishes whatever is pending, in the background (after a save). */
+    fun publishSoon() {
+        scope.launch { publishPending() }
+    }
+
+    /** [askAgainFor]: the climber asked to publish that wall, so the signer is asked again for what it declined there. */
+    suspend fun publishPending(askAgainFor: String? = null): Outcome = mutex.withLock {
+        askAgainFor?.let(publishing::askAgain)
+        val outcome = try {
+            publishing.run(::myPubkey)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "publish failed", e)
+            Outcome.Failed(e.message ?: e.javaClass.simpleName)
+        }
+        _last.value = outcome
+        outcome
+    }
+
+    /** The version's photo on Blossom, uploaded once per photo file. */
+    private suspend fun uploaded(wallId: String, version: SprayWallVersion): Pair<String, String> {
+        val sha = version.photoSha256
+        val url = version.photoUrl
+        if (sha != null && url != null) return sha to url
+        val bytes = photos.bytes(version.photoFile) ?: error("photo missing")
+        when (val result = uploader.upload(bytes, purpose = "CruxCoach spray wall photo upload")) {
+            is ProfileImageUploader.Result.Success -> {
+                val hash = result.url.substringAfterLast('/')
+                repository.setPhotoBlob(wallId, version.photoFile, hash, result.url)
+                return hash to result.url
+            }
+            is ProfileImageUploader.Result.Failure ->
+                if (result.authFailed) throw SprayEventSigningFailed(IllegalStateException(result.message)) else error("photo upload: ${result.message}")
+        }
+    }
+
+    private val withdrawal = SprayWallWithdrawal(
+        repository = repository,
+        send = ::send,
+        deletePhoto = { sha, servers ->
+            val result = blossom.delete(sha, servers)
+            when {
+                result.authFailed -> SprayWallWithdrawal.PhotoDeletion.NOT_AUTHORISED
+                result.fullySucceeded() -> SprayWallWithdrawal.PhotoDeletion.DELETED
+                else -> SprayWallWithdrawal.PhotoDeletion.LEFT
+            }
+        },
+        stamp = ::stamp,
+        now = ::now,
+        defaultServers = BlossomUploader.KNOWN_SERVERS,
+    )
+
+    private val publishing = SprayWallPublishing(
+        repository = repository,
+        withdrawal = withdrawal,
+        send = ::send,
+        upload = ::uploaded,
+        stamp = ::stamp,
+        now = ::now,
+    )
+
+    private val running = SprayRunningWithdrawals()
+
+    /**
+     * The walls being withdrawn right now, for the screens' progress; also after the screen that asked was left. True
+     * for a wall that is deleted once withdrawn: the screens say so, as "withdrawing" alone reads as if that deleted it.
+     */
+    val withdrawing: StateFlow<Map<String, Boolean>> = running.walls
+
+    /**
+     * Takes a public wall back, photos included ([SprayWallWithdrawal]); the wall stays public when that fails. It runs
+     * in the publisher's own scope: leaving the screen that asked for it does not cut it off. [before] runs first,
+     * where no publish run comes between it and the withdrawal's mark (the details saved with it). [delete]: the wall
+     * is deleted once it is private ([SprayWallPublishing.withdrawWall]); [withdrawing] says so while it runs.
+     */
+    suspend fun withdrawWall(
+        wallId: String,
+        before: suspend () -> Unit = {},
+        delete: Boolean = false,
+    ): SprayWithdrawal {
+        running.started(wallId, delete)
+        return scope.async {
+            try {
+                mutex.withLock { publishing.withdrawWall(::myPubkey, wallId, before, delete) }
+            } finally {
+                running.ended(wallId, delete)
+            }
+        }.await()
+    }
+
+    /**
+     * Removes someone else's wall from this phone, after taking my climbs on it back from Nostr
+     * ([SprayWallPublishing.removeFollowed]); otherwise the wall stays. Under the lock, so no publish run sends one of
+     * them between the two, and in the publisher's own scope, so leaving the screen does not cut it off.
+     */
+    suspend fun removeFollowed(wallId: String): SprayWithdrawal = locked { publishing.removeFollowed(::myPubkey, wallId) }
+
+    /**
+     * Deletes my climb [uuid], taking it back from Nostr first when it may have gone out ([SprayWallPublishing.deleteClimb]);
+     * otherwise it stays. Under the lock and in the publisher's own scope, as [removeFollowed].
+     */
+    suspend fun deleteClimb(uuid: String): SprayWithdrawal {
+        val climb = repository.climb(uuid) ?: return SprayWithdrawal.DONE
+        // On my private wall: never out, and no publish run sends it, so nothing to wait for.
+        if (!SprayWallPublishing.takesBack(climb, repository.wall(climb.wallId))) {
+            repository.deleteClimb(uuid)
+            return SprayWithdrawal.DONE
+        }
+        return locked { publishing.deleteClimb(::myPubkey, uuid) }
+    }
+
+    private suspend fun <T> locked(block: suspend () -> T): T = scope.async { mutex.withLock { block() } }.await()
+
+    private suspend fun send(event: SprayNostrEvent): Int {
+        val signed = try {
+            nostrSigner.signer.sign<Event>(
+                createdAt = event.createdAt,
+                kind = event.kind,
+                tags = event.tags.map { it.toTypedArray() }.toTypedArray(),
+                content = event.content,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Amber declined, timed out or could not be reached; a local key that cannot sign.
+            throw SprayEventSigningFailed(e)
+        }
+        val (attempted, accepted) = pool.sendEventWithStats(signed)
+        Log.i(TAG, "kind=${event.kind} attempted=$attempted accepted=$accepted")
+        return accepted
+    }
+
+    private fun now() = System.currentTimeMillis() / 1000
+
+    /** Replaceable events at one d-tag get strictly rising times, so a quick second edit still replaces the first. */
+    private val stamps = HashMap<String, Long>()
+    private fun stamp(dTag: String): Long = synchronized(stamps) {
+        maxOf(now(), (stamps[dTag] ?: 0L) + 1).also { stamps[dTag] = it }
+    }
+
+    // Last, so the runs it starts find every property above set.
+    init {
+        // Every save may leave something to publish; a burst of saves publishes once.
+        scope.launch {
+            repository.changes.drop(1).debounce(PUBLISH_DELAY_MS).collect { publishPending() }
+        }
+        // What was still pending when the app closed (versions, a head with new details, climbs) goes out now.
+        scope.launch { publishPending() }
+    }
+
+    private companion object {
+        const val TAG = "SprayWallPublisher"
+        const val PUBLISH_DELAY_MS = 1500L
+    }
+}

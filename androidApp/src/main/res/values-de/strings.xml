@@ -360,6 +360,16 @@
 
     <!-- Settings -->
     <string name="settings_language_title">Sprache</string>
+    <string name="settings_units_title">Einheiten</string>
+    <string name="settings_units_desc">Für Körpergewicht, Trainingslasten und Ernährung. Gespeichert wird metrisch; die Umstellung ändert nur Anzeige und Eingabe.</string>
+    <string name="settings_units_metric">Metrisch (g, ml, kg, cm)</string>
+    <string name="settings_units_us">US (oz, fl oz, cups, lb, in)</string>
+    <string name="settings_food_data_title">Ernährungsdaten auf diesem Handy</string>
+    <string name="settings_food_products">Produktdatenbank: %1$s</string>
+    <string name="settings_food_products_hint">Open Food Facts, aus der App entpackt; wird beim nächsten Öffnen von Ernährung neu aufgebaut.</string>
+    <string name="settings_food_model">KI-Modell für Fotos: %1$s</string>
+    <string name="settings_food_model_hint">Für Mahlzeitenfotos geladen; lässt sich jederzeit neu laden.</string>
+    <string name="settings_food_remove">Entfernen</string>
     <string name="settings_title">Einstellungen</string>
     <string name="settings_display_title">Anzeige</string>
     <string name="settings_display_appearance">Design</string>
@@ -434,6 +444,55 @@
     <string name="settings_led_reset_cruxcoach">CruxCoach Standard</string>
     <string name="settings_led_reset_kilter">Kilter Standard</string>
 
+    <!-- Settings: LED effects (FEAT-074) -->
+    <string name="settings_led_anim_title">LED-Effekte</string>
+    <string name="settings_led_anim_none">Keine</string>
+    <string name="settings_led_anim_none_hint">der Boulder leuchtet in seinen normalen Farben.</string>
+    <string name="settings_led_anim_pulse">Puls</string>
+    <string name="settings_led_anim_pulse_hint">jeder Griff wird in seiner Farbe heller und wieder dunkler.</string>
+    <string name="settings_led_anim_two_phase">Wechselblitz</string>
+    <string name="settings_led_anim_two_phase_hint">wechselt blinkend zwischen den CruxCoach- und den Kilter-Farben.</string>
+    <string name="settings_led_anim_chaotic">Chaosblitz</string>
+    <string name="settings_led_anim_chaotic_hint">die Farben springen; Startgriffe, Zwischengriffe, Topgriffe und Tritte bleiben unterscheidbar.</string>
+    <string name="settings_led_anim_rainbow">Regenbogen</string>
+    <string name="settings_led_anim_rainbow_hint">alle Farben wandern langsam durch den Farbkreis.</string>
+    <string name="settings_led_effects_flashing">Blinkt</string>
+    <string name="settings_led_effects_remove_animations_note">„Animationen entfernen“ ist an. Dieser Effekt blinkt trotzdem.</string>
+    <string name="settings_led_effects_background">Auch in anderen Apps</string>
+    <string name="settings_led_effects_background_on">In anderen Apps bleibt das Board mit diesem Handy verbunden.</string>
+    <string name="settings_led_effects_needs_notifications">Braucht Benachrichtigungen für „Stopp“.</string>
+    <string name="settings_led_effects_allow_notifications">Benachrichtigungen erlauben</string>
+    <string name="settings_led_effects_info_board">Am Board\nDie leuchtenden Griffe ändern ihr Licht. Funktioniert mit einem Kilter Board; andere Boards behalten ihre normalen Farben. Eine Auswahl wirkt sofort, die Wand ist also die Vorschau.</string>
+    <string name="settings_led_effects_info_effects">Effekte</string>
+    <string name="settings_led_effects_info_effect">%1$s: %2$s</string>
+    <string name="led_effect_status_running">Läuft am Board.</string>
+    <string name="led_effect_status_waiting">Wartet auf einen Boulder.</string>
+    <string name="led_effect_status_no_board">Kein Kilter Board verbunden.</string>
+    <string name="led_effect_status_unsupported">Dieses Board kann keine Effekte zeigen.</string>
+    <string name="led_effect_status_paused">Pausiert, solange das Board belegt ist.</string>
+    <string name="led_effect_status_too_many_holds">Zu viele Griffe für den Effekt. Das Board zeigt die normalen Farben.</string>
+    <string name="led_effect_status_ended">Am beleuchteten Boulder beendet.</string>
+    <string name="led_effect_status_background">Pausiert, solange die App im Hintergrund ist.</string>
+    <string name="led_effect_restart">Neu starten</string>
+    <string name="led_strobe_notice_title">Blinkendes Licht</string>
+    <string name="led_strobe_notice_text">%1$s lässt die Griffe bis zu dreimal pro Sekunde blinken. Das kann bei fotosensitiver Epilepsie Anfälle auslösen, auch bei anderen an der Wand.</string>
+    <string name="led_strobe_notice_remove_animations">%1$s lässt die Griffe bis zu dreimal pro Sekunde blinken, auch wenn „Animationen entfernen“ an ist. Das kann bei fotosensitiver Epilepsie Anfälle auslösen, auch bei anderen an der Wand.</string>
+    <string name="led_strobe_notice_confirm">Einschalten</string>
+    <string name="led_strobe_notice_cancel">Abbrechen</string>
+    <string name="led_effect_menu">LED-Effekt: %1$s</string>
+    <string name="led_anim_notification_channel">LED-Effekte</string>
+    <string name="led_anim_notification_channel_desc">Wird angezeigt, solange ein LED-Effekt in einer anderen App weiterläuft.</string>
+    <string name="led_anim_notification_title">LED-Effekt läuft</string>
+    <string name="led_anim_notification_stop">Stopp</string>
+    <plurals name="settings_led_effects_info">
+        <item quantity="one">Pausen\nWas du sendest, hat Vorrang. Routenwiedergabe und Griffe putzen pausieren den Effekt. Das automatische Trennen gibt das Board weiterhin pünktlich frei; der Effekt endet damit.\n\nGrenze\nNach %1$d Minute auf demselben Boulder endet der Effekt, und der Boulder leuchtet in seinen normalen Farben. Sende ihn erneut, um neu zu starten.\n\nIn anderen Apps\nZum Filmen hält „Auch in anderen Apps“ den Effekt am Laufen, während eine andere App offen ist, mit einer Benachrichtigung zum Stoppen. So lange bleibt dieses Handy mit dem Board verbunden; an einer Hallenwand kann sich dann niemand sonst verbinden. Kostet etwas Akku; hält Android die App an, endet der Effekt.</item>
+        <item quantity="other">Pausen\nWas du sendest, hat Vorrang. Routenwiedergabe und Griffe putzen pausieren den Effekt. Das automatische Trennen gibt das Board weiterhin pünktlich frei; der Effekt endet damit.\n\nGrenze\nNach %1$d Minuten auf demselben Boulder endet der Effekt, und der Boulder leuchtet in seinen normalen Farben. Sende ihn erneut, um neu zu starten.\n\nIn anderen Apps\nZum Filmen hält „Auch in anderen Apps“ den Effekt am Laufen, während eine andere App offen ist, mit einer Benachrichtigung zum Stoppen. So lange bleibt dieses Handy mit dem Board verbunden; an einer Hallenwand kann sich dann niemand sonst verbinden. Kostet etwas Akku; hält Android die App an, endet der Effekt.</item>
+    </plurals>
+    <plurals name="led_anim_notification_text">
+        <item quantity="one">Endet nach %1$d Minute auf diesem Boulder. „Stopp“ zeigt die normalen Farben.</item>
+        <item quantity="other">Endet nach %1$d Minuten auf diesem Boulder. „Stopp“ zeigt die normalen Farben.</item>
+    </plurals>
+
     <!-- Settings: Timer -->
     <string name="settings_timer_title">Pausentimer</string>
     <string name="settings_timer_desc">Dauer deiner Pause zwischen Versuchen. Starte den Timer in der Boulderansicht der App selbst oder aktiviere unten den Start nach einem Logbucheintrag.</string>
@@ -483,6 +542,7 @@
     <string name="settings_privacy_desc">Was App und Website mit Daten tun. Öffnet cruxcoach.org.</string>
     <string name="settings_source_title">Quellcode</string>
     <string name="settings_source_desc">CruxCoach ist Open Source. Öffnet GitHub.</string>
+    <string name="settings_app_tagline">Open-Source-Trainings-App fürs Bouldern</string>
     <string name="board_filter_title">Filter</string>
     <string name="board_filter_selected_board">Gewähltes Board</string>
     <string name="settings_share_via_apps">Über Apps teilen</string>
@@ -529,7 +589,7 @@
     <!-- Training -->
     <string name="phase_base">Basis</string>
     <string name="phase_strength">Kraft</string>
-    <string name="phase_power">Power</string>
+    <string name="phase_power">Schnellkraft</string>
     <string name="phase_performance">Performance</string>
     <string name="phase_deload">Deload</string>
 
@@ -540,7 +600,7 @@
 
     <!-- Session Types -->
     <string name="session_strength">Kraft</string>
-    <string name="session_power">Power</string>
+    <string name="session_power">Schnellkraft</string>
     <string name="session_volume">Volumen</string>
     <string name="session_technique">Technik</string>
     <string name="session_deload">Deload</string>
@@ -569,7 +629,7 @@
     <string name="cat_pull">Zugkraft</string>
     <string name="cat_push">Druckkraft</string>
     <string name="cat_core">Rumpf</string>
-    <string name="cat_power">Power</string>
+    <string name="cat_power">Schnellkraft</string>
     <string name="cat_endurance">Ausdauer</string>
     <string name="cat_mobility">Mobilität</string>
     <string name="cat_technique">Technik</string>
@@ -592,7 +652,7 @@
     <string name="workout_rest">Pause</string>
     <string name="workout_exercise_of">Übung %1$d von %2$d</string>
     <string name="workout_type_strength">Kraft-Workout</string>
-    <string name="workout_type_power">Power-Workout</string>
+    <string name="workout_type_power">Schnellkraft-Workout</string>
     <string name="workout_type_volume">Volumen-Workout</string>
     <string name="workout_type_technique">Technik-Workout</string>
     <string name="workout_type_deload">Deload-Workout</string>
@@ -635,6 +695,10 @@
     <string name="pain_wrist">Handgelenk</string>
     <string name="pain_back">Rücken</string>
     <string name="pain_knee">Knie</string>
+    <string name="tr_region_side_left">%1$s links</string>
+    <string name="tr_region_side_right">%1$s rechts</string>
+    <string name="tr_region_side_both">%1$s beidseitig</string>
+    <bool name="tr_region_lower_case_in_text">false</bool>
 
     <!-- RPE Labels -->
     <string name="rpe_very_light">Sehr leicht</string>
@@ -651,7 +715,7 @@
     <string name="climb_log_flash">Flash</string>
     <string name="climb_log_attempts">Versuche</string>
     <string name="climb_log_style">Stil (optional)</string>
-    <string name="climb_log_holds">Griffarten (optional)</string>
+    <string name="climb_log_holds">Grifftypen (optional)</string>
     <string name="climb_log_board">Board (optional)</string>
     <string name="climb_log_notes">Notizen (optional)</string>
     <string name="climb_log_save_next">Speichern + Nächster</string>
@@ -783,6 +847,15 @@
     <string name="board_filter_origin_cruxcoach">CruxCoach-Setter</string>
     <string name="board_filter_origin_kilter">Kilter (offiziell)</string>
     <string name="board_filter_origin_quantum">eWalls / Quantum (offiziell)</string>
+    <string name="board_filter_origin_shinywall">Shiny Wall (offiziell)</string>
+    <string name="board_filter_shinywall_tags">Kategorien</string>
+    <string name="board_shinywall_tag_technical">Technisch</string>
+    <string name="board_shinywall_tag_physical">Kraftvoll</string>
+    <string name="board_shinywall_tag_crimpy">Leisten</string>
+    <string name="board_shinywall_tag_endurance">Ausdauer</string>
+    <string name="board_shinywall_tag_cruxy">Mit Crux</string>
+    <string name="board_shinywall_tag_only_hands">Handgriffe nicht als Tritte</string>
+    <string name="board_shinywall_tag_open_feet">Tritte frei</string>
     <string name="board_filter_quantum_rules">Quantum-Regeln</string>
     <string name="board_filter_quantum_standard">Standard</string>
     <string name="board_filter_quantum_campusing">Campusing</string>
@@ -864,7 +937,7 @@
     <string name="payment_lightning_zap_subtitle">Betrag + Absender auf Nostr sichtbar</string>
     <string name="payment_card_title">Karte</string>
     <string name="payment_coming_soon">Demnächst verfügbar</string>
-    <string name="payment_zap_title_private">Lightning-Spende</string>
+    <string name="payment_zap_title_private">Lightning-Geschenk</string>
     <string name="payment_zap_title_public">Lightning Zap</string>
     <string name="payment_zap_amount">Betrag in Sats:</string>
     <string name="payment_zap_message_private">Nachricht (optional, verschlüsselt)</string>
@@ -948,11 +1021,18 @@
     <string name="board_holdsearch_zone_active">Bereich aktiv</string>
     <string name="board_holdsearch_zone_clear">Bereich entfernen</string>
     <string name="board_holdsearch_zone_only">Bereichsfilter</string>
-    <string name="board_holdsearch_zone_filter_summary">Bereich → %d Climbs</string>
-    <string name="board_holdsearch_holds_selected">%d Holds ausgewählt</string>
+    <!-- %1$s: die Boulder, aus board_holdsearch_count_climbs -->
+    <string name="board_holdsearch_zone_filter_summary">Bereich → %1$s</string>
+    <plurals name="board_holdsearch_holds_selected">
+        <item quantity="one">%d Griff ausgewählt</item>
+        <item quantity="other">%d Griffe ausgewählt</item>
+    </plurals>
     <string name="board_holdsearch_reset">Zurücksetzen</string>
     <string name="board_holdsearch_searching">Suche…</string>
-    <string name="board_holdsearch_climbs_found">%d Climbs gefunden</string>
+    <plurals name="board_holdsearch_climbs_found">
+        <item quantity="one">%d Boulder gefunden</item>
+        <item quantity="other">%d Boulder gefunden</item>
+    </plurals>
     <string name="board_holdsearch_filter">Filtern</string>
     <string name="board_holdsearch_change">Ändern</string>
     <string name="board_holdsearch_clear">Aufheben</string>
@@ -978,6 +1058,8 @@
     <string name="board_browser_nav_more">Mehr</string>
     <string name="board_browser_change_board">Aktives Board ändern</string>
     <string name="cd_open_menu">Hauptmenü öffnen</string>
+    <!-- Badge on a main menu entry that is still a beta -->
+    <string name="main_menu_beta">Beta</string>
     <string name="main_menu_title">Hauptmenü</string>
     <string name="main_menu_training">Training</string>
     <string name="main_menu_board_map">Board-Karte</string>
@@ -1394,6 +1476,10 @@
     <string name="board_ascent_attempt">Versuch</string>
     <string name="board_dock_attempt">Versuch</string>
     <string name="board_dock_top">Top</string>
+    <!-- A climb's ascent count in thousands, where the full number has no room: "106k" -->
+    <string name="board_detail_count_thousands">%1$dk</string>
+    <!-- A logging button's word and how often the climber has logged it for this climb: "Top (3)" -->
+    <string name="board_dock_label_count">%1$s (%2$d)</string>
     <string name="board_dock_connect">Verbinden</string>
     <string name="board_dock_light">Leuchten</string>
     <string name="board_dock_queue">Queue</string>
@@ -1445,6 +1531,7 @@
     <string name="playlist_connect_board_confirm">Board verbinden</string>
     <string name="playlist_connect_board_skip">Ohne Board abspielen</string>
     <string name="ble_board_shows_instead">Am Board hängt: %1$s</string>
+    <string name="ble_queue_too_big">Nicht am Board: mehr LEDs, als das MoonBoard auf einmal zeigen kann</string>
     <string name="ble_session_name_promoted">Warteschlange</string>
     <string name="ble_participant_label">Teilnehmer %1$d</string>
     <!-- Joinbare BoardCell-Playlist: kanonischer Mesh-Zustand aller Mitglieder. -->
@@ -1485,7 +1572,16 @@
     <string name="board_heatmap_off">Aus</string>
     <string name="board_heatmap_personal">Meine Sends</string>
     <string name="board_heatmap_start">Start-Holds</string>
-    <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
+    <!-- %1$s: die Griffe, aus board_holdsearch_count_holds; %2$s: die Boulder, aus board_holdsearch_count_climbs -->
+    <string name="board_holdsearch_filter_summary">%1$s → %2$s</string>
+    <plurals name="board_holdsearch_count_holds">
+        <item quantity="one">%d Griff</item>
+        <item quantity="other">%d Griffe</item>
+    </plurals>
+    <plurals name="board_holdsearch_count_climbs">
+        <item quantity="one">%d Boulder</item>
+        <item quantity="other">%d Boulder</item>
+    </plurals>
     <plurals name="board_list_climb_count">
         <item quantity="one">%d Climb</item>
         <item quantity="other">%d Climbs</item>
@@ -1502,14 +1598,12 @@
     <string name="board_list_builtin_ignored">Ignoriert</string>
     <string name="board_list_empty_message">Füge Climbs über den Browser hinzu</string>
     <string name="board_list_empty_title">Liste ist leer</string>
-    <string name="board_logbook_attempts">Versuche gesamt</string>
     <string name="board_logbook_select_entry">%1$s auswählen</string>
     <string name="board_logbook_filters">Logbuch filtern</string>
     <string name="board_logbook_filter_outcome">Ergebnis</string>
     <string name="board_logbook_filter_board">Board</string>
     <string name="board_logbook_filter_angle">Winkel</string>
     <string name="board_logbook_no_filter_matches">Keine Logbuch-Einträge entsprechen diesen Filtern.</string>
-    <string name="board_logbook_best_grade">Bester Grad</string>
     <plurals name="board_logbook_day_entries">
         <item quantity="one">%d Eintrag</item>
         <item quantity="other">%d Einträge</item>
@@ -1518,12 +1612,10 @@
     <string name="board_logbook_empty_title">Noch keine Logeinträge</string>
     <string name="board_logbook_flash">Flash</string>
     <string name="board_logbook_sessions">Klettertage</string>
-    <string name="board_logbook_unique_climbs">Verschiedene Boulder</string>
     <string name="stats_interval_all">Gesamt</string>
     <string name="stats_interval_30_days">30 Tage</string>
     <string name="stats_interval_90_days">90 Tage</string>
     <string name="stats_interval_1_year">1 Jahr</string>
-    <string name="stats_previous_interval">Vorherige %1$s</string>
     <string name="day_name_mon">Mo</string>
     <string name="day_name_tue">Di</string>
     <string name="day_name_wed">Mi</string>
@@ -1558,7 +1650,7 @@
     <string name="training_reminder_title">Training heute geplant</string>
     <string name="training_reminder_message">%1$s-Session mit %2$d Übungen</string>
     <string name="training_type_strength">Kraft</string>
-    <string name="training_type_power">Power</string>
+    <string name="training_type_power">Schnellkraft</string>
     <string name="training_type_volume">Volumen</string>
     <string name="training_type_technique">Technik</string>
     <string name="training_type_deload">Deload</string>
@@ -1587,42 +1679,102 @@
     <string name="board_session_label">Session</string>
     <string name="board_sort_quality_sends">Begehungen × Sterne</string>
     <string name="board_sort_random">Zufällig</string>
+    <!-- A new random order: the button above the list while it is sorted at random, and in the filter -->
+    <string name="board_reshuffle">Neu mischen</string>
     <string name="board_sort_newest">Neueste</string>
     <string name="board_stats_activity">Aktivität</string>
     <string name="board_stats_personal_heatmap">Meine Sends — Heatmap</string>
     <string name="board_stats_heatmap_section">Heatmap — %1$s</string>
     <string name="board_stats_heatmap_empty">Noch keine Daten für diesen Heatmap-Modus. Logge ein paar Sends oder probiere einen anderen Modus.</string>
+    <string name="board_stats_heatmap_loading">Griffe werden gezählt…</string>
     <string name="board_stats_heatmap_board_label">Board</string>
     <string name="board_stats_heatmap_pick_board">Wähle ein Board, um die Hold-Heatmap zu sehen.</string>
     <string name="board_stats_heatmap_unsupported">Dieses Board hat keine Hold-Heatmap.</string>
-    <string name="board_stats_angle_distribution">Winkel-Verteilung</string>
-    <string name="board_stats_board_comparison">Board-Vergleich</string>
-    <string name="board_stats_board_comparison_board">Board</string>
-    <string name="board_stats_attempt">Versucht</string>
-    <string name="board_stats_avg_sessions_week">Sessions/Woche (8 W.)</string>
+    <string name="board_stats_empty_period">In diesem Zeitraum ist nichts eingetragen.</string>
+    <string name="board_stats_show_all_time">Gesamten Zeitraum zeigen</string>
+    <string name="board_stats_angle_distribution">Winkelverteilung</string>
+    <string name="board_stats_cross_board_tries">Versuche je Grad</string>
+    <string name="board_stats_cross_board_months">Versuche je Monat</string>
+    <string name="board_stats_cross_board_tries_help">Wie viele Versuche du im Schnitt gebraucht hast, bis du einen Boulder zum ersten Mal geschafft hast, je Board und Grad. Versuche aus früheren Sessions zählen mit, Wiederholungen nach der Begehung nicht.\n\nHohle Balken beruhen auf weniger als %1$d Bouldern und sagen wenig aus.\n\nTippe auf einen Grad, um zu sehen, wie viele Boulder hinter jedem Balken stehen.</string>
+    <string name="board_stats_cross_board_months_help">Wie viele Versuche die Boulder, die du in einem Monat zum ersten Mal geschafft hast, im Schnitt gebraucht haben, je Board. Hohle Punkte beruhen auf weniger als %1$d Bouldern.\n\nTippe auf einen Monat, um seine Werte zu sehen.</string>
+    <string name="board_stats_cross_board_tries_per_send">Versuche je Begehung</string>
+    <string name="board_stats_cross_board_few">Weniger als %1$d Boulder</string>
+    <string name="board_stats_cross_board_tries_value">%1$.1f Versuche</string>
+    <string name="board_stats_cross_board_tries_number">%1$.1f</string>
+    <plurals name="board_stats_cross_board_problems">
+        <item quantity="one">%d Boulder</item>
+        <item quantity="other">%d Boulder</item>
+    </plurals>
+    <string name="board_stats_cross_board_send_curve">Versuche bis zur Begehung</string>
+    <string name="board_stats_cross_board_send_curve_help">Wie viele Versuche deine Boulder bis zur ersten Begehung gebraucht haben, je Board: Flash, im 2. oder 3. Versuch, nach 4 bis 5 oder nach 6 und mehr Versuchen. Versuche aus früheren Sessions zählen mit, eine Begehung nach Versuchen an einem früheren Tag ist also kein Flash.\n\nHohle Balken beruhen auf weniger als %1$d Bouldern.\n\nTippe auf ein Board, um die Zahlen zu sehen.</string>
+    <string name="board_stats_glance_title">Auf einen Blick</string>
+    <string name="board_stats_glance_help">Oben: deine schwerste Begehung und dein schwerster Flash im ganzen Logbuch.\n\nDarunter: die letzten %1$d Tage gegenüber den %1$d Tagen davor: Klettertage (Tage mit mindestens einem Eintrag), Begehungen und deine schwerste Begehung. Grün heißt mehr oder ein schwererer Grad.\n\nKlettertage pro Woche: der Schnitt der letzten acht Wochen oder seit deinem ersten Klettertag. Er erscheint ab zwei Wochen.</string>
+    <string name="board_stats_glance_hardest_send">Schwerste Begehung</string>
+    <string name="board_stats_glance_hardest_flash">Schwerster Flash</string>
+    <string name="board_stats_glance_hardest">Schwerste</string>
+    <string name="board_stats_glance_recent">Letzte %1$d Tage</string>
+    <plurals name="board_stats_glance_days">
+        <item quantity="one">%d Klettertag</item>
+        <item quantity="other">%d Klettertage</item>
+    </plurals>
+    <string name="board_stats_glance_versus">ggü. den %1$d Tagen davor</string>
+    <string name="board_stats_milestones_help">Neuer Grad: die erste Begehung eines Grads, der schwerer ist als alle Begehungen davor.\n\nBegehungen: wann du 50, 100, 250 und mehr Begehungen erreicht hast.\n\nBegehungen an einem Tag: dein bester Tag, ab %1$d Begehungen.\n\nWochen in Folge: Wochen mit mindestens einem Klettertag, bis in diese oder die letzte Woche.</string>
+    <string name="board_stats_milestone_new_grade">Neuer Grad</string>
+    <string name="board_stats_milestone_biggest_day">Begehungen an einem Tag</string>
+    <plurals name="board_stats_milestone_weeks">
+        <item quantity="one">Woche in Folge</item>
+        <item quantity="other">Wochen in Folge</item>
+    </plurals>
+    <string name="board_stats_feel_harder">%1$s fühlt sich für dich etwa %2$s schwerer an als %3$s.</string>
+    <string name="board_stats_feel_easier">%1$s fühlt sich für dich etwa %2$s leichter an als %3$s.</string>
+    <string name="board_stats_feel_same">%1$s und %2$s fühlen sich für dich etwa gleich an.</string>
+    <string name="board_stats_feel_half">einen halben Grad</string>
+    <string name="board_stats_feel_one">einen Grad</string>
+    <string name="board_stats_feel_grades">%1$s Grade</string>
+    <string name="board_stats_feel_easier_end">leichter</string>
+    <string name="board_stats_feel_harder_end">schwerer</string>
+    <string name="board_stats_feel_title">So fühlen sich deine Boards an</string>
+    <string name="board_stats_feel_help">Geschätzt aus den Versuchen deiner ersten Begehungen: wie viel mehr Versuche derselbe Grad auf dem einen Board braucht als auf dem anderen, umgerechnet in Grade daran, wie schnell deine Versuche mit dem Grad steigen. Erscheint, wenn beide Boards mindestens %1$d geschaffte Boulder haben, einige davon in denselben Graden.\n\nDas blasse Band um einen Punkt zeigt, wie sicher die Schätzung ist: je breiter, desto grober.</string>
+    <string name="board_session_recap_open">Session-Rückblick</string>
+    <string name="board_session_recap_share">Als Bild teilen</string>
+    <string name="board_session_recap_chooser">Session teilen</string>
+    <string name="board_session_recap_failed">Das Bild konnte nicht geteilt werden.</string>
+    <string name="board_session_recap_hardest">Schwerste Begehungen</string>
+    <string name="board_stats_open">Statistik öffnen</string>
+    <string name="board_stats_problems">Boulder</string>
+    <string name="board_stats_grades_title">Boulder je Grad</string>
+    <string name="board_stats_grades_help">Jeder Boulder, den du im gewählten Zeitraum geloggt hast, zählt einmal je Board, über alle Winkel, mit seinem besten Ergebnis: Flash, später geschafft oder noch offen.\n\nFür einen Flash muss der erste erfasste Eintrag bei diesem Winkel erfolgreich sein, mit höchstens einem Versuch.\n\nTippe auf einen Grad, um seine Zahlen zu sehen.</string>
+    <string name="board_stats_grades_open">Noch offen</string>
+    <string name="board_logbook_filter_period">Zeitraum</string>
+    <string name="board_stats_period_versus">Änderung gegenüber dem gleich langen Zeitraum davor</string>
+    <string name="board_stats_grade_sends_title">Begehungen je Grad</string>
+    <string name="board_stats_grade_sends_help">Jede Begehung im gewählten Zeitraum zählt, auch Wiederholungen.\n\nDie Farben sind deine Intensitätszonen: Aufwärmen, optimal und Limit, berechnet aus den Graden, die du loggst.\n\nTippe auf einen Grad, um seine Begehungen und die Boulder dahinter zu sehen: der Unterschied sind deine Wiederholungen.</string>
+    <string name="board_stats_days_per_week">Klettertage pro Woche</string>
+    <string name="board_stats_days_per_week_average">Ø %1$.1f pro Woche</string>
+    <string name="board_stats_bests">Bestwerte im Zeitraum</string>
+    <string name="board_stats_best_per_week">Klettertage pro Woche</string>
+    <string name="board_stats_best_streak">Wochen in Folge</string>
+    <string name="board_stats_grade_ungraded">Ohne Grad</string>
+    <plurals name="board_stats_grade_sends_count">
+        <item quantity="one">%d Begehung</item>
+        <item quantity="other">%d Begehungen</item>
+    </plurals>
+    <string name="board_stats_entries_over_time">Einträge im Zeitverlauf</string>
+    <string name="board_stats_sends_over_time">Begehungen im Zeitverlauf</string>
+    <string name="board_stats_glance_per_week">Klettertage pro Woche</string>
+    <string name="board_stats_glance_per_week_value">%1$.1f</string>
     <string name="board_stats_date_range">Zeitraum…</string>
-    <string name="board_stats_flash_rate">Flash-Quote</string>
-    <string name="board_stats_flash_send_attempt">Boulder-Ergebnisse nach Grad</string>
     <string name="board_stats_grade_easy">Leicht</string>
     <string name="board_stats_grade_elite">Elite</string>
     <string name="board_stats_grade_hard">Schwer</string>
     <string name="board_stats_grade_medium">Mittel</string>
     <string name="board_stats_grade_progression">Rollierendes Leistungsniveau</string>
-    <string name="board_stats_grade_pyramid">Grad-Pyramide</string>
-    <string name="board_stats_hardest">Härtester</string>
-    <string name="board_stats_hardest_flash">Härtester Flash</string>
     <string name="board_stats_interval_1y">1 Jahr</string>
     <string name="board_stats_interval_30d">30 Tage</string>
     <string name="board_stats_interval_90d">90 Tage</string>
     <string name="board_stats_interval_all">Gesamt</string>
-    <string name="board_stats_week_streak">Wochen-Serie</string>
-    <string name="board_stats_most_sends_day">Begehungen/Tag</string>
-    <string name="board_stats_outcome_distribution">Geschaffte Boulder: Flash oder später</string>
-    <string name="board_stats_period_comparison">Perioden-Vergleich</string>
-    <string name="board_stats_sends_over_time">Logeinträge im Zeitverlauf</string>
     <string name="board_stats_total">Gesamt</string>
     <string name="board_stats_unique">Verschiedene Boulder</string>
-    <string name="board_stats_weekly_volume">Wöchentliche Einträge nach Gradbereich</string>
     <string name="board_zone_limit">Limit</string>
     <string name="board_zone_optimal">Optimal</string>
     <string name="board_zone_warmup">Warm-Up</string>
@@ -1706,7 +1858,7 @@
     <string name="devcontact_app_version">App-Version</string>
     <string name="devcontact_badge_bug">[FEHLER]</string>
     <string name="devcontact_badge_wish">[WUNSCH]</string>
-    <string name="devcontact_bug_sent">Bug Report gesendet</string>
+    <string name="devcontact_bug_sent">Fehlerbericht gesendet</string>
     <string name="devcontact_bugs_empty">Keine Fehlerberichte gesendet</string>
     <string name="devcontact_category_general">Allgemein</string>
     <string name="devcontact_category_issue">Problem</string>
@@ -1717,7 +1869,7 @@
     <string name="devcontact_developer">Entwickler</string>
     <string name="devcontact_device">Gerät</string>
     <string name="devcontact_device_info">Geräteinformationen</string>
-    <string name="devcontact_feature_sent">Feature Request gesendet</string>
+    <string name="devcontact_feature_sent">Wunsch gesendet</string>
     <string name="devcontact_language">Sprache</string>
     <string name="devcontact_message">Nachricht</string>
     <string name="devcontact_messages">Nachrichten</string>
@@ -1745,7 +1897,10 @@
     <string name="error_climb_not_in_db_your_logs">Deine Einträge</string>
     <string name="error_climb_not_in_db_log_send">Top</string>
     <string name="error_climb_not_in_db_log_attempt">Versuch</string>
-    <string name="error_climb_not_in_db_log_attempts">%1$d Versuch(e)</string>
+    <plurals name="error_climb_not_in_db_log_tries">
+        <item quantity="one">%d Versuch</item>
+        <item quantity="other">%d Versuche</item>
+    </plurals>
     <string name="error_select_category">Wähle mindestens eine Kategorie</string>
     <string name="error_cannot_open_file">Kann Datei nicht öffnen</string>
     <string name="error_cannot_read_file">Kann Datei nicht lesen</string>
@@ -1787,10 +1942,10 @@
     <string name="export_category_workout_logs">Workout-Logs</string>
     <string name="export_category_climb_logs">Boulder-Logbuch</string>
     <string name="export_category_training_plans">Trainingspläne</string>
-    <string name="export_category_board_logbook">Board-Sends &amp; -Versuche</string>
+    <string name="export_category_board_logbook">Board-Begehungen und -Versuche</string>
     <string name="export_category_board_sessions">Board-Sessions</string>
-    <string name="export_category_climb_lists">Climb-Listen &amp; Favoriten</string>
-    <string name="export_category_own_climbs">Eigene Climbs &amp; Drafts</string>
+    <string name="export_category_climb_lists">Boulderlisten und Favoriten</string>
+    <string name="export_category_own_climbs">Eigene Boulder und Entwürfe</string>
     <string name="import_auto_detect_hint">Wähle einen CruxCoach-JSON-Export oder ein CSV-ZIP</string>
     <string name="import_backup_detected">CruxCoach-Daten erkannt</string>
     <string name="import_duplicate_hint">Duplikate werden automatisch übersprungen</string>
@@ -2109,7 +2264,7 @@
 
     <!-- FEAT-002: Verschlüsseltes Cloud-Backup (Nostr + Blossom unter der Haube) -->
     <string name="settings_backup_title">Daten-Backup</string>
-    <string name="settings_backup_description">Inhalt und Schutz\nSichert Logbuch, Versuche, Listen, Notizen, eigene Boulder und Trainingsdaten. Die App verschlüsselt die Sicherung vor dem Hochladen auf öffentliche Server. Zum Wiederherstellen brauchst du denselben Kontoschlüssel.\n\nSichern und Wiederherstellen\nAktiviere Backups für geplante Sicherungen oder „Jetzt sichern“. Wiederherstellen geht auch bei ausgeschalteter Automatik.</string>
+    <string name="settings_backup_description">Inhalt und Schutz\nSichert Logbuch, Versuche, Listen, Notizen, eigene Boulder sowie Trainings-, Körper- und Ernährungsdaten (Verletzungen und Comeback-Tagebuch nur, wenn du sie unter „Verletzungen &amp; Pausen“ einschaltest). Die App verschlüsselt die Sicherung vor dem Hochladen auf öffentliche Server. Zum Wiederherstellen brauchst du denselben Kontoschlüssel.\n\nSichern und Wiederherstellen\nAktiviere Backups für geplante Sicherungen oder „Jetzt sichern“. Wiederherstellen geht auch bei ausgeschalteter Automatik.</string>
     <string name="settings_backup_device_local_note">Nicht enthalten\nDie Board-Auswahl und Filter für Boulderliste und Karte bleiben auf diesem Gerät. Öffentliche Board-Kataloge lädst du bei Bedarf erneut herunter.</string>
     <string name="settings_backup_enable">Backup aktivieren</string>
     <string name="settings_backup_needs_key">Richte zuerst deinen Kontozugang ein.</string>
@@ -2135,7 +2290,7 @@
     <string name="settings_backup_check_decrypt_failed">Ein Backup wurde gefunden, aber nicht entschlüsselt — der Schlüssel passt anscheinend nicht.</string>
     <string name="settings_backup_check_error">Fehler beim Suchen nach einem Backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
-    <string name="settings_backup_restored">Backup verarbeitet: %1$d Logbucheinträge, %2$d Listen. Bereits vorhandene Daten wurden nicht dupliziert.</string>
+    <string name="settings_backup_restored">Backup verarbeitet – Logbucheinträge: %1$d, Listen: %2$d. Bereits vorhandene Daten wurden nicht dupliziert.</string>
     <string name="settings_backup_restore_catalogue_loading">Boards werden noch geladen. Die Wiederherstellung läuft trotzdem; Namen, Grade und eigene Climbs werden verknüpft, sobald sie da sind.</string>
     <string name="import_in_progress_short">Daten werden importiert…</string>
     <string name="settings_backup_succeeded">Backup erstellt.</string>
@@ -2283,6 +2438,7 @@
     <string name="board_send_error_connected_board_mismatch">Dieser Climb gehört zu einem anderen Board-Typ als das verbundene Board. Verbinde dich mit dem passenden Board.</string>
     <string name="board_send_error_no_led_data">Keine LED-Daten. Bitte Board-Daten neu synchronisieren.</string>
     <string name="board_send_error_send_failed">Senden fehlgeschlagen.</string>
+    <string name="board_send_error_moonboard_too_big">Dieser Climb braucht mehr LEDs, als das MoonBoard auf einmal zeigen kann (etwa 40 bis 52). Es wurde nichts gesendet.</string>
     <string name="board_send_error_generic">Fehler beim Senden.</string>
     <string name="board_send_error_active_not_moonboard">Dein aktives Board ist kein MoonBoard — wechsle es in den Einstellungen, um diesen Climb zu senden.</string>
     <string name="board_send_error_moonboard_variant_mismatch">Dieser Climb gehört zu einer anderen MoonBoard-Variante als dein aktives Board.</string>
@@ -2292,6 +2448,7 @@
     <string name="board_mismatch_connected_brand">Verbunden ist ein %1$s, dieser Climb gehört aber zu %2$s.</string>
     <string name="board_mismatch_active_brand">CruxCoach ist auf %1$s eingestellt, während Board oder Climb %2$s benötigen.</string>
     <string name="board_mismatch_connected_model">Das verbundene Quantum-Modell und dieser Climb verwenden unterschiedliche Layouts.</string>
+    <string name="board_mismatch_shinywall_variant">Der Name der verbundenen Shiny Wall deutet auf %1$s hin, CruxCoach ist aber auf %2$s eingestellt. Wähle die Variante, als die deine Wand eingerichtet ist.</string>
     <string name="board_mismatch_active_layout">Das gewählte Layout oder die Generation passt nicht zum Climb oder Controller.</string>
     <string name="board_mismatch_active_size">Kein Griff dieses Climbs lässt sich der eingestellten Board-Größe zuordnen.</string>
     <string name="board_mismatch_detected_controller">Über BLE sicher erkannt und vorausgewählt: %1$s. Unbekanntes Modell, Layout oder Größe musst du noch wählen.</string>
@@ -2571,12 +2728,13 @@
     <string name="relay_multi_connect_direct">Dieses Board erlaubt mehrere Apps gleichzeitig – CruxRelay ist nicht nötig.</string>
     <string name="relay_unsupported_explanation">Quantum verwaltet mehrere Apps über eigene Layer. Verbinde weitere Apps direkt mit dem Board.</string>
     <string name="relay_chip_text">Relay für %1$s · %2$d verbunden</string>
-    <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
+    <string name="relay_advertised_as">Für andere sichtbar als „%1$s“</string>
     <string name="settings_relay_manual_start">Board für andere Apps freigeben</string>
     <string name="settings_relay_manual_start_desc">Andere lassen über dein Handy Boulder am Board leuchten – für Boards mit nur einer Verbindung. Läuft, solange ein Board verbunden ist.</string>
+    <string name="settings_relay_first_share_hint">Startet nach dem ersten Freigeben im Verbindungsfenster.</string>
     <string name="relay_status_waiting">Startet, sobald ein Board verbunden ist.</string>
     <string name="relay_disclosure_title">Für Board-Apps freigeben</string>
-    <string name="relay_disclosure_text">Dein Handy heißt währenddessen „CruxCoach…“ und nimmt Boulder anderer Board-Apps an. Der zuletzt gesendete Boulder leuchtet. Danach heißt dein Handy wieder wie vorher.</string>
+    <string name="relay_disclosure_text">Dein Handy heißt währenddessen über Bluetooth „CruxCoach…“ – auch Auto und Kopfhörer zeigen diesen Namen – und nimmt Boulder anderer Board-Apps an. Der zuletzt gesendete Boulder leuchtet. Danach heißt dein Handy wieder wie vorher.</string>
     <string name="relay_disclosure_confirm">Board-Apps zulassen</string>
     <string name="relay_error_server">Teilen konnte nicht starten. Bitte erneut versuchen.</string>
     <string name="relay_error_advertise">Board konnte nicht sichtbar gemacht werden.</string>
@@ -2587,6 +2745,29 @@
     <string name="relay_chip_stop">Beenden</string>
     <string name="relay_host_title">Geteilte CruxCoach-Session</string>
     <string name="relay_host_join_subtitle">%1$d in der Session · Antippen zum Beitreten</string>
+    <string name="relay_error_name_in_use">Dein Handy hat schon einen CruxCoach-Bluetooth-Namen. Teilt gerade eine andere CruxCoach-App? Mehr unter Einstellungen → Teilen in der Nähe.</string>
+    <string name="relay_error_stopped_for_car">Teilen beendet: Handy mit Auto verbunden.</string>
+    <string name="relay_status_stopped_for_car">Das Teilen startet wieder mit der nächsten Board-Verbindung.</string>
+    <string name="relay_share_again">Wieder teilen</string>
+    <string name="relay_bt_name_title">Bluetooth-Name deines Handys</string>
+    <string name="relay_bt_name_notice">Während des Teilens heißt dein Handy über Bluetooth „CruxCoach…“ – auch für Auto und Kopfhörer. Endet das Teilen, gibt CruxCoach ihm seinen Namen zurück.</string>
+    <string name="relay_bt_name_lent">Das Teilen läuft: Über Bluetooth heißt dein Handy gerade „CruxCoach…“. Danach heißt es wieder „%1$s“.</string>
+    <string name="relay_bt_name_pending">Das Teilen ist beendet, aber über Bluetooth heißt dein Handy vielleicht noch „CruxCoach…“. CruxCoach versucht weiter, ihm seinen Namen „%1$s“ zurückzugeben.</string>
+    <string name="relay_bt_name_restore">Namen jetzt zurücksetzen</string>
+    <string name="relay_bt_name_permission">Damit dein Handy über Bluetooth wieder „%1$s“ heißt, braucht CruxCoach die Berechtigung „Geräte in der Nähe“.</string>
+    <string name="relay_bt_name_permission_action">Erlauben</string>
+    <string name="relay_bt_name_unknown">Über Bluetooth heißt dein Handy „%1$s“, und CruxCoach kennt seinen früheren Namen nicht. Teilt gerade keine CruxCoach-App ein Board, wähle hier einen Namen oder gib ihn in den Telefoneinstellungen unter „Gerätename“ (Telefoninfo) ein.</string>
+    <string name="relay_bt_name_open_settings">Telefoneinstellungen öffnen</string>
+    <string name="relay_bt_name_choose">Namen wählen…</string>
+    <string name="relay_bt_name_dialog_title">Name für dein Handy</string>
+    <string name="relay_bt_name_dialog_text">Vorgeschlagen ist der Gerätename aus den Telefoneinstellungen. Du kannst ihn ändern. Auto und Kopfhörer zeigen diesen Namen.</string>
+    <string name="relay_bt_name_dialog_text_empty">Gib den Namen ein, den dein Handy über Bluetooth haben soll. Auto und Kopfhörer zeigen diesen Namen.</string>
+    <string name="relay_bt_name_field_label">Bluetooth-Name</string>
+    <string name="relay_bt_name_error_blank">Gib einen Namen ein.</string>
+    <string name="relay_bt_name_error_sharing">Das ist ein CruxCoach-Freigabename. Gib den eigenen Namen deines Handys ein.</string>
+    <string name="relay_bt_name_error_too_long">Dieser Name ist zu lang für Bluetooth.</string>
+    <string name="relay_bt_name_confirm">Zurücksetzen</string>
+    <string name="relay_bt_name_rename_failed">Der Name konnte nicht gesetzt werden. Ist Bluetooth an?</string>
     <string name="board_ble_via_cruxcoach">via CruxCoach</string>
     <string name="board_ble_connection_via_relay">Über CruxCoach Relay verbunden</string>
     <string name="board_ble_connection_multi">Mehrere Geräte können verbunden bleiben</string>
@@ -2690,6 +2871,7 @@
     <string name="moon_csv_fallback">CSV-Ausweichweg</string>
     <string name="moon_csv_request_data">Kontodaten bei Moon anfordern</string>
     <string name="moon_csv_request_hint">Der Anfragetext wird kopiert, bevor sich dein Mailprogramm öffnet. Füge ihn in die Nachricht ein und ergänze die Platzhalter.</string>
+    <string name="moon_csv_no_mail_app">Keine Mail-App gefunden. Der Anfragetext ist kopiert.</string>
     <string name="moon_csv_request_subject">Subject access request – MoonBoard account data</string>
     <string name="moon_csv_request_body">Name: [vollständiger Name]\nMoonBoard username: [Nutzername]\nAccount email: [E-Mail-Adresse]\n\nPlease treat this as a UK GDPR subject access request and, where applicable, a data portability request. Please provide all personal data linked to my MoonBoard account, including profile and account identifiers; problems I created or logged; sends, ascents, grades, repeats, attempts, dates and session history; favourites, lists, saved and custom problems; and related metadata.\n\nWhere technically feasible, please provide the export as CSV or JSON, or another structured, commonly used, machine-readable format. If identity verification or a secure delivery method is required, please let me know promptly. Please confirm receipt and the expected response date.\n\nKind regards,\n[name]</string>
     <string name="moon_csv_angle_note">Die MoonBoard-CSV enthält keinen Boardwinkel. Ist ein Boulder für beide Winkel verfügbar, importiert CruxCoach ihn mit 40°.</string>
@@ -2754,7 +2936,11 @@
     <string name="fips_mesh_join_mode_title">Board-Beitritt</string>
     <string name="fips_mesh_join_mode_description">Gilt für dieses Board, solange jemand daran ist. Alle am Board dürfen es ändern.</string>
     <string name="board_selection_quantum_model_label">Quantum-Modell</string>
+    <string name="board_quantum_experimental_label">%1$s (experimentell)</string>
+    <string name="board_quantum_experimental_hint">Experimentell: noch nicht an einem echten Quantum-Board getestet. Eine leuchtende Route wird eventuell nicht als bestätigt angezeigt.</string>
     <string name="board_selection_quantum_schematic_hint">Das Originalbild des ausgewählten Quantum-Modells ist enthalten.</string>
+    <string name="board_selection_shinywall_variant_label">Shiny-Wall-Variante</string>
+    <string name="board_selection_shinywall_variant_hint">Wähle die Variante, als die deine Wand eingerichtet ist. Full-Wände haben zusätzlich die kleinen Griffe zwischen den Reihen.</string>
     <string name="quantum_sync_failed_generic">Der Quantum-Katalog konnte nicht aktualisiert werden. Vorhandene Offline-Daten bleiben verfügbar.</string>
     <string name="board_layers_title">Board-Layer</string>
     <string name="board_layers_occupied">%1$d von %2$d aktiv</string>
@@ -2801,6 +2987,10 @@
         <item quantity="one">%1$d Climb-Notiz</item>
         <item quantity="other">%1$d Climb-Notizen</item>
     </plurals>
+    <plurals name="import_result_athlete">
+        <item quantity="one">%d Eintrag aus Training, Körper oder Ernährung</item>
+        <item quantity="other">%d Einträge aus Training, Körper und Ernährung</item>
+    </plurals>
     <string name="board_playlist_random_board_unknown">Auf diesem Board liegt noch kein Climb, also hat der Würfel nichts zum Abgleichen. Füge zuerst einen Climb hinzu.</string>
     <string name="board_layer_color_green">Grün</string>
     <string name="board_layer_color_cyan">Cyan</string>
@@ -2821,6 +3011,7 @@
     <string name="quantum_layer_status_planned">lokal geplant</string>
     <string name="quantum_layer_status_sending">wird übertragen</string>
     <string name="quantum_layer_status_on_board">vom Board bestätigt</string>
+    <string name="quantum_layer_status_sent">gesendet; das Board listet ihn nicht</string>
     <string name="quantum_layer_status_replacing">Ersatz geplant; bisheriger Climb ist noch am Board</string>
     <string name="quantum_layer_status_failed">nicht bestätigt</string>
     <string name="quantum_layer_status_unknown">am Board; Routendetails unbekannt</string>
@@ -2829,6 +3020,7 @@
     <string name="quantum_layer_status_short_planned">Plan</string>
     <string name="quantum_layer_status_short_sending">senden</string>
     <string name="quantum_layer_status_short_on_board">aktiv</string>
+    <string name="quantum_layer_status_short_sent">an</string>
     <string name="quantum_layer_status_short_replacing">Tausch</string>
     <string name="quantum_layer_status_short_failed">Fehler</string>
     <string name="quantum_layer_status_short_unknown">?</string>
@@ -2875,13 +3067,16 @@
     <string name="beta_video_number">Beta-Video %1$d</string>
     <string name="beta_video_current_angle">%1$d° · Aktueller Winkel</string>
     <string name="beta_video_close">Beta-Videos schließen</string>
-    <string name="board_stats_problem_outcomes_hint">Jeder Boulder zählt pro Board-Familie in diesem Zeitraum einmal, über alle Winkel: Flash, sonst geschafft, sonst versucht.</string>
     <string name="whatsnew_023_title">Neu in 0.2.3</string>
     <string name="whatsnew_023_body">• Beta-Videos – Play-Symbol in den Boulder-Details.\n• Neue Kopfzeile – Board, Winkel, Bluetooth und Filter direkt erreichbar.\n• Filter – übersichtlicher, mit „Geschaffte ausschließen“.\n• Board-Karte – Hallen und Boards nach Ort oder Name suchen.\n• Kataloge wählen – nur die Boards laden, die du brauchst.\n• Statistik – jeder Boulder zählt einmal: Flash, geschafft oder versucht.</string>
     <string name="whatsnew_023_hint">Außerdem: MoonBoard-Griffsets in der Board-Auswahl, klareres Konto &amp; Backup, Einführung im Logo-Menü.</string>
     <string name="whatsnew_024_title">Neu in 0.2.4</string>
     <string name="whatsnew_024_body">• Neuere Kilter-Boards – Boards, die nur als „Kilter Board“ erscheinen, verbinden sich jetzt.\n• Kilter-Logbuch-Upload – funktioniert wieder, ohne Doppelte, und versucht es selbst erneut.\n• Board-Karte – klarere Markierungen, eine Liste der Orte im Ausschnitt, „Mein Standort“ und Hallen in deiner Nähe.\n• Griffe putzen – das Logbuch-Menü leuchtet die Griffe deiner heute geloggten Probleme zum Bürsten.</string>
     <string name="whatsnew_024_hint">Außerdem: Ein Board-Wechsel erscheint während eines Katalog-Downloads sofort, und eine Session läuft nach einer Pause weiter.</string>
+    <!-- 0.2.5: eine Zeile je Feature; die Release-Vorbereitung ergänzt die anderen und registriert den Dialog. -->
+    <string name="whatsnew_025_title">Neu in 0.2.5</string>
+    <string name="whatsnew_025_body">• Training &amp; Ernährung&#160;– ein Coach fürs Training heute, über 200 Übungen und Ernährungsziele.\n• Statistiken&#160;– eine Logbuch-Übersicht, Versuche bis zur Begehung, deine Boards im Vergleich, Session-Rückblicke.\n• Jahresrückblick&#160;– dein Kletterjahr als Seiten zum Teilen, in den Statistiken.\n• Shiny Wall&#160;– wähle deine Shiny Wall in der Board-Auswahl, durchsuche ihre Boulder und lass sie per Bluetooth leuchten. Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten &amp; Importe.\n• Community auf Buzz&#160;– sprich mit den Entwicklern und teste neue Versionen zuerst (Einstellungen → Community).</string>
+    <string name="whatsnew_025_hint">Außerdem: LED-Effekte für Kilter, PaintBox (Einstellungen → Extras), eine Prüfung der Board-Größe, nach dem Teilen wieder dein eigener Bluetooth-Name und Quantum-Boards als experimentell gekennzeichnet.</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
 
@@ -2896,6 +3091,8 @@
     <string name="settings_summary_timers">Pausentimer in der App und das schrittweise Anzeigen von Routen einstellen.</string>
     <string name="settings_page_sharing">Teilen in der Nähe</string>
     <string name="settings_summary_sharing">Boulder mit anderen in der Nähe teilen. Mit CruxRelay können sie über dein Handy die Board-LEDs steuern.</string>
+    <string name="settings_page_training">Training &amp; Ernährung</string>
+    <string name="settings_summary_training">Profil, Ausrüstung und Orte, Ernährung, Erinnerungen und Health Connect fürs Training.</string>
     <string name="settings_page_account">CruxCoach-Konto</string>
     <string name="settings_summary_account">Öffentliches Profil bearbeiten und Kontoschlüssel verwalten, auch mit Amber.</string>
     <string name="settings_page_imports">Board-Konten &amp; Importe</string>
@@ -2910,6 +3107,23 @@
     <string name="settings_summary_support">Fehler melden, Funktionen vorschlagen und den Entwickler kontaktieren. Benachrichtigungen und automatische Absturzberichte einstellen.</string>
     <string name="settings_page_about">Über CruxCoach</string>
     <string name="settings_summary_about">Version, Lizenzen, Datenschutz und Quellcode oder die App teilen.</string>
+    <!-- Community auf Buzz (0.2.5): Der Link öffnet nur den Browser; es wird nichts gesendet. -->
+    <string name="settings_page_community">Community</string>
+    <string name="settings_summary_community">Tritt der CruxCoach-Community auf Buzz bei: Sprich mit den Entwicklern, teste neue Versionen zuerst und bestimme mit, was als Nächstes kommt.</string>
+    <string name="community_join_title">Werde Teil der CruxCoach-Community</string>
+    <string name="community_point_talk">Sprich mit den Entwicklern</string>
+    <string name="community_point_test">Teste neue Versionen zuerst</string>
+    <string name="community_point_shape">Bestimme mit, was als Nächstes kommt</string>
+    <string name="community_join_action">Auf Buzz beitreten</string>
+    <string name="community_join_note">Buzz ist eine separate App mit eigenem Konto. CruxCoach gibt nichts weiter.</string>
+    <string name="community_report_hint">Verfolge deine Meldung und teste die Lösung früh: Tritt der Community auf Buzz bei.</string>
+    <string name="community_report_hint_feature">Sprich über deine Idee und teste neue Versionen zuerst: Tritt der Community auf Buzz bei.</string>
+    <string name="community_report_hint_join">Beitreten</string>
+    <string name="community_report_hint_member">Bereits Mitglied</string>
+    <string name="community_report_hint_later">Später</string>
+    <string name="link_open_failed">Keine App kann diesen Link öffnen.</string>
+    <!-- Screen reader action on a link in a message, announcement or report. -->
+    <string name="message_open_link">Link %1$s öffnen</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Hell</string>
     <string name="settings_theme_dark">Dunkel</string>
@@ -2923,14 +3137,11 @@
     <string name="ux_plan_title">Ablauf</string>
     <string name="ux_account_help">Kontozugang\nDein privater Schlüssel funktioniert wie ein Passwort. Halte ihn geheim und bewahre ihn außerhalb dieses Handys auf. Er lässt sich nicht zurücksetzen.\n\nDeine Daten\nEine Schlüsselkopie ist kein Daten-Backup. Logbuch und Listen benötigen eine zusätzliche Sicherung.\n\nOptionale Hilfen\nAmber kann deinen Schlüssel in einer eigenen App verwalten. Deine öffentliche Konto-ID darfst du teilen; sie stellt den Zugang aber nicht wieder her.</string>
     <string name="ux_lists_help">Listen\nJede Liste enthält einen Boulder höchstens einmal. Favoriten sind eine integrierte Liste.\n\nAbspielen\nEin optionaler Ablauf ergänzt Wiederholungen, Winkel und Pausen. Ein abgespielter Schritt ist noch keine Begehung. Versuche und erfolgreiche Begehungen erfasst du im Logbuch.\n\nVerlauf\nDer Verlauf erfasst an die Board-LEDs übertragene Boulder. Er ist vom Kletterlogbuch getrennt.</string>
-    <string name="ux_logbook_help">Einträge\nBegehungen sind erfolgreiche Logeinträge, auch Wiederholungen. Versuche meint hier Einträge ohne erfolgreiche Begehung. Ein Eintrag kann mehrere Kletterversuche enthalten.\n\nFilter\nErgebnis, Board und Winkel grenzen diese Liste ein. Der in der Statistik gewählte Zeitraum gilt auch für diese Liste; der Board-Filter der Statistik ist unabhängig. Einen Boulder am Board aufleuchten zu lassen erfasst keinen Kletterversuch.</string>
-    <string name="ux_stats_help">Umfang\nBegehungen zählen erfolgreiche Einträge, auch Wiederholungen. Versuche summieren die erfassten Kletterversuche aller Einträge einschließlich erfolgreicher Begehungen; jeder Eintrag zählt mindestens einmal.\n\nBoulder-Ergebnisse\nJeder Boulder zählt pro Board-Familie im gewählten Zeitraum einmal, über alle Winkel: Flash, sonst geschafft, sonst versucht. Für einen Flash muss der erste erfasste Eintrag zu diesem Boulder bei diesem Winkel erfolgreich sein, mit höchstens einem Versuch. Frühere erfolglose Einträge schließen ihn aus, auch außerhalb des gewählten Zeitraums. Fehlende Einträge begrenzen diese Aussage. Die Flash-Quote teilt Flashes durch erfolgreiche Einträge einschließlich Wiederholungen.\n\nAktivität und Zeitdiagramm\nSie zählen Logeinträge, auch erfolglose, statt einzelner Kletterversuche oder nur erfolgreicher Begehungen. Rekorde beziehen sich auf die gesamte Historie; die übrigen Diagramme auf den gewählten Zeitraum.</string>
+    <string name="ux_logbook_help">Einträge\nBegehungen sind erfolgreiche Logeinträge, auch Wiederholungen. Versuche meint hier Einträge ohne erfolgreiche Begehung. Ein Eintrag kann mehrere Kletterversuche enthalten.\n\nFilter\nZeitraum, Ergebnis, Board und Winkel grenzen diese Liste ein. Die Übersicht über der Liste gilt immer für das ganze Logbuch, und die Statistik hat ihren eigenen Zeitraum und Board-Filter. Einen Boulder am Board aufleuchten zu lassen erfasst keinen Kletterversuch.</string>
+    <string name="ux_stats_help">Filter\nBoard und Zeitraum oben gelten für alle Karten darunter. Die Board-Karte und die Versuche-Karte zeigen immer alle Boards nebeneinander.\n\nZahlen\nBegehungen zählen erfolgreiche Einträge, auch Wiederholungen. Versuche summieren die erfassten Kletterversuche aller Einträge einschließlich erfolgreicher Begehungen; jeder Eintrag zählt mindestens einmal. Klettertage sind Tage mit mindestens einem Eintrag. Boulder zählen jeden Boulder einmal je Board.\n\nBestwerte\nDer schwerste Flash, die meisten Begehungen an einem Tag, Klettertage pro Woche über den ganzen Zeitraum und die meisten Wochen in Folge mit einem Klettertag, alle im gewählten Zeitraum. Der Zeitraum beginnt frühestens mit deinem ersten Eintrag.\n\nFlash\nFür einen Flash muss der erste erfasste Eintrag zu diesem Boulder bei diesem Winkel erfolgreich sein, mit höchstens einem Versuch. Frühere erfolglose Einträge schließen ihn aus, auch außerhalb des gewählten Zeitraums; fehlende Einträge begrenzen diese Aussage.\n\nAktivität\nKalender und Wochendiagramm zählen Logeinträge, auch erfolglose.</string>
     <string name="ux_restore_consequence">Wiederherstellen nutzt das bisherige Konto und aktiviert das verschlüsselte Backup. Den Kontowechsel bestätigst du vor dem Fortfahren.</string>
     <string name="ux_logbook_unsent_attempts">Ohne Begehung</string>
-    <string name="ux_sent_climbs">Geschaffte Boulder</string>
-    <string name="ux_sent_climbs_grade">Geschaffte Boulder und Wiederholungen nach Grad</string>
     <string name="ux_later_send">Später geschafft</string>
-    <string name="ux_outcome_donut_hint">Jeder geschaffte Boulder zählt pro Board-Familie in diesem Zeitraum einmal, über alle Winkel: Flash oder später geschafft. Erfolglose Boulder gehören nicht zu diesem Ring.</string>
     <string name="ux_grade_progression_help">Vierwochenfenster\nJeder Punkt nutzt bis zu drei der schwersten verschiedenen Boulder-Winkel-Kombinationen mit erfolgreicher Begehung in dieser und den drei vorherigen Wochen, innerhalb des gewählten Zeitraums. Wiederholungen beim selben Winkel zählen einmal.\n\nNiveau\nBei drei Ergebnissen gilt der mittlere Grad, bei zwei deren Durchschnitt, bei einem dessen Grad. Es zählen nur erfolgreiche Einträge mit bekanntem Grad.</string>
 
     <!-- Profile and account task pages -->
@@ -3185,7 +3396,7 @@
     <string name="import_catalogue_pending_short">Namen und Grade erscheinen nach dem Katalogdownload.</string>
     <string name="import_key_access_only">Stellt den Kontozugang wieder her. Daten werden separat aus dem Backup geladen.</string>
     <string name="import_moon_device_short">Die Android-Bedienungshilfe liest dein Moon-Logbuch auf diesem Gerät.</string>
-    <string name="import_moon_mail_short">Den kopierten Anfragetext in die E-Mail einfügen.</string>
+    <string name="import_moon_mail_short">Füge den kopierten Anfragetext in eine E-Mail an %1$s ein.</string>
     <string name="account_amber_restore_summary">Wähle in Amber das Konto deines Backups. Dein privater Schlüssel bleibt in Amber.</string>
     <string name="account_restore_key_method">Mit Schlüssel</string>
 
@@ -3195,7 +3406,7 @@
     <string name="board_cleaning_description">Markiert die Griffe der Probleme, die du heute für dieses Board geloggt hast (Versuch oder Top). In Gruppen putzt jeder nacheinander seine eigenen.</string>
     <string name="board_cleaning_connect_hint">Verbinde dich mit dem Board, das du putzen möchtest.</string>
     <string name="board_cleaning_connect">Board verbinden</string>
-    <string name="board_cleaning_unsupported">Der Putzmodus benötigt eine direkte Verbindung zu Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone oder MoonBoard.</string>
+    <string name="board_cleaning_unsupported">Der Putzmodus benötigt eine direkte Verbindung zu Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone, MoonBoard oder Shiny Wall.</string>
     <string name="board_cleaning_empty">Heute hast du für dieses Board noch nichts geloggt.</string>
     <string name="board_cleaning_all_clean">Alles geputzt. Was du ab jetzt loggst, kommt neu dazu.</string>
     <string name="board_cleaning_relay">Beende die Board-Freigabe, bevor du den Putzmodus startest.</string>
@@ -3211,10 +3422,284 @@
         <item quantity="other">%d Griffe zu putzen</item>
     </plurals>
     <string name="board_cleaning_sections">Dieser ältere Controller markiert bis zu %d Griffe pro Abschnitt. Bestätige jeden Abschnitt als geputzt, um den nächsten anzuzeigen.</string>
+    <string name="board_cleaning_sections_moonboard">Das MoonBoard markiert nur einen Teil dieser Griffe auf einmal. Bestätige jeden Abschnitt als geputzt, um den nächsten anzuzeigen.</string>
     <string name="board_cleaning_section_count">%1$d von %2$d verbleibenden Griffen in diesem Abschnitt</string>
     <string name="board_cleaning_next">Diese Griffe geputzt · weiter</string>
     <plurals name="board_cleaning_remaining">
         <item quantity="one">%d Griff in diesem Putzgang übrig</item>
         <item quantity="other">%d Griffe in diesem Putzgang übrig</item>
     </plurals>
+
+    <!-- Wall games -->
+    <string name="wall_games_title">Wand-Spiele</string>
+    <string name="wall_games_game">Spiel</string>
+    <string name="wall_games_play_climb">Als Spiel spielen</string>
+    <string name="wall_games_lava">Der Boden ist Lava</string>
+    <string name="wall_games_endurance">Ausdauer</string>
+    <string name="wall_games_thief">Griffdieb</string>
+    <string name="wall_games_traverse">Quergang</string>
+    <string name="wall_games_lava_desc">Die Lava steigt von unten Reihe für Reihe. Wer einen leuchtenden Griff berührt, ist raus.</string>
+    <string name="wall_games_endurance_desc">Ein Boulder erscheint von unten, Reihe für Reihe. Halte durch, bis die nächsten Griffe leuchten.</string>
+    <string name="wall_games_thief_desc">Ein zufälliger Boulder über die ganze Wand. Stiehl Griffe, um ihn schwerer zu machen.</string>
+    <string name="wall_games_traverse_desc">Ein Boulder leuchtet Zug um Zug auf, vom Start zum Top. Nur die letzten sieben Züge bleiben an – bleib in Bewegung.</string>
+    <string name="wall_games_level">Stufe</string>
+    <string name="wall_games_level_1">Sehr leicht</string>
+    <string name="wall_games_level_2">Leicht</string>
+    <string name="wall_games_level_3">Mittel</string>
+    <string name="wall_games_level_4">Schwer</string>
+    <string name="wall_games_level_5">Sehr schwer</string>
+    <string name="wall_games_lava_interval">Eine Reihe alle %1$s\u00A0s</string>
+    <string name="wall_games_endurance_interval">Neue Griffe alle %1$s\u00A0s</string>
+    <string name="wall_games_tempo">Tempo</string>
+    <string name="wall_games_tempo_slower">Langsamer</string>
+    <string name="wall_games_tempo_faster">Schneller</string>
+    <string name="wall_games_traverse_interval">Nächster Zug alle %1$s\u00A0s</string>
+    <string name="wall_games_density">Anteil der Griffe</string>
+    <string name="wall_games_density_value">%1$d %%</string>
+    <string name="wall_games_new_climb">Neuer Boulder</string>
+    <string name="wall_games_steal_count">Griffe zum Stehlen</string>
+    <string name="wall_games_steal_less">Weniger Griffe stehlen</string>
+    <string name="wall_games_steal_more">Mehr Griffe stehlen</string>
+    <string name="wall_games_steal_now">Stehlen</string>
+    <plurals name="wall_games_hands_left">
+        <item quantity="one">%d Handgriff</item>
+        <item quantity="other">%d Handgriffe</item>
+    </plurals>
+    <string name="wall_games_light">An der Wand zeigen</string>
+    <string name="wall_games_light_again">Erneut zeigen</string>
+    <string name="wall_games_start">Start</string>
+    <string name="wall_games_stop">Stopp</string>
+    <string name="wall_games_play_again">Nochmal</string>
+    <string name="wall_games_go">Los!</string>
+    <string name="wall_games_your_time">Deine Zeit: %1$s</string>
+    <string name="wall_games_lava_top">Die Lava hat das Top erreicht.</string>
+    <string name="wall_games_all_lit">Ganzer Boulder leuchtet</string>
+    <string name="wall_games_traverse_top">Top erreicht</string>
+    <string name="wall_games_progress_rows">Reihe %1$d von %2$d</string>
+    <string name="wall_games_progress_steps">Schritt %1$d von %2$d</string>
+    <string name="wall_games_progress_moves">Zug %1$d von %2$d</string>
+    <string name="wall_games_climb">Boulder</string>
+    <string name="wall_games_choose_climb">Boulder wählen</string>
+    <string name="wall_games_change_climb">Ändern</string>
+    <string name="wall_games_climb_at_angle">%1$s · %2$d°</string>
+    <string name="wall_games_no_climb">Noch kein Boulder gewählt.</string>
+    <string name="wall_games_recent_title">Zuletzt an diesem Board gezeigt</string>
+    <string name="wall_games_recent_empty">An diesem Board hat noch kein Boulder geleuchtet. „Als Spiel spielen“ im Menü eines Boulders bringt ihn hierher.</string>
+    <string name="wall_games_browse">Zu den Bouldern</string>
+    <string name="wall_games_climb_not_found">Dieser Boulder ist nicht auf dem Gerät.</string>
+    <string name="wall_games_climb_other_board">Dieser Boulder gehört zu einem anderen Board. Wähle einen Boulder deines aktiven Boards.</string>
+    <string name="wall_games_climb_no_holds">Keiner der Griffe dieses Boulders ist auf deiner Board-Größe.</string>
+    <plurals name="wall_games_climb_off_board">
+        <item quantity="one">%d Griff dieses Boulders ist nicht auf deiner Board-Größe und bleibt dunkel.</item>
+        <item quantity="other">%d Griffe dieses Boulders sind nicht auf deiner Board-Größe und bleiben dunkel.</item>
+    </plurals>
+    <string name="wall_games_not_connected">Nicht verbunden: nur am Bildschirm.</string>
+    <string name="wall_games_other_board">Das verbundene Board ist nicht dein aktives Board und bleibt deshalb dunkel.</string>
+    <string name="wall_games_session">Eine gemeinsame Sitzung steuert das Board: nur am Bildschirm.</string>
+    <string name="wall_games_cleaning">Am Board läuft das Griffeputzen. Beende es, um das Spiel anzuzeigen.</string>
+    <string name="wall_games_send_failed">Das Board hat nicht reagiert. Das Spiel läuft am Bildschirm weiter.</string>
+    <string name="wall_games_too_many">Zu viele Griffe für das MoonBoard: Die Wand bleibt, wie sie war.</string>
+    <string name="wall_games_too_many_thief">Zu viele Griffe für das MoonBoard. Wähle einen kleineren Anteil oder stiehl Griffe.</string>
+    <string name="wall_games_unsupported">Für dieses Board gibt es keine Wand-Spiele.</string>
+    <string name="wall_games_no_holds">Die Griffpositionen dieses Boards sind noch nicht auf dem Gerät. Lade zuerst seinen Katalog.</string>
+    <string name="wall_games_sound_turn_off">Countdown-Ton ausschalten</string>
+    <string name="wall_games_sound_turn_on">Countdown-Ton einschalten</string>
+    <!-- Knoten (#154) -->
+    <string name="wall_games_knot">Knoten</string>
+    <string name="wall_games_knot_desc">Unten an der Wand leuchtet ein Feld aus Farbstreifen. Nach einem Piepton ruft das Handy einen Spieler, eine Hand oder einen Fuß und eine Farbe auf, und diese Griffe blinken: Setz sie auf einen freien Griff dieser Farbe. Pro Griff eine Hand oder ein Fuß; ist keiner dieser Farbe frei, bleib, wo du bist.\n\nWer abfällt, den Boden berührt, einen dunklen Griff nimmt oder nicht rechtzeitig da ist, ist raus und tippt auf seinen Namen. Wer zuletzt an der Wand ist, gewinnt; allein zählst du die Ansagen, die du hältst.\n\nSind mehr Spieler da, als an die Wand passen, warten die anderen in einer Reihe: Wer abfällt, macht Platz für den Nächsten, und wer die meisten Ansagen hält, gewinnt.\n\nMit „Nächste Ansage per Tipp“ ruft jemand unter der Wand die nächste Ansage auf, wenn alle bereit sind, ohne Zeitlimit.</string>
+    <string name="knot_climbers">Spieler</string>
+    <plurals name="knot_line">
+        <item quantity="one">Eine Person an der Wand, die anderen warten in der Reihe.</item>
+        <item quantity="other">%d gleichzeitig an der Wand, die anderen warten in der Reihe.</item>
+    </plurals>
+    <string name="knot_next_up">Als Nächstes: %1$s</string>
+    <string name="knot_to_wall">%1$s: an die Wand</string>
+    <string name="knot_to_wall_for">%1$s: an die Wand, für %2$s</string>
+    <string name="knot_from_left">Von links</string>
+    <string name="knot_tie">Gemeinsam vorn: %1$s</string>
+    <string name="knot_player">Spieler\u00A0%1$d</string>
+    <string name="knot_call_time">%1$s s pro Ansage</string>
+    <string name="knot_steep">Steile Wand (%1$d°): Fang sehr leicht an oder stell die Wand flacher.</string>
+    <string name="knot_safety_title">Bevor ihr spielt</string>
+    <string name="knot_safety_text">Knoten wird tief und eng gespielt. Matten unter das ganze Feld, nichts auf dem Boden unter der Wand und nie mehr Spieler an der Wand, als die App anzeigt.</string>
+    <string name="knot_unsupported_shinywall">Knoten gibt es für die Shiny Wall noch nicht.</string>
+    <string name="knot_unsupported">Für dieses Board gibt es Knoten nicht.</string>
+    <string name="knot_no_field">An dieser Wand sind zu wenige tiefe Griffe für ein Knoten-Feld.</string>
+    <string name="knot_light">Feld einschalten</string>
+    <string name="knot_positions">Startposition einnehmen</string>
+    <string name="knot_positions_solo">Zwei Hände und zwei Füße auf leuchtende Griffe.</string>
+    <string name="knot_part">%1$s: %2$s</string>
+    <string name="knot_part_left">links</string>
+    <string name="knot_part_middle">Mitte</string>
+    <string name="knot_part_right">rechts</string>
+    <plurals name="knot_held_label">
+        <item quantity="one">Ansage gehalten</item>
+        <item quantity="other">Ansagen gehalten</item>
+    </plurals>
+    <string name="knot_call_number">Ansage %1$d</string>
+    <string name="knot_wins">%1$s gewinnt</string>
+    <string name="knot_stopped">Gestoppt</string>
+    <string name="knot_spacing">Abstand</string>
+    <string name="knot_spacing_close">Eng</string>
+    <string name="knot_spacing_medium">Mittel</string>
+    <string name="knot_spacing_wide">Weit</string>
+    <string name="knot_holds">Griffe pro Farbe</string>
+    <string name="knot_holds_many">Viele</string>
+    <string name="knot_holds_normal">Normal</string>
+    <string name="knot_holds_few">Wenige</string>
+    <plurals name="knot_lit">
+        <item quantity="one">%d leuchtender Griff</item>
+        <item quantity="other">%d leuchtende Griffe</item>
+    </plurals>
+    <string name="knot_spacing_cm">Jede Farbe in etwa %1$d\u00A0cm Reichweite</string>
+    <string name="knot_holds_count">%1$d Hand- + %2$d Fußgriffe jeder Farbe pro Spieler</string>
+    <string name="knot_slider_title">%1$s · %2$s</string>
+    <string name="knot_draw_again">Neu auslosen</string>
+    <string name="knot_holds_too_many">%1$s: mehr leuchtende Griffe, als das Board annimmt.</string>
+    <plurals name="knot_holds_no_fit">
+        <item quantity="one">%1$s: passt für %2$d Spieler nicht an diese Wand.</item>
+        <item quantity="other">%1$s: passt für %2$d Spieler nicht an diese Wand.</item>
+    </plurals>
+    <plurals name="knot_holds_same_reach">
+        <item quantity="one">%1$s: %2$s reicht hier für %3$d Spieler nicht weiter.</item>
+        <item quantity="other">%1$s: %2$s reicht hier für %3$d Spieler nicht weiter.</item>
+    </plurals>
+    <plurals name="knot_spacing_same">
+        <item quantity="one">%1$s: hier keine größere Reichweite für %2$d Spieler.</item>
+        <item quantity="other">%1$s: hier keine größere Reichweite für %2$d Spieler.</item>
+    </plurals>
+    <plurals name="knot_spacing_unavailable">
+        <item quantity="one">%1$s: zu wenige Griffe hier für %2$d Spieler.</item>
+        <item quantity="other">%1$s: zu wenige Griffe hier für %2$d Spieler.</item>
+    </plurals>
+    <string name="knot_by_tap">Nächste Ansage per Tipp</string>
+    <string name="knot_next_call">Weiter</string>
+    <string name="knot_tap_name">Abgefallen? Tipp auf deinen Namen.</string>
+    <string name="knot_numbered">%1$d\u00A0·\u00A0%2$s</string>
+    <string name="knot_by_tap_on">Ohne Zeitlimit: Jemand unter der Wand tippt „Weiter“.</string>
+    <string name="knot_undo">Rückgängig</string>
+    <string name="knot_fell">Abgefallen</string>
+    <string name="knot_steep_action">Auf sehr leicht stellen</string>
+    <plurals name="knot_held_short">
+        <item quantity="one">%d gehalten</item>
+        <item quantity="other">%d gehalten</item>
+    </plurals>
+    <plurals name="knot_out_after">
+        <item quantity="one">raus nach %d</item>
+        <item quantity="other">raus nach %d</item>
+    </plurals>
+    <string name="knot_left_hand">linke Hand</string>
+    <string name="knot_right_hand">rechte Hand</string>
+    <string name="knot_left_foot">linker Fuß</string>
+    <string name="knot_right_foot">rechter Fuß</string>
+    <string name="knot_blue">Blau</string>
+    <string name="knot_yellow">Gelb</string>
+    <string name="knot_magenta">Magenta</string>
+    <string name="knot_white">Weiß</string>
+    <string name="knot_green">Grün</string>
+    <string name="knot_red">Rot</string>
+    <!-- Shiny-Wall-Konto (Logbuch-Import, nur lesend) -->
+    <string name="shinywall_section_title">Shiny-Wall-Konto</string>
+    <string name="shinywall_connect_desc">Übernimmt dein Shiny-Wall-Logbuch (Begehungen und Projekte), deine Favoriten, Listen und eigenen Routen in CruxCoach. Sterne und Kommentare bleiben in Shiny Wall.\n\nNur lesend: CruxCoach ändert nichts an deinem Shiny-Wall-Konto. Nur Standard-Wände.\n\nWas du in CruxCoach löschst, bleibt gelöscht, egal ob Einträge oder Listen. Um alles neu zu importieren, lösche deine Shiny-Wall-Logbuchdaten unter Einstellungen → Lokale Daten löschen.</string>
+    <string name="shinywall_connect_button">Shiny-Wall-Konto verbinden</string>
+    <string name="shinywall_login_title">Bei Shiny Wall anmelden</string>
+    <string name="shinywall_login_privacy">Deine E-Mail-Adresse und dein Passwort gehen an die Firebase-Server von Google, über die Shiny Wall die Anmeldung abwickelt.</string>
+    <string name="shinywall_login_privacy_more">CruxCoach liest deine Shiny-Wall-Daten von denselben Google-Servern. Auf diesem Handy speichert es ein Anmelde-Token, nie das Passwort. Konten mit Google-Anmeldung lassen sich nicht verbinden.</string>
+    <string name="shinywall_email_label">E-Mail</string>
+    <string name="shinywall_password_label">Passwort</string>
+    <string name="shinywall_login_button">Anmelden</string>
+    <string name="shinywall_connected_as">Verbunden als: %1$s</string>
+    <string name="shinywall_last_import">Letzter Import: %1$s</string>
+    <string name="shinywall_import_new">Neue Einträge importieren</string>
+    <string name="shinywall_disconnect">Verbindung trennen</string>
+    <string name="shinywall_disconnect_confirm">CruxCoach vergisst die Shiny-Wall-Anmeldung auf diesem Handy. Importierte Einträge und Listen bleiben.</string>
+    <string name="shinywall_preview_title">Import aus Shiny Wall</string>
+    <!-- %1$s, %2$s, %3$s: shinywall_preview_new_ascents, shinywall_preview_new_projects, shinywall_preview_known -->
+    <string name="shinywall_preview_found">%1$s, %2$s, %3$s.</string>
+    <plurals name="shinywall_preview_new_ascents">
+        <item quantity="one">%1$d neue Begehung</item>
+        <item quantity="other">%1$d neue Begehungen</item>
+    </plurals>
+    <plurals name="shinywall_preview_new_projects">
+        <item quantity="one">%1$d neues Projekt</item>
+        <item quantity="other">%1$d neue Projekte</item>
+    </plurals>
+    <string name="shinywall_preview_known">%1$d schon in CruxCoach</string>
+    <plurals name="shinywall_preview_skipped">
+        <item quantity="one">%1$d Eintrag lässt sich nicht importieren (eigene Wände, Routen-Erstellungen, unvollständige Einträge).</item>
+        <item quantity="other">%1$d Einträge lassen sich nicht importieren (eigene Wände, Routen-Erstellungen, unvollständige Einträge).</item>
+    </plurals>
+    <plurals name="shinywall_preview_deleted">
+        <item quantity="one">%1$d Eintrag wird nicht erneut importiert.</item>
+        <item quantity="other">%1$d Einträge werden nicht erneut importiert.</item>
+    </plurals>
+    <string name="shinywall_import_button">Importieren</string>
+    <string name="shinywall_import_lists_button">Listen aktualisieren</string>
+    <string name="shinywall_import_empty">Noch keine Einträge in deinem Shiny-Wall-Logbuch gefunden.</string>
+    <plurals name="shinywall_import_part_ascents">
+        <item quantity="one">%1$d Begehung</item>
+        <item quantity="other">%1$d Begehungen</item>
+    </plurals>
+    <plurals name="shinywall_import_part_projects">
+        <item quantity="one">%1$d Projekt</item>
+        <item quantity="other">%1$d Projekte</item>
+    </plurals>
+    <plurals name="shinywall_import_part_lists">
+        <item quantity="one">%1$d Liste</item>
+        <item quantity="other">%1$d Listen</item>
+    </plurals>
+    <string name="shinywall_import_part_known">%1$d schon in CruxCoach</string>
+    <string name="shinywall_import_part_skipped">%1$d übersprungen</string>
+    <plurals name="shinywall_import_part_deleted">
+        <item quantity="one">%1$d wird nicht erneut importiert</item>
+        <item quantity="other">%1$d werden nicht erneut importiert</item>
+    </plurals>
+    <string name="shinywall_import_part_nothing_new">Nichts Neues</string>
+    <string name="shinywall_auth_invalid_credentials">E-Mail oder Passwort stimmt nicht. Meldest du dich bei Shiny Wall mit Google an, kann CruxCoach sich nicht verbinden.</string>
+    <string name="shinywall_auth_disabled">Dieses Shiny-Wall-Konto ist gesperrt.</string>
+    <string name="shinywall_auth_throttled">Zu viele Versuche. Bitte warte kurz und versuche es dann noch einmal.</string>
+    <string name="shinywall_auth_network">Keine Verbindung zu Shiny Wall. Prüfe deine Internetverbindung.</string>
+    <string name="shinywall_auth_http_failure" formatted="false">Anmeldung fehlgeschlagen (HTTP %1$d).</string>
+    <string name="shinywall_auth_not_saved">CruxCoach konnte die Anmeldung auf diesem Handy nicht speichern. Bitte versuche es noch einmal.</string>
+    <string name="shinywall_auth_unexpected">Shiny Wall hat unerwartet geantwortet. Bitte versuche es später noch einmal.</string>
+    <string name="shinywall_session_expired">Sitzung abgelaufen</string>
+    <string name="shinywall_relogin_button">Neu anmelden</string>
+    <string name="shinywall_import_error_denied">Shiny Wall hat das Lesen deines Logbuchs nicht erlaubt.</string>
+    <string name="shinywall_import_error_network">Keine Verbindung zu Shiny Wall. Prüfe deine Internetverbindung.</string>
+    <string name="shinywall_import_error_generic">Der Import ist fehlgeschlagen. Bitte versuche es noch einmal.</string>
+    <string name="shinywall_list_favorites">Shiny-Wall-Favoriten</string>
+    <string name="shinywall_list_own_routes">Meine Shiny-Wall-Routen</string>
+    <!-- Board-Größe prüfen: optionale Hilfe, wenn jemand unsicher ist, welche Größe sein Board hat -->
+    <string name="board_size_check_title">Board-Größe prüfen</string>
+    <string name="board_size_check_link">Größe am Board prüfen</string>
+    <string name="board_size_check_menu">Falsche Griffe am Board?</string>
+    <string name="board_size_check_info">Dein Board verrät der App seine Größe nicht. Die Prüfung lässt einige weit auseinanderliegende Griffe einer Größe leuchten. An einem Board anderer Größe leuchten dieselben LEDs an anderen Griffen, so siehst du sofort, ob die Größe passt. Beim Schließen gehen sie wieder aus.</string>
+    <string name="board_size_check_question">Leuchten am Board genau diese Griffe?</string>
+    <string name="board_size_check_yes">Ja, passt</string>
+    <string name="board_size_check_no">Nein</string>
+    <string name="board_size_check_relight">Nochmal leuchten lassen</string>
+    <string name="board_size_check_lighting">Die markierten Griffe leuchten gleich auf …</string>
+    <string name="board_size_check_connect_hint">Verbinde dich mit deinem Board, dann leuchten dort die markierten Griffe.</string>
+    <string name="board_size_check_connect">Mit Board verbinden</string>
+    <string name="board_size_check_other_board">Verbunden ist kein %1$s. Verbinde dich mit deinem %1$s.</string>
+    <string name="board_size_check_pick_other">Tippe eine Größe an, sie leuchtet am Board.</string>
+    <string name="board_size_check_pick_other_offline">Tippe eine Größe an, um ihre markierten Griffe zu sehen.</string>
+    <string name="board_size_check_tried">Probiert</string>
+    <string name="board_size_check_try_first">Erst %1$s probieren</string>
+    <string name="board_size_check_none_fit">Keine passt? Dann ist dein Board vielleicht anders aufgebaut als sein Katalog.</string>
+    <string name="board_size_check_saved">Gespeichert: Das ist jetzt dein Board.</string>
+    <string name="board_size_check_selected">Ausgewählt. Tippe in der Board-Auswahl auf „Bestätigen“, um es zu behalten.</string>
+    <string name="board_size_check_fits">Passt: Dein Board ist richtig eingestellt.</string>
+    <string name="board_size_check_send_failed">Die Griffe konnten nicht leuchten. Prüfe die Verbindung und versuch es nochmal.</string>
+    <string name="board_size_check_replaced">Das Board zeigt inzwischen vielleicht etwas anderes.</string>
+    <string name="board_size_check_no_data">Für dieses Board sind noch keine LED-Daten auf deinem Handy.</string>
+    <string name="board_size_check_done">Fertig</string>
+    <string name="board_size_check_back_to_picker">Zurück zur Board-Auswahl</string>
+    <string name="board_size_check_image_cd">%1$s mit den Griffen, die leuchten sollen</string>
+    <string name="board_size_check_look_alike_first">Um %1$s von %2$s zu unterscheiden, kommt %2$s zuerst.</string>
+    <!-- Board-Auswahl: wie häufig jede Option in Gyms ist, damit eine seltene Wahl geprüft wird -->
+    <string name="board_gym_share">In Hallen: %1$s</string>
+    <string name="board_gym_share_rare">Selten in Hallen: %1$s</string>
+    <string name="board_gym_share_rare_hint">Nur wenige Hallen haben dieses Board. Prüfe bitte, ob es wirklich deins ist.</string>
+    <string name="board_gym_share_rare_version_hint">Nur wenige Hallen führen diese Version, vielleicht weil sie neu ist. Prüfe, ob sie zu den Griffen an deinem Board passt.</string>
 </resources>

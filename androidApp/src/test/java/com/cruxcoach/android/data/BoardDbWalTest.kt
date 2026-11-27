@@ -7,6 +7,7 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import com.cruxcoach.data.BoardDriverFactory
 import org.junit.After
+import java.io.File
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -65,6 +66,25 @@ class BoardDbWalTest {
                 importer.endTransaction()
             }
         }
+    }
+
+    @Test
+    fun `an import folds its WAL back when its connection closes`() {
+        openDriver().text("SELECT 1")
+        val importer = BoardDbConnection.openForWrite(file)
+        importer.beginTransaction()
+        try {
+            importer.execSQL("CREATE TABLE IF NOT EXISTS wal_probe(x BLOB)")
+            repeat(200) { importer.execSQL("INSERT INTO wal_probe VALUES (randomblob(4096))") }
+            importer.setTransactionSuccessful()
+        } finally {
+            importer.endTransaction()
+        }
+        val wal = File(file.path + "-wal")
+        assertTrue(wal.length() > 500_000, "the fixture must leave a large WAL, got ${wal.length()}")
+        // The app's connection stays open, as on the phone: nothing else would shrink the file.
+        BoardDbConnection.closeAfterImport(importer)
+        assertEquals(0L, wal.length())
     }
 
     @Test

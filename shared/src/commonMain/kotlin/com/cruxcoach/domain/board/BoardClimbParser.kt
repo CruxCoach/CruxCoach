@@ -169,6 +169,46 @@ object BoardClimbParser {
     private val RANGE_PATTERN = Regex("""h(\d+)p(\d+)""")
 
     /**
+     * The holds [parseFrames] finds in ASCII frames (all stored frames are),
+     * handed to [onHold] one by one with the placement and the normalized
+     * role, without a regex and without allocating. For the catalogue-wide heatmap, which reads every climb of
+     * a board (Kilter: about 250,000): on Android a regex match goes through
+     * ICU, and parsing them all with [parseFrames] took minutes.
+     */
+    inline fun forEachHold(frames: String, onHold: (placementId: Int, roleId: Int) -> Unit) {
+        var start = 0
+        while (start < frames.length && frames[start].isWhitespace()) start++
+        if (start == frames.length) return
+        // The same entries as DELTA_PATTERN / RANGE_PATTERN: a marker, digits, a separator, digits.
+        val marker = if (frames[start] == 'h') 'h' else 'p'
+        val separator = if (marker == 'h') 'p' else 'r'
+        var i = 0
+        while (i < frames.length) {
+            if (frames[i] != marker) { i++; continue }
+            var j = i + 1
+            var placement = 0L
+            while (j < frames.length && frames[j] in '0'..'9') {
+                if (placement <= Int.MAX_VALUE) placement = placement * 10 + (frames[j] - '0')
+                j++
+            }
+            if (j == i + 1 || j == frames.length || frames[j] != separator) { i++; continue }
+            j++
+            val roleStart = j
+            var role = 0L
+            while (j < frames.length && frames[j] in '0'..'9') {
+                if (role <= Int.MAX_VALUE) role = role * 10 + (frames[j] - '0')
+                j++
+            }
+            if (j == roleStart) { i++; continue }
+            // Like toIntOrNull in parseHoldEntries: an entry with a number too big for an Int is skipped.
+            if (placement <= Int.MAX_VALUE && role <= Int.MAX_VALUE) {
+                onHold(placement.toInt(), HoldRole.normalize(role.toInt()))
+            }
+            i = j
+        }
+    }
+
+    /**
      * Parse x{id} removal entries from a frame section.
      * Returns set of placement IDs to remove from previous frame.
      */

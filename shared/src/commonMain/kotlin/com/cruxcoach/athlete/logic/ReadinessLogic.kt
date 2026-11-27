@@ -1,0 +1,158 @@
+package com.cruxcoach.athlete.logic
+
+import com.cruxcoach.athlete.catalog.ExerciseDefinition
+import com.cruxcoach.athlete.model.Checkin
+import com.cruxcoach.athlete.model.Injury
+import com.cruxcoach.athlete.model.InjuryRegion
+import com.cruxcoach.athlete.model.InjurySide
+import com.cruxcoach.athlete.model.Side
+
+enum class ReadinessLevel { GO, ADAPT, REST }
+
+/** Why today's recommendation is what it is; the first entry is the deciding factor. */
+enum class ReadinessReason {
+    SICK,
+    INJURY_CLIMBING_PAUSED,
+    INJURY_ACTIVE,
+    FINGERS_TIRED,
+    SKIN_LOW,
+    LOW_SLEEP,
+    LOW_ENERGY,
+    LOW_MOTIVATION,
+    ALL_GOOD,
+}
+
+data class Readiness(val level: ReadinessLevel, val reasons: List<ReadinessReason>) {
+    val decidingFactor: ReadinessReason get() = reasons.first()
+    /** True when board/wall climbing should not be today's main content. */
+    val avoidClimbing: Boolean get() = reasons.any {
+        it == ReadinessReason.SICK || it == ReadinessReason.INJURY_CLIMBING_PAUSED || it == ReadinessReason.SKIN_LOW
+    }
+    val avoidMaxFingerLoad: Boolean get() = reasons.any {
+        it == ReadinessReason.FINGERS_TIRED || it == ReadinessReason.SICK
+    }
+}
+
+/**
+ * Turns the optional morning check-in plus open injuries into one
+ * recommendation. Each answer can only make the day gentler, never harder,
+ * and skin or fingers redirect the load instead of cancelling the session:
+ * bad skin is a hangboard day, not a rest day.
+ */
+object ReadinessEvaluator {
+
+    fun evaluate(checkin: Checkin?, activeInjuries: List<Injury>): Readiness {
+        val reasons = mutableListOf<ReadinessReason>()
+        var level = ReadinessLevel.GO
+        fun adapt(reason: ReadinessReason) { reasons += reason; if (level == ReadinessLevel.GO) level = ReadinessLevel.ADAPT }
+
+        if (checkin?.sick == true) { reasons += ReadinessReason.SICK; level = ReadinessLevel.REST }
+        if (activeInjuries.any { it.climbingPaused }) adapt(ReadinessReason.INJURY_CLIMBING_PAUSED)
+        else if (activeInjuries.isNotEmpty()) adapt(ReadinessReason.INJURY_ACTIVE)
+        if (checkin != null) {
+            if ((checkin.fingers ?: 5) <= 2) adapt(ReadinessReason.FINGERS_TIRED)
+            if ((checkin.skin ?: 5) <= 2) adapt(ReadinessReason.SKIN_LOW)
+            if ((checkin.sleep ?: 5) <= 2) adapt(ReadinessReason.LOW_SLEEP)
+            if ((checkin.energy ?: 5) <= 2) adapt(ReadinessReason.LOW_ENERGY)
+            if ((checkin.motivation ?: 5) <= 1) adapt(ReadinessReason.LOW_MOTIVATION)
+            val veryLow = listOfNotNull(checkin.sleep, checkin.energy).count { it <= 1 }
+            if (veryLow == 2 && level == ReadinessLevel.ADAPT) level = ReadinessLevel.REST
+        }
+        if (reasons.isEmpty()) reasons += ReadinessReason.ALL_GOOD
+        return Readiness(level, reasons)
+    }
+}
+
+/**
+ * What the check-in says hurts today, as injuries for today only (owner
+ * 2026-10-15: "ask before the suggestion whether anything does not feel
+ * good, and what"): the areas are spared like an injury that rules out
+ * loading them – sore fingers or skin also keep the day off the wall – but
+ * nothing lands in the injury list.
+ */
+object Soreness {
+    /** High enough that [InjuryAdvisor] leaves exercises loading the area out. */
+    const val SEVERITY = 4
+
+    private const val PREFIX = "sore-"
+
+    /** True for the stand-in injuries of [injuries]. */
+    fun isSore(injury: Injury): Boolean = injury.id.startsWith(PREFIX)
+
+    fun injuries(checkin: Checkin?): List<Injury> = checkin?.sore.orEmpty().map { region ->
+        Injury(
+            id = "$PREFIX${checkin!!.day}-${region.name}", region = region, severity = SEVERITY,
+            climbingPaused = region == com.cruxcoach.athlete.model.InjuryRegion.FINGER || region == com.cruxcoach.athlete.model.InjuryRegion.SKIN,
+            startedOn = checkin.day,
+        )
+    }
+}
+
+enum class InjuryVerdict { OK, CAUTION, AVOID, ONE_SIDE_ONLY }
+
+data class InjuryAdvice(val verdict: InjuryVerdict, val allowedSide: Side? = null, val injury: Injury? = null)
+
+/**
+ * Which exercises still fit while something hurts. This is a filter, not a
+ * treatment plan: it hides or flags exercises that load the injured
+ * structure, and for one-sided work on a limb injury it keeps the healthy
+ * side available — e.g. one-arm pick-ups on the right hand while the left
+ * ring finger heals, plus bar pull-ups, without any wall climbing.
+ */
+object InjuryAdvisor {
+
+    private const val AVOID_SEVERITY = 4
+
+    fun assess(def: ExerciseDefinition, activeInjuries: List<Injury>): InjuryAdvice {
+        val advices = activeInjuries.filter { it.isActive }.map { assessOne(def, it) }
+        advices.firstOrNull { it.verdict == InjuryVerdict.AVOID }?.let { return it }
+        val oneSided = advices.filter { it.verdict == InjuryVerdict.ONE_SIDE_ONLY }
+        if (oneSided.isNotEmpty()) {
+            // Injuries on both sides leave no side to train.
+            return if (oneSided.map { it.allowedSide }.distinct().size > 1)
+                InjuryAdvice(InjuryVerdict.AVOID, injury = oneSided.first().injury)
+            else oneSided.first()
+        }
+        return advices.firstOrNull { it.verdict == InjuryVerdict.CAUTION } ?: InjuryAdvice(InjuryVerdict.OK)
+    }
+
+    private fun assessOne(def: ExerciseDefinition, injury: Injury): InjuryAdvice {
+        if (injury.climbingPaused && def.needsClimbingWall) return InjuryAdvice(InjuryVerdict.AVOID, injury = injury)
+        val region = injury.region
+        if (!loads(def, region)) return InjuryAdvice(InjuryVerdict.OK)
+        val oneSided = def.unilateral && region.limb && (injury.side == InjurySide.LEFT || injury.side == InjurySide.RIGHT)
+        // The other side carries part of the load too (the straight arm of an archer push-up, the kneeling knee of a
+        // child's pose): not "the healthy side only" where the injury rules the exercise out (issue #59 follow-up).
+        val otherSideLoaded = region.bodyRegions.any { it in def.bothSides }
+        // A running CruxCoach comeback plan: the injured spot is loaded inside the plan's sessions; outside them
+        // the stage decides (owner 2026-10-20). Climbing follows the stage's climbing.
+        Comeback.climbingLevel(injury)?.let { level ->
+            if (def.needsClimbingWall) return InjuryAdvice(if (level == ClimbingLevel.NONE) InjuryVerdict.AVOID else InjuryVerdict.CAUTION, injury = injury)
+            val stage = injury.plan?.stage ?: 0
+            val open = stage >= if (region == InjuryRegion.FINGER) FINGER_OPEN_STAGE else REGION_OPEN_STAGE
+            if (open) return InjuryAdvice(InjuryVerdict.CAUTION, injury = injury)
+            if (oneSided && !otherSideLoaded) {
+                val healthy = if (injury.side == InjurySide.LEFT) Side.RIGHT else Side.LEFT
+                return InjuryAdvice(InjuryVerdict.ONE_SIDE_ONLY, allowedSide = healthy, injury = injury)
+            }
+            return InjuryAdvice(InjuryVerdict.AVOID, injury = injury)
+        }
+        if (oneSided && !(otherSideLoaded && injury.severity >= AVOID_SEVERITY)) {
+            val healthy = if (injury.side == InjurySide.LEFT) Side.RIGHT else Side.LEFT
+            return InjuryAdvice(InjuryVerdict.ONE_SIDE_ONLY, allowedSide = healthy, injury = injury)
+        }
+        return if (injury.severity >= AVOID_SEVERITY) InjuryAdvice(InjuryVerdict.AVOID, injury = injury)
+        else InjuryAdvice(InjuryVerdict.CAUTION, injury = injury)
+    }
+
+    /**
+     * True when [def] loads an injury of [region]: a contraindication or a load domain of it. Only then does the
+     * injury change the exercise, and only then do its [ExerciseDefinition.bothSides] count.
+     */
+    fun loads(def: ExerciseDefinition, region: InjuryRegion): Boolean =
+        def.contraindications.any { it in region.bodyRegions } || def.domains.any { it in region.domains }
+
+    /** From this comeback stage on, training outside the plan may load the injured spot again (marked). */
+    const val FINGER_OPEN_STAGE = 5
+    const val REGION_OPEN_STAGE = 3
+}

@@ -12,6 +12,10 @@ import com.cruxcoach.android.data.kilter.localized
 import com.cruxcoach.android.data.kilter.localizeKilterImportError
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
+import com.cruxcoach.android.led.AnimationPauseOwner
+import com.cruxcoach.android.led.LedAnimationEngine
+import com.cruxcoach.android.led.LedEffectsController
+import com.cruxcoach.android.led.LedEffectsState
 import com.cruxcoach.android.data.AnnouncementRepository
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.data.GradeScale
@@ -104,6 +108,8 @@ data class SettingsState(
     val lastSyncTimestamp: String? = null,
     val hasAssessment: Boolean = false,
     val ledColors: LedHoldColors = LedHoldColors(),
+    /** LED effects: choice, tempo, background and what the effect is doing. */
+    val ledEffects: LedEffectsState = LedEffectsState(),
     val bleAutoDisconnectSeconds: Int = 0,
     val singleConnectionBoardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
     /** Mirrors UserPreferences.multiConnectionBoardSendMode's default — a
@@ -119,6 +125,8 @@ data class SettingsState(
     val restTimer: RestTimerSettings = RestTimerSettings(),
     val climbSharing: ClimbSharingSettings = ClimbSharingSettings(),
     val relayManualStart: Boolean = false,
+    /** True until read, so the first-share hint never flashes for users who have shared. */
+    val relayDisclosureSeen: Boolean = true,
     val keepScreenOn: Boolean = false,
     val easterAnimationsUnlocked: Boolean = false,
     val isAnimating: Boolean = false,
@@ -166,7 +174,10 @@ class SettingsViewModel @Inject constructor(
     private val kilterTokenStore: com.cruxcoach.android.data.kilter.KilterTokenStore,
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
     private val kilterApiClient: com.cruxcoach.android.data.kilter.KilterApiClient,
+    private val shinyWallSyncEngine: com.cruxcoach.android.data.shinywall.ShinyWallSyncEngine,
     private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
+    private val ledAnimationEngine: LedAnimationEngine,
+    private val ledEffectsController: LedEffectsController,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -179,6 +190,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.safeLaunch("SettingsViewModel") {
             userPreferences.relayManualStart.collect { manual ->
                 _state.update { it.copy(relayManualStart = manual) }
+            }
+        }
+        viewModelScope.safeLaunch("SettingsViewModel") {
+            userPreferences.relayDisclosureSeen.collect { seen ->
+                _state.update { it.copy(relayDisclosureSeen = seen) }
             }
         }
         viewModelScope.safeLaunch("SettingsViewModel") {
@@ -348,6 +364,7 @@ class SettingsViewModel @Inject constructor(
             _state.update {
                 initialState.copy(
                     relayManualStart = it.relayManualStart,
+                    relayDisclosureSeen = it.relayDisclosureSeen,
                     boardSizeFrequency = it.boardSizeFrequency,
                     boardSearchEnabled = it.boardSearchEnabled,
                 )
@@ -375,6 +392,7 @@ class SettingsViewModel @Inject constructor(
                     _state.update { it.copy(moonBoardLedMode = mode) }
                 }
             }
+            launch { ledEffectsController.state.collect { led -> _state.update { it.copy(ledEffects = led) } } }
             launch { userPreferences.routeFrameSpeed.collect { speed -> _state.update { it.copy(routePlayback = it.routePlayback.copy(frameSpeed = speed)) } } }
             launch { userPreferences.routeUseSetterSpeed.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(useSetterSpeed = v)) } } }
             launch { userPreferences.routeCountdown.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(countdown = v)) } } }
@@ -655,6 +673,27 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Pick the LED effect. Persisting is the whole job: `LedAnimationEngine`
+     * follows the preference, so switching while a climb is lit shows on the wall
+     * at once, and switching back to "none" restores the climb's own colours.
+     */
+    fun setLedAnimation(id: String) {
+        if (id == _state.value.ledEffects.effectId) return
+        _state.update { it.copy(ledEffects = it.ledEffects.copy(effectId = id)) }
+        viewModelScope.launch { ledEffectsController.select(id) }
+    }
+
+    fun setLedEffectsInBackground(enabled: Boolean) {
+        _state.update { it.copy(ledEffects = it.ledEffects.copy(keepRunningInBackground = enabled)) }
+        viewModelScope.launch { ledEffectsController.setKeepRunningInBackground(enabled) }
+    }
+
+    fun confirmLedStrobeNotice() {
+        _state.update { it.copy(ledEffects = it.ledEffects.copy(strobeNoticeSeen = true)) }
+        viewModelScope.launch { ledEffectsController.strobeNoticeSeen() }
+    }
+
     fun updateRouteFrameSpeed(seconds: Float) {
         viewModelScope.launch { userPreferences.setRouteFrameSpeed(seconds) }
     }
@@ -781,6 +820,9 @@ class SettingsViewModel @Inject constructor(
             // parse Aurora packets at all. Gate on the CONNECTED board's
             // brand so a stale active-board pref can't hit another board.
             if (bleConnection.connectedBoardBrand.value != BoardBrand.KILTER) return@launch
+            // The Easter animation paints whole-board frames on its own timing;
+            // the LED animation must not interleave with it.
+            ledAnimationEngine.pause(AnimationPauseOwner.EASTER_ANIMATION)
             _state.update { it.copy(isAnimating = true) }
             try {
                 val grid = withContext(Dispatchers.IO) {
@@ -810,6 +852,7 @@ class SettingsViewModel @Inject constructor(
                 // try/finally's catch arm and poisoned the parent scope.
                 Log.w(TAG, "easter animation failed", e)
             } finally {
+                ledAnimationEngine.resume(AnimationPauseOwner.EASTER_ANIMATION)
                 _state.update { it.copy(isAnimating = false) }
             }
         }
@@ -890,7 +933,7 @@ class SettingsViewModel @Inject constructor(
                 "destructive: deleteUserBoardData(brands=[$brandNames], allBoards=$allBoards) " +
                     "requested at ${System.currentTimeMillis() / 1000}"
             )
-            withContext(Dispatchers.IO) {
+            val deleteLogbook = {
                 if (allBoards) {
                     // Full selection keeps the historical behaviour: lists,
                     // brand-less board sessions and unresolvable list
@@ -908,6 +951,15 @@ class SettingsViewModel @Inject constructor(
                     val doomedEntries = entryUuids.filter { entryBrands[it] in wire }
                     personalBoardRepo.deleteUserBoardDataForBrands(wire, doomedEntries)
                 }
+            }
+            if (BoardBrand.SHINYWALL in brands) {
+                // The Shiny Wall import keeps what it has placed, so deleted entries stay deleted.
+                // The engine deletes while no import runs and then resets that record, both past
+                // a cancellation (leaving Settings), so a fresh import brings everything in again.
+                shinyWallSyncEngine.clearLogbook(deleteLogbook)
+                    .onFailure { Log.w(TAG, "Shiny Wall import record not reset (${it.javaClass.simpleName})") }
+            } else {
+                withContext(Dispatchers.IO) { deleteLogbook() }
             }
             Log.i(TAG, "destructive: deleteUserBoardData(brands=[$brandNames]) done")
             _state.update { it.copy(deleteSuccess = context.getString(R.string.settings_delete_logbook_success)) }

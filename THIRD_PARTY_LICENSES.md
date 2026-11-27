@@ -29,6 +29,20 @@ or APK.
 
 Used to decompress board manifests downloaded from Blossom relays.
 
+### llama.cpp / ggml (b11396) — The ggml authors
+
+- **Location:** not stored in the repository. CMake fetches the pinned release
+  archive (SHA-256 `fce45a07…6c1f72`) at build time, see
+  [`androidApp/src/main/cpp/vision/CMakeLists.txt`](androidApp/src/main/cpp/vision/CMakeLists.txt),
+  and links it statically into `libcruxcoach-vision.so`.
+- **Upstream:** https://github.com/ggml-org/llama.cpp
+- **License:** MIT. Included third-party code: stb_image (public domain),
+  miniaudio (public domain or MIT-0), xxHash (BSD-2-Clause), SHA-1 and
+  SHA-256 (public domain), subprocess.h (Unlicense), rotate-bits (MIT).
+
+Runs the on-device food photo model (FEAT-069) in the app's `:vision`
+process.
+
 ### MoonBoard hold-set cell map — BoardSesh
 
 - **Location:** [`MoonBoardHoldSets.kt`](shared/src/commonMain/kotlin/com/cruxcoach/domain/board/MoonBoardHoldSets.kt)
@@ -44,6 +58,20 @@ Used to decompress board manifests downloaded from Blossom relays.
 Used to show which holds a MoonBoard hold set covers, and to derive the
 `climbs.hsm` hold-set mask for locally authored and peer-received MoonBoard
 climbs (FEAT-049).
+
+### Hold segmentation pipeline — BoardSesh
+
+- **Location:** [`SegPipeline.kt`](shared/src/commonMain/kotlin/com/cruxcoach/domain/spraywall/detect/SegPipeline.kt)
+- **Upstream:** https://github.com/boardsesh/boardsesh — `packages/shared/hold-detection/src`
+  (`tiles.ts`, `decode.ts`, `outline.ts`, `nms.ts`, `candidates.ts`)
+- **License:** Apache License 2.0
+- **License text:** https://www.apache.org/licenses/LICENSE-2.0
+- **Changes:** ported to Kotlin; a resampler replaces libvips; a score floor
+  below the threshold keeps unsure holds for the sensitivity slider; the ring
+  point limit is a setting.
+
+Turns the hold segmentation model's output into spray-wall holds with their
+outlines (FEAT-078).
 
 ---
 
@@ -99,11 +127,76 @@ climbs (FEAT-049).
   time via the contacts in [`SECURITY.md`](SECURITY.md). Requests will be
   handled promptly (per board).
 
+### Shiny Wall wall images
+
+- **Location:** [`board_images/shinywall/`](androidApp/src/main/assets/board_images/shinywall/)
+- **Files:** `board_9401.webp`, `board_9402.webp`, `board_9403.webp`,
+  `board_9405.webp`, `board_9406.webp` (Standard Mini, Standard, Max, Full,
+  Max Full)
+- **Source:** composed by CruxCoach
+  ([`scripts/build_shinywall_images.py`](scripts/build_shinywall_images.py))
+  from the cut-out hold photos of the official Shiny Wall app (1.1.4),
+  placed at each variant's hold positions and encoded as WebP. No logo or
+  brand colours.
+- **Rights holder:** Shiny Wall (hold photos)
+- **Basis for bundling:** referential visualization and hardware
+  interoperability; see [`LEGAL.md`](LEGAL.md#bundled-shiny-wall-wall-images).
+- **Details:** [`board_images/README.md`](androidApp/src/main/assets/board_images/README.md)
+- **Takedown:** Shiny Wall may request removal or replacement at any time via
+  the contacts in [`SECURITY.md`](SECURITY.md). Deleting the folder removes
+  the images; the app then draws the holds as dots.
+
 These images are **not** covered by the CruxCoach GPLv3 source license.
 
 ---
 
 ## Bundled Datasets
+
+### BLS 4.0 — Max Rubner-Institut
+
+- **Used in:** food photo recognition, food search and the weekly
+  micronutrient estimate (FEAT-069), [`BlsRepository.kt`](androidApp/src/main/java/com/cruxcoach/android/foodvision/BlsRepository.kt)
+- **Location:** [`androidApp/src/main/assets/fuel/bls_4_0_macros.tsv`](androidApp/src/main/assets/fuel/bls_4_0_macros.tsv)
+- **Source:** Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS),
+  Version 4.0 — Deutsche Nährstoffdatenbank. Karlsruhe.
+  DOI: [10.25826/Data20251217-134202-0](https://doi.org/10.25826/Data20251217-134202-0),
+  download at https://www.blsdb.de
+- **License:** CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/);
+  attribution is shown in the review screen and the licence list.
+- **Modifications:** only energy (kcal), protein, fat, available
+  carbohydrate, iron, calcium and vitamin D per 100 g of the 7,140 foods;
+  traces and values below the detection limit are stored as zero, missing
+  micronutrients stay empty; source and reference columns dropped.
+  [`scripts/build_bls_asset.py`](scripts/build_bls_asset.py) rebuilds the
+  file from the official archive (its SHA-256 is recorded in the file).
+
+### USDA FoodData Central — SR Legacy
+
+- **Used in:** food search ("US foods"), household measures (cups) and the
+  weekly micronutrient estimate (FEAT-069), [`BlsRepository.kt`](androidApp/src/main/java/com/cruxcoach/android/foodvision/BlsRepository.kt)
+- **Location:** [`androidApp/src/main/assets/fuel/usda_sr_legacy.tsv`](androidApp/src/main/assets/fuel/usda_sr_legacy.tsv)
+- **Source:** U.S. Department of Agriculture, Agricultural Research Service.
+  FoodData Central: SR Legacy (April 2018), https://fdc.nal.usda.gov/
+- **License:** public domain, published under CC0 1.0; FoodData Central asks
+  to be named as the source.
+- **Modifications:** energy, protein, fat, available carbohydrate (by
+  difference minus fibre), iron, calcium, vitamin D per 100 g and up to five
+  household measures per food; [`scripts/build_usda_asset.py`](scripts/build_usda_asset.py).
+
+### Open Food Facts — packaged products
+
+- **Used in:** product search and barcode scan in "Find food" (FEAT-069),
+  [`OffRepository.kt`](androidApp/src/main/java/com/cruxcoach/android/foodvision/OffRepository.kt)
+- **Location:** [`androidApp/src/main/assets/fuel/off_products.db.zst`](androidApp/src/main/assets/fuel/off_products.db.zst)
+  (~17.5 MB SQLite table, zstd; unpacked once on first use, the search index is built on the phone)
+- **Source:** https://world.openfoodfacts.org/data (export of the day in `off_products.version`)
+- **License:** Open Database License (ODbL) 1.0 for the database, Database
+  Contents License (DbCL) 1.0 for its contents; © Open Food Facts contributors.
+- **Modifications:** products sold in DE, AT, CH, GB, IE, US, CA, AU or NZ with
+  plausible energy, protein, carbohydrate and fat per 100 g; only barcode,
+  German and English name, first brand, these values, serving size and region.
+  The extract is a derivative database and is offered under the ODbL;
+  [`scripts/build_off_asset.py`](scripts/build_off_asset.py) recreates it.
 
 ### dontkillmyapp.com — OEM background-killer taxonomy
 
@@ -185,6 +278,61 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
   contacts in [`SECURITY.md`](SECURITY.md); a board can be dropped from the
   bundle without affecting its catalogue download.
 
+### Board geometry — Shiny Wall
+
+- **Used in:** [`BundledBoardGeometry.kt`](androidApp/src/main/java/com/cruxcoach/android/data/BundledBoardGeometry.kt)
+  (draws and lights Shiny Wall problems and places holds in the editor; the
+  APK is the only source of this geometry).
+- **Location:** [`board_geometry/shinywall.sqlite3`](androidApp/src/main/assets/board_geometry/shinywall.sqlite3)
+- **Content:** hold positions of the Shiny Wall Standard variants. No
+  climbs, user data, images or descriptive text.
+- **Source:** a numeric table derived from the Shiny Wall app's own layout
+  data for interoperability;
+  [`scripts/build_shinywall_geometry.py`](scripts/build_shinywall_geometry.py)
+  builds the file. Provenance in the
+  [`README.md`](androidApp/src/main/assets/board_geometry/README.md).
+- **Rights holder:** Shiny Wall
+- **Basis for bundling:** functional hardware reference data — see
+  [`LEGAL.md`](LEGAL.md#bundled-board-geometry). CruxCoach claims no rights
+  in it; it is not covered by the CruxCoach GPLv3 source license.
+- **Takedown:** Shiny Wall may request removal at any time via the contacts
+  in [`SECURITY.md`](SECURITY.md).
+
+---
+
+## Downloaded on Request (not in the APK)
+
+### Hold segmentation model "2026-09-18-seg" — BoardSesh
+
+- **Used in:** spray walls (FEAT-078), hold suggestions with outlines, only
+  after the user starts the download in the hold editor. Can be removed again
+  under Settings → Delete local data.
+- **File:** `model-int8.onnx` (RF-DETR-Seg nano, int8), pinned to size and
+  SHA-256 in [`HoldModelStore.kt`](androidApp/src/main/java/com/cruxcoach/android/spraywall/HoldModelStore.kt).
+  The app downloads it only from the Blossom mirrors of CruxCoach's board
+  catalogues, never from BoardSesh's servers; the file is BoardSesh's
+  published release, unchanged.
+- **License:** Apache License 2.0 (model weights, BoardSesh; RF-DETR code and
+  base weights, Roboflow).
+- **Training data:** "Climbing Holds and Volumes" v14, Roboflow Universe
+  (https://universe.roboflow.com/blackcreed-xpgxh/climbing-holds-and-volumes),
+  licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+- **Mask teacher:** d12, crux-climbing-hold-segmentation-models v1.0.0
+  (https://github.com/d12/crux-climbing-hold-segmentation-models), MIT License.
+  Its training data is unclear: the model card says the models were trained
+  on climbing-wall images found on the internet and annotated by hand, and
+  that the images, their source and their licensing are not published.
+- **Runtime:** ONNX Runtime for Android, see [Native Runtime Libraries](#native-runtime-libraries).
+
+### Qwen3.5 2B / 4B vision-language models — Qwen Team, Alibaba Cloud
+
+- **Used in:** food photo recognition (FEAT-069), only after the user starts
+  the download in the nutrition screen.
+- **Files:** 4-bit GGUF and F16 vision projector converted by Unsloth,
+  pinned to exact Hugging Face revisions and SHA-256 in
+  [`VisionModels.kt`](androidApp/src/main/java/com/cruxcoach/android/foodvision/VisionModels.kt).
+- **License:** Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
+
 ---
 
 ## Map Rendering & Tile Data
@@ -238,6 +386,29 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
   satisfies this in two places: (1) the MapLibre default attribution
   control rendered inside the map UI, and (2) this file plus the root
   [`NOTICE`](NOTICE) in the distribution.
+
+---
+
+## Native Runtime Libraries
+
+A Gradle dependency, listed here because its licence asks for its notices.
+
+### ONNX Runtime for Android (1.31.1) — Microsoft
+
+- **Used in:** [`OnnxHoldDetector.kt`](androidApp/src/main/java/com/cruxcoach/android/spraywall/OnnxHoldDetector.kt),
+  runs the hold segmentation model above. A Gradle dependency
+  (`com.microsoft.onnxruntime:onnxruntime-android`); its native library
+  `libonnxruntime.so` ships in the APK.
+- **Upstream:** https://github.com/microsoft/onnxruntime (tag `v1.31.1`)
+- **License:** MIT License, Copyright (c) Microsoft Corporation.
+- **Third-party notices:** the release's
+  [`ThirdPartyNotices.txt`](https://github.com/microsoft/onnxruntime/blob/v1.31.1/ThirdPartyNotices.txt)
+  (SHA-256 `143764b9…6c83de3`) is reproduced unchanged, after the MIT
+  licence, in [`onnxruntime-MIT.json`](androidApp/aboutlibraries/licenses/onnxruntime-MIT.json)
+  and shown on the in-app licence screen.
+- **Telemetry:** off. The manifest removes the runtime's
+  `TelemetryInitializer` provider, and the app switches the runtime's
+  telemetry off before its first session.
 
 ---
 

@@ -96,7 +96,8 @@ internal fun rememberBoardImageLoadState(
 /**
  * Renders the board image so the user can visually match "does my board look
  * like this?" instead of decoding a cryptic size code. Renders [fallback]
- * (default: nothing) while decoding and when no bundled image resolves.
+ * (default: nothing) when no bundled image resolves; while decoding it keeps
+ * the slot with a progress indicator.
  * Optional [onClick] makes the image tappable (e.g. to enlarge).
  */
 @Composable
@@ -110,19 +111,42 @@ internal fun BoardPreviewImage(
     showZoomHint: Boolean = false,
     fallback: @Composable () -> Unit = {},
 ) {
-    val loaded = rememberBoardImageLoadState(brand, sizeId, layoutId, maxDimension = 512)
-    if (loaded == null) {
-        // Still decoding: keep the slot, but never show the "unavailable" fallback yet.
-        // Same tap target as the loaded image, so the zoom request is not lost mid-decode.
-        Box(if (onClick != null) modifier.clickable(onClick = onClick) else modifier, contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-        }
+    BoardPreviewImage(
+        loaded = rememberBoardImageLoadState(brand, sizeId, layoutId, maxDimension = 512),
+        modifier = modifier,
+        contentScale = contentScale,
+        onClick = onClick,
+        showZoomHint = showZoomHint,
+        fallback = fallback,
+    )
+}
+
+/**
+ * The preview for what [rememberBoardImageLoadState] gave so far: [loaded] is
+ * null while decoding and empty when no image resolves. Apart from the
+ * decoding, so a test decides when the image arrives.
+ */
+@Composable
+internal fun BoardPreviewImage(
+    loaded: List<ImageBitmap>?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Fit,
+    onClick: (() -> Unit)? = null,
+    showZoomHint: Boolean = false,
+    fallback: @Composable () -> Unit = {},
+) {
+    if (loaded != null && loaded.isEmpty()) {
+        fallback()
         return
     }
-    val bitmaps: List<ImageBitmap> = loaded
-    if (bitmaps.isNotEmpty()) {
-        Box(modifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier) {
-            bitmaps.forEach { bitmap ->
+    // Still decoding keeps the slot, but never shows the "unavailable" fallback yet. One box
+    // for the slot and the image: a tap whose finger went down on the progress indicator
+    // still counts when the image arrives before the finger lifts (two boxes lost that tap).
+    Box(modifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier) {
+        if (loaded == null) {
+            CircularProgressIndicator(Modifier.align(Alignment.Center).size(24.dp), strokeWidth = 2.dp)
+        } else {
+            loaded.forEach { bitmap ->
                 Image(
                     bitmap = bitmap,
                     contentDescription = null,
@@ -138,8 +162,6 @@ internal fun BoardPreviewImage(
                         .padding(5.dp).size(18.dp))
             }
         }
-    } else {
-        fallback()
     }
 }
 

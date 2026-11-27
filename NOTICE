@@ -53,11 +53,62 @@ BoardSesh — MoonBoard hold-set cell map (which grid cell belongs to which
     2.0 (https://www.apache.org/licenses/LICENSE-2.0). See
     THIRD_PARTY_LICENSES.md for the full attribution.
 
+BoardSesh — hold segmentation pipeline (tiling, decoding, mask-to-outline
+    tracing, tile merging) ported to Kotlin in
+    shared/src/commonMain/kotlin/com/cruxcoach/domain/spraywall/detect/SegPipeline.kt
+    from packages/shared/hold-detection in https://github.com/boardsesh/boardsesh.
+    Licensed under the Apache License 2.0
+    (https://www.apache.org/licenses/LICENSE-2.0). See THIRD_PARTY_LICENSES.md.
+
+Hold segmentation model (downloaded on request, not in the APK) — BoardSesh's
+    published RF-DETR-Seg nano export "2026-09-18-seg" (Apache License 2.0),
+    served unchanged from the Blossom mirrors of CruxCoach's board catalogues.
+    RF-DETR © Roboflow, Apache License 2.0. Trained on "Climbing Holds and
+    Volumes" v14 from Roboflow Universe (CC BY 4.0); mask labels distilled from
+    d12's crux-climbing-hold-segmentation-models v1.0.0 (MIT). d12's model card
+    says those models were trained on climbing-wall images found on the
+    internet and annotated by hand; the images, their source and their
+    licensing are not published, so the origin of that training data is
+    unclear. See THIRD_PARTY_LICENSES.md.
+
+ONNX Runtime 1.31.1 — Copyright (c) Microsoft Corporation. MIT License.
+    Native library in the APK (Maven com.microsoft.onnxruntime:
+    onnxruntime-android), runs the hold segmentation model. Its
+    ThirdPartyNotices.txt is reproduced unchanged on the in-app licence screen
+    (androidApp/aboutlibraries/licenses/onnxruntime-MIT.json). Its telemetry is
+    switched off and its start-up provider removed. See THIRD_PARTY_LICENSES.md.
+
 dontkillmyapp.com (Urbandroid Team) — OEM background-killer taxonomy used in
     androidApp/src/main/java/com/cruxcoach/android/notification/
     NotificationReliabilityHelper.kt. Licensed under CC BY-SA 4.0
     (https://creativecommons.org/licenses/by-sa/4.0/). See
     THIRD_PARTY_LICENSES.md for the full attribution.
+
+llama.cpp / ggml (b11396) — Copyright (c) 2023-2026 The ggml authors.
+    Fetched at build time (pinned archive, see
+    androidApp/src/main/cpp/vision/CMakeLists.txt) and linked statically into
+    libcruxcoach-vision.so for the on-device food photo model (FEAT-069).
+    Licensed under the MIT License
+    (https://github.com/ggml-org/llama.cpp/blob/master/LICENSE). See
+    THIRD_PARTY_LICENSES.md for the included third-party code.
+
+BLS 4.0 — Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS),
+    Version 4.0 — Deutsche Nährstoffdatenbank. Karlsruhe.
+    DOI: 10.25826/Data20251217-134202-0. Extract bundled as
+    androidApp/src/main/assets/fuel/bls_4_0_macros.tsv. Licensed under
+    CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); modifications
+    listed in THIRD_PARTY_LICENSES.md.
+
+Open Food Facts — © Open Food Facts contributors. Product extract bundled
+    as androidApp/src/main/assets/fuel/off_products.db.zst, a derivative
+    database offered under the Open Database License (ODbL) 1.0
+    (https://opendatacommons.org/licenses/odbl/1-0/); contents under the
+    Database Contents License (DbCL) 1.0. See THIRD_PARTY_LICENSES.md.
+
+USDA FoodData Central, SR Legacy — U.S. Department of Agriculture,
+    Agricultural Research Service (https://fdc.nal.usda.gov/). Public domain
+    (CC0 1.0); extract bundled as
+    androidApp/src/main/assets/fuel/usda_sr_legacy.tsv.
 
 MapLibre Native (Android) — Copyright (c) MapLibre contributors. Used as the
     map-rendering engine for the board-locations map (FEAT-015). Licensed

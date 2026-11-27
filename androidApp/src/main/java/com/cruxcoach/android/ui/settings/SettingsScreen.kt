@@ -4,10 +4,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.Gavel
+import androidx.compose.material.icons.outlined.Checklist
+import com.cruxcoach.android.BuildConfig
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,13 +30,18 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.nostr.backup.BackupErrorReason
 import com.cruxcoach.android.nostr.backup.DeleteRemoteNote
+import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import com.cruxcoach.android.ui.common.openUriOrToast
+import com.cruxcoach.android.ui.devcontact.COMMUNITY_JOIN_URL
+import com.cruxcoach.android.ui.devcontact.CommunityJoinSection
 import com.cruxcoach.android.ui.devcontact.DevContactSection
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.spraywall.HoldModelStore
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.domain.board.BoardBrand
 
@@ -45,6 +53,9 @@ internal fun SettingsScreen(
     onNavigateToProfile: () -> Unit,
     onNavigateToAppShare: () -> Unit,
     onNavigateToLicenses: () -> Unit = {},
+    onNavigateToHoldTypeReview: () -> Unit = {},
+    onNavigateToHoldTypeCheck: () -> Unit = {},
+    onNavigateToPaintBox: () -> Unit = {},
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
     onNavigateToAuroraMigration: () -> Unit = {},
@@ -58,14 +69,22 @@ internal fun SettingsScreen(
     onNavigateToKeyManagement: () -> Unit = {},
     onNavigateToNostrProfile: () -> Unit = {},
     onDonateClick: () -> Unit = {},
+    /** The training area's settings; null hides the row. */
+    onNavigateToTrainingSettings: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
     backupViewModel: BackupSettingsViewModel = hiltViewModel(),
+    // Created on their own pages only: opening the settings must not open the
+    // training database or the food files (a board-only user never needs them).
+    unitsViewModel: UnitsSettingsViewModel? = null,
+    foodDataViewModel: FoodDataStorageViewModel? = null,
+    sprayModelViewModel: SprayModelStorageViewModel? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val backupState by backupViewModel.state.collectAsStateWithLifecycle()
 
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
+    var showBoardConnection by rememberSaveable { mutableStateOf(false) }
     var gymSearchNearby by rememberSaveable { mutableStateOf(false) }
     var settingsBoardWire by rememberSaveable { mutableStateOf<String?>(null) }
     // The global active-board picker must not inherit the card being inspected.
@@ -111,6 +130,9 @@ internal fun SettingsScreen(
                 },
         )
     }
+    if (showBoardConnection) {
+        BleConnectionSheet(onDismiss = { showBoardConnection = false })
+    }
     if (showGymSearch) {
         GymBoardSearchSheet(
             startNearby = gymSearchNearby,
@@ -130,16 +152,23 @@ internal fun SettingsScreen(
         openUpdates = updaterDialogRequested,
         onNavigateBack = onNavigateBack,
         onNavigateToAppShare = onNavigateToAppShare,
+        onNavigateToPaintBox = onNavigateToPaintBox,
         banners = {
             RestTimerBannerSlot()
             SyncStatusBannerSlot()
             BleStatusArea()
         },
+        externalPages = listOfNotNull(onNavigateToTrainingSettings?.let { SettingsPage.TRAINING to it }).toMap(),
     ) { page ->
         when (page) {
+            // Opens the training area's settings screen; never a page here.
+            SettingsPage.TRAINING -> Unit
             SettingsPage.DISPLAY -> {
                 SettingsSectionCard {
                     LanguageSection()
+                }
+                SettingsSectionCard {
+                    UnitsSection(unitsViewModel ?: hiltViewModel())
                 }
                 SettingsSectionCard {
                     DisplaySection(
@@ -176,7 +205,7 @@ internal fun SettingsScreen(
                                 }
                                 else -> state.boardProductSizeName
                             }
-                            boardSelectionLabel(brand, state.boardLayoutId, detail)
+                            boardSelectionTitle(brand, state.boardLayoutId, detail)
                         },
                         onChangeModel = {
                             boardPickerWire = null
@@ -198,6 +227,17 @@ internal fun SettingsScreen(
                     BleAutoDisconnectSection(
                         bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
+                    )
+                }
+                // Board-wide by design: LedEffectSupport says which boards show
+                // effects, so the card stays put when more boards join.
+                SettingsSectionCard {
+                    LedEffectsSection(
+                        state = state.ledEffects,
+                        onSelect = viewModel::setLedAnimation,
+                        onKeepRunningChange = viewModel::setLedEffectsInBackground,
+                        onStrobeNoticeSeen = viewModel::confirmLedStrobeNotice,
+                        onConnect = { showBoardConnection = true },
                     )
                 }
                 SettingsSectionCard {
@@ -266,7 +306,12 @@ internal fun SettingsScreen(
                         onSharingChange = { viewModel.updateNearbyClimbSharing(it) },
                         relayManualStart = state.relayManualStart,
                         onRelayManualStartChange = { viewModel.updateRelayManualStart(it) },
+                        relayDisclosureSeen = state.relayDisclosureSeen,
                     )
+                    // Phones that cannot advertise never share, so never get renamed.
+                    if (state.climbSharing.advertisingSupported != false) {
+                        RelayBluetoothNameSection()
+                    }
                 }
             }
             SettingsPage.ACCOUNT -> {
@@ -307,6 +352,9 @@ internal fun SettingsScreen(
                     )
                 }
                 SettingsSectionCard {
+                    ShinyWallAccountSection()
+                }
+                SettingsSectionCard {
                     BoardLogbookImportSection(
                         onNavigateToAuroraMigration = onNavigateToAuroraMigration,
                         onNavigateToMoonBoardCsvImport = onNavigateToMoonBoardCsvImport,
@@ -344,6 +392,16 @@ internal fun SettingsScreen(
                 }
             }
             SettingsPage.DELETE -> {
+                SettingsSectionCard {
+                    FoodDataStorageSection(foodDataViewModel ?: hiltViewModel())
+                }
+                val sprayModels = sprayModelViewModel ?: hiltViewModel<SprayModelStorageViewModel>()
+                val sprayModel by sprayModels.model.collectAsStateWithLifecycle()
+                if (sprayModel == HoldModelStore.State.Ready) {
+                    SettingsSectionCard {
+                        SprayModelStorageSection(onRemove = sprayModels::remove)
+                    }
+                }
                 SettingsSectionCard {
                     DataDeletionSection(
                         showDeleteBoardDataDialog = state.showDeleteBoardDataDialog,
@@ -399,6 +457,13 @@ internal fun SettingsScreen(
                     )
                 }
             }
+            SettingsPage.COMMUNITY -> {
+                val uriHandler = LocalUriHandler.current
+                val context = LocalContext.current
+                SettingsSectionCard {
+                    CommunityJoinSection(onJoin = { uriHandler.openUriOrToast(context, COMMUNITY_JOIN_URL) })
+                }
+            }
             SettingsPage.ABOUT -> {
                 SettingsSectionCard {
                     AppInfoSection(
@@ -417,23 +482,39 @@ internal fun SettingsScreen(
                     onClick = onNavigateToAppShare,
                 )
                 val uriHandler = LocalUriHandler.current
+                val context = LocalContext.current
                 SettingsDestinationRow(
                     title = stringResource(R.string.settings_licenses_title),
                     summary = stringResource(R.string.settings_licenses_desc),
                     icon = Icons.Outlined.Gavel,
                     onClick = onNavigateToLicenses,
                 )
+                // #63: the hold-type review and label check are test-build tooling; release builds never show them.
+                if (BuildConfig.DEBUG) {
+                    SettingsDestinationRow(
+                        title = stringResource(R.string.settings_hold_review_title),
+                        summary = stringResource(R.string.settings_hold_review_desc),
+                        icon = Icons.Outlined.Checklist,
+                        onClick = onNavigateToHoldTypeReview,
+                    )
+                    SettingsDestinationRow(
+                        title = stringResource(R.string.settings_hold_check_title),
+                        summary = stringResource(R.string.settings_hold_check_desc),
+                        icon = Icons.Outlined.Checklist,
+                        onClick = onNavigateToHoldTypeCheck,
+                    )
+                }
                 SettingsDestinationRow(
                     title = stringResource(R.string.settings_privacy_title),
                     summary = stringResource(R.string.settings_privacy_desc),
                     icon = Icons.Outlined.Policy,
-                    onClick = { uriHandler.openUri(PRIVACY_NOTICE_URL) },
+                    onClick = { uriHandler.openUriOrToast(context, PRIVACY_NOTICE_URL) },
                 )
                 SettingsDestinationRow(
                     title = stringResource(R.string.settings_source_title),
                     summary = stringResource(R.string.settings_source_desc),
                     icon = Icons.Outlined.Code,
-                    onClick = { uriHandler.openUri(SOURCE_CODE_URL) },
+                    onClick = { uriHandler.openUriOrToast(context, SOURCE_CODE_URL) },
                 )
             }
         }
@@ -472,7 +553,8 @@ internal fun SettingsScreen(
                     R.string.settings_backup_restored,
                     snackbar.logbookEntries,
                     snackbar.lists,
-                ) + if (snackbar.linksPending) " " + stringResource(R.string.restore_links_pending) else ""
+                ) + (if (snackbar.linksPending) " " + stringResource(R.string.restore_links_pending) else "") +
+                    if (snackbar.trainingFailed) " " + stringResource(R.string.import_training_part_failed) else ""
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
             is BackupSettingsState.Snackbar.BackupFailed ->

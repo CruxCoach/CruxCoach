@@ -14,6 +14,7 @@ import android.content.IntentFilter
 import android.os.Build
 import android.util.Log
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.ShinyWallName
 import com.cruxcoach.domain.relay.RelayBoardName
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CompletableDeferred
@@ -54,7 +55,7 @@ data class DiscoveredBoard(
 )
 
 /**
- * Scans for Aurora Climbing boards + MoonBoard via BLE.
+ * Scans for Aurora Climbing boards, MoonBoard, Quantum and Shiny Wall via BLE.
  * Scans without a UUID filter; identifies boards by advertising name —
  * Aurora boards as "BoardName#serial@apiLevel" / "BoardName@apiLevel" or,
  * for Kilter-built boxes, a bare "Kilter Board" (see [parseAuroraName]);
@@ -161,7 +162,10 @@ class BoardBleScanner(private val context: Context) {
             val isRelay = RelayBoardName.isRelayName(name)
             val boardName = RelayBoardName.unwrap(name)
             val quantumSerial = quantumSerialOrNull(boardName)
-            val board = if (quantumSerial != null) {
+            val shinyWall = shinyWallBoardOrNull(boardName, isRelay, device.address, result.rssi)
+            val board = if (shinyWall != null) {
+                shinyWall
+            } else if (quantumSerial != null) {
                 DiscoveredBoard(
                     displayName = boardName,
                     serial = quantumSerial,
@@ -233,6 +237,30 @@ class BoardBleScanner(private val context: Context) {
                     "Toggling Bluetooth off/on should fix this.")
             }
         }
+    }
+
+    /**
+     * A Shiny Wall Standard controller, or null. Custom walls (`ShinyWall_CTM_…`)
+     * and unrelated ESP32 devices that reuse the same example GATT UUID are not
+     * offered. A relay cannot carry the Shiny Wall protocol, so a relayed name
+     * is ignored.
+     */
+    internal fun shinyWallBoardOrNull(
+        name: String,
+        isRelay: Boolean,
+        address: String,
+        rssi: Int,
+    ): DiscoveredBoard? {
+        if (isRelay) return null
+        val parsed = ShinyWallName.parse(name) ?: return null
+        return DiscoveredBoard(
+            displayName = name,
+            serial = parsed.serial,
+            apiLevel = 0,
+            address = address,
+            rssi = rssi,
+            boardBrand = BoardBrand.SHINYWALL,
+        )
     }
 
     internal fun quantumSerialOrNull(name: String): String? {

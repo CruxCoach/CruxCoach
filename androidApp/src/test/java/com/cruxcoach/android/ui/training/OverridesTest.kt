@@ -1,0 +1,722 @@
+package com.cruxcoach.android.ui.training
+
+import android.app.Application
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import com.cruxcoach.android.ui.training.player.PlayerPhase
+import com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen
+import com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel
+import com.cruxcoach.android.ui.training.today.TodayScreen
+import com.cruxcoach.android.ui.training.today.TodayViewModel
+import com.cruxcoach.android.ui.training.workouts.RoutineEditorScreen
+import com.cruxcoach.android.ui.training.workouts.RoutineEditorViewModel
+import com.cruxcoach.athlete.logic.SuggestionFocus
+import com.cruxcoach.athlete.logic.SuggestionReason
+import com.cruxcoach.athlete.model.Benchmark
+import com.cruxcoach.athlete.model.BenchmarkSource
+import com.cruxcoach.athlete.model.BodyMeasurement
+import com.cruxcoach.athlete.model.BodyMetric
+import com.cruxcoach.athlete.model.InjuryRegion
+import com.cruxcoach.athlete.model.Routine
+import com.cruxcoach.athlete.model.RoutineItem
+import com.cruxcoach.athlete.model.SetType
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.minus
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/**
+ * The athlete's word wins (owner 2026-10-15): loads changed during a training
+ * carry over, sets can be gone back to and corrected, workouts and their loads
+ * can be typed, performance values entered as working sets, and today's
+ * suggestion asks first and lets the athlete pick the kind, the place and the
+ * time; favourites are chosen next to "routine or variety" (2026-10-16).
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class OverridesTest : AthleteScreenTest() {
+
+    @Before
+    fun bodyWeight() {
+        repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, 70.0, "kg", 1))
+        repo.updateProfile { it.copy(equipmentConfigured = true, equipment = setOf(
+            com.cruxcoach.athlete.catalog.EquipmentV2.NONE, com.cruxcoach.athlete.catalog.EquipmentV2.MAT,
+            com.cruxcoach.athlete.catalog.EquipmentV2.HANGBOARD, com.cruxcoach.athlete.catalog.EquipmentV2.PULL_UP_BAR,
+            com.cruxcoach.athlete.catalog.EquipmentV2.DUMBBELL, com.cruxcoach.athlete.catalog.EquipmentV2.BANDS)) }
+    }
+
+    private fun player(routine: Routine): Pair<String, WorkoutPlayerViewModel> {
+        val id = service.startWorkout(routine, null)
+        val vm = WorkoutPlayerViewModel(service).tracked()
+        until { vm.state.value.phase == PlayerPhase.SET }
+        return id to vm
+    }
+
+    /** Waits with the main looper running: the player's writes come back on Main. */
+    /**
+     * Picks [option] from the card's duration menu and waits until that menu has gone, so the next pick never opens
+     * a menu while the last one is still leaving (feature CI 2026-10-25: CalledFromWrongThreadException in the
+     * duration test, not reproducible locally).
+     */
+    private fun chooseDuration(option: String) {
+        click("today_duration")
+        click("today_duration_$option")
+        compose.waitUntil(WAIT_MS) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            compose.onAllNodesWithTag("today_duration_menu", useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
+        }
+    }
+
+    private fun until(condition: () -> Boolean) = compose.waitUntil(WAIT_MS) {
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        condition()
+    }
+
+    private fun work(id: String) = repo.setsFor(id).filter { it.setType == SetType.WORK }.sortedBy { it.setIndex }
+
+    @Test
+    fun `a load the athlete lowered is planned next time, and goes with its training`() {
+        // UX review 2026-10-16: a lowered load came back heavier the next time (values only rose by themselves).
+        repo.saveBenchmark(Benchmark("b0", "pull.weighted_pull_up", loadKg = 20.0, reps = 5, sets = 3, bodyweightKg = 70.0,
+            source = BenchmarkSource.MANUAL, measuredAt = 1))
+        val routine = Routine("r", "Pull", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 3, repsMin = 5, repsMax = 5)))
+        val first = service.startWorkout(routine, null)
+        assertEquals(listOf(20.0, 20.0, 20.0), work(first).map { it.loadKg })
+        // In the player: +15 kg on the first set, the later sets follow and take it as their plan.
+        val now = System.currentTimeMillis()
+        work(first).forEachIndexed { i, set ->
+            repo.saveSet(set.copy(loadKg = 15.0, targetLoadKg = if (i == 0) 20.0 else 15.0, reps = 5, completedAt = now + i))
+        }
+        service.finishWorkout(first, null, null)
+        val own = service.ownLoadsOf(repo.workout(first)!!)
+        assertEquals(listOf(15.0), own.map { it.loadKg })
+        val second = service.startWorkout(routine, null)
+        assertEquals(listOf(15.0, 15.0, 15.0), work(second).map { it.loadKg })
+        // The player says where the lighter plan comes from.
+        val badge = com.cruxcoach.android.ui.training.coach.LearningBadgeViewModel(service).tracked()
+        badge.load("pull.weighted_pull_up")
+        until { badge.ownLoad.value }
+        // Deleting the training takes its value with it: planning is back at the athlete's earlier value.
+        service.discardWorkout(second)
+        service.discardWorkout(first)
+        val third = service.startWorkout(routine, null)
+        assertEquals(listOf(20.0, 20.0, 20.0), work(third).map { it.loadKg })
+    }
+
+    @Test
+    fun `a kind chosen on two Mondays is that weekday's suggestion, shown and forgettable`() {
+        // UX review 2026-10-16: the athlete's choices were forgotten the next day, and nothing learned was visible.
+        val today = service.today()
+        val dayMs = 86_400_000L
+        listOf(7, 14).forEach { ago ->
+            val day = today.minus(kotlinx.datetime.DatePeriod(days = ago)).toString()
+            val at = System.currentTimeMillis() - ago * dayMs
+            repo.logSuggestionEvent(com.cruxcoach.athlete.model.SuggestionEvent("k$ago", day, at,
+                com.cruxcoach.athlete.model.SuggestionEventKind.FEEDBACK, focus = com.cruxcoach.athlete.logic.PreferenceLearning.CHOSEN_KIND + "LEGS_CORE"))
+            repo.logSuggestionEvent(com.cruxcoach.athlete.model.SuggestionEvent("s$ago", day, at + 1000,
+                com.cruxcoach.athlete.model.SuggestionEventKind.STARTED, focus = "LEGS_CORE"))
+        }
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion?.focus == SuggestionFocus.LEGS_CORE }
+        assertEquals(SuggestionReason.USUAL_KIND, vm.state.value.suggestion!!.reasons.first())
+        // "The coach decides" for today wins over the habit.
+        vm.chooseFocus(null)
+        until { SuggestionReason.USUAL_KIND !in vm.state.value.suggestion!!.reasons }
+        // The settings page shows the weekday and forgets it.
+        val settings = com.cruxcoach.android.ui.training.athlete.AthleteSettingsViewModel(service).tracked()
+        until { settings.state.value.learned.weekdays.any { it.focus == SuggestionFocus.LEGS_CORE } }
+        render { com.cruxcoach.android.ui.training.athlete.AthleteSettingsScreen({}, viewModel = settings,
+            section = com.cruxcoach.android.ui.training.athlete.SettingsSection.EXCLUDED) }
+        val iso = today.dayOfWeek.ordinal + 1
+        click("learned_day_${iso}_forget")
+        until { settings.state.value.learned.weekdays.isEmpty() }
+        waitForTag("learned_empty")
+    }
+
+    @Test
+    fun `the shown exercise is swapped or skipped in the player, and the coach learns it`() {
+        // UX review 2026-10-16: in a training an exercise could only be swapped through "it hurts".
+        val (id, vm) = player(Routine("r", "Pull", items = listOf(
+            RoutineItem("pull.pull_up", sets = 3, repsMin = 5, repsMax = 5), RoutineItem("push.push_up", sets = 2, repsMin = 10, repsMax = 10))))
+        render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
+        until { vm.state.value.current?.set?.exerciseSlug == "pull.pull_up" }
+        assertTrue(vm.canSwap())
+        val alternatives = kotlinx.coroutines.runBlocking { vm.alternatives() }
+        assertTrue(alternatives.isNotEmpty() && alternatives.none { it.def.slug == "push.push_up" || it.def.slug == "pull.pull_up" }, "$alternatives")
+        click("player_exercise_menu")
+        click("player_swap_exercise")
+        waitForTag("player_swap_sheet")
+        val to = alternatives.first().def.slug
+        click("player_swap_to_$to")
+        until { repo.setsFor(id).none { it.exerciseSlug == "pull.pull_up" } && repo.setsFor(id).any { it.exerciseSlug == to } }
+        // It keeps the replaced exercise's three sets (device test 2026-10-17: 5 fresh sets in an intro week).
+        assertEquals(3, repo.setsFor(id).filter { it.exerciseSlug == to && it.setType == SetType.WORK }.map { it.setIndex }.distinct().size)
+        // The ledger entry is written right after the sets.
+        until { repo.suggestionEventsForDay(service.today().toString()).any {
+            it.kind == com.cruxcoach.athlete.model.SuggestionEventKind.SWAPPED && it.slugs == listOf("pull.pull_up", to)
+        } }
+        // Skipping takes the open sets of the shown exercise; the next exercise follows.
+        until { vm.state.value.current?.set?.exerciseSlug == to }
+        vm.skipExercise()
+        until { repo.setsFor(id).none { it.exerciseSlug == to } && vm.state.value.current?.set?.exerciseSlug == "push.push_up" }
+    }
+
+    @Test
+    fun `the real training length shows on the learned page and is taken over`() {
+        val today = service.today()
+        (1..4).forEach { i ->
+            val day = today.minus(kotlinx.datetime.DatePeriod(days = i * 3)).toString()
+            repo.saveWorkout(com.cruxcoach.athlete.model.Workout("w$i", 0, 30 * 60_000L, day, updatedAt = 0))
+        }
+        repo.updateProfile { it.copy(sessionMinutes = 60) }
+        val settings = com.cruxcoach.android.ui.training.athlete.AthleteSettingsViewModel(service).tracked()
+        until { settings.state.value.learned.minutes == 30 }
+        render { com.cruxcoach.android.ui.training.athlete.AthleteSettingsScreen({}, viewModel = settings,
+            section = com.cruxcoach.android.ui.training.athlete.SettingsSection.EXCLUDED) }
+        click("learned_minutes_apply")
+        until { repo.profile().sessionMinutes == 30 && settings.state.value.learned.minutes == null }
+    }
+
+    @Test
+    fun `a load changed in the player carries over to the next sets`() {
+        val (id, vm) = player(Routine("r", "Pull", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 4, repsMin = 5, repsMax = 5, loadKg = 20.0))))
+        render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
+        click("player_load_plus")
+        until { work(id).all { (it.loadKg ?: 0.0) > 20.0 } }
+        val after = work(id)
+        assertEquals(1, after.map { it.loadKg }.distinct().size, "${after.map { it.loadKg }}")
+        // The later sets take the athlete's load as their plan, so autoregulation goes on from it.
+        assertTrue(after.drop(1).all { it.targetLoadKg == it.loadKg })
+        waitForTag("player_load_carried")
+    }
+
+    @Test
+    fun `a free training opens in the training view with add and type`() {
+        // Owner 2026-10-17: one training view; the old list became its overview.
+        service.startWorkout(null, null)
+        val vm = WorkoutPlayerViewModel(service).tracked()
+        until { vm.state.value.phase == PlayerPhase.EMPTY }
+        render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
+        waitForTag("player_add_exercise")
+        click("player_type")
+        waitForTag("workout_text_sheet")
+    }
+
+    @Test
+    fun `a done set is corrected from its row, and it can be opened again`() {
+        val (id, vm) = player(Routine("r", "Push", items = listOf(RoutineItem("push.push_up", sets = 3, repsMin = 10, repsMax = 10, restS = 60))))
+        render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
+        click("player_done_rir_2")
+        until { vm.state.value.phase == PlayerPhase.REST && work(id).first().isCompleted }
+        // The done row says what was done against the target and opens for a correction – the rest goes on.
+        val first = work(id).first().id
+        scrollTo("player_set_view", "player_row_$first")
+        waitForTag("player_outcome_$first")
+        click("player_row_$first")
+        waitForTag("player_row_editing")
+        scrollTo("player_set_view", "player_reps_minus")
+        click("player_reps_minus")
+        until { work(id).first().reps == 9 }
+        scrollTo("player_set_view", "player_edit_ok")
+        click("player_edit_ok")
+        assertEquals(PlayerPhase.REST, vm.state.value.phase)
+        // Not done after all: open again, and it is the set that is due.
+        scrollTo("player_set_view", "player_row_$first")
+        click("player_row_$first")
+        scrollTo("player_set_view", "player_reopen")
+        click("player_reopen")
+        until { !work(id).first().isCompleted }
+        until { vm.state.value.current?.set?.id == first }
+    }
+
+    @Test
+    fun `the next load set by hand during the rest wins over the reserve answer`() {
+        val (id, vm) = player(Routine("r", "Pull", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 3, repsMin = 5, repsMax = 5, loadKg = 20.0, restS = 120))))
+        render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
+        click("player_done_rir_2")
+        until { vm.state.value.phase == PlayerPhase.REST && vm.state.value.restArmed }
+        // During the rest the next set is already the active row: its load is changed right there.
+        scrollTo("player_set_view", "player_load_minus")
+        click("player_load_minus")
+        until { work(id).drop(1).all { (it.loadKg ?: 20.0) < 20.0 } }
+        val manual = work(id)[1].loadKg
+        // "No reserve" would take a step off – the athlete already decided.
+        scrollTo("player_set_view", "player_rir_edit")
+        click("player_rir_edit")
+        scrollTo("player_set_view", "player_rir_0")
+        click("player_rir_0")
+        until { work(id).first().rir == 0 }
+        Thread.sleep(300)
+        assertEquals(manual, work(id)[1].loadKg)
+        assertEquals(manual, work(id)[2].loadKg)
+    }
+
+    @Test
+    fun `a value entered as working sets plans exactly those sets`() {
+        // "I can do 5×5 with +20 kg."
+        service.saveBenchmark(Benchmark("b", "pull.weighted_pull_up", loadKg = 20.0, reps = 5, bodyweightKg = 70.0,
+            source = BenchmarkSource.MANUAL, measuredAt = System.currentTimeMillis(), sets = 5))
+        val id = service.startWorkout(Routine("r", "Pull", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 5, repsMin = 5, repsMax = 5))), null)
+        assertTrue(work(id).all { it.loadKg == 20.0 }, "${work(id).map { it.loadKg }}")
+    }
+
+    @Test
+    fun `the value dialog offers working sets first`() {
+        val def = service.catalog["pull.weighted_pull_up"]!!
+        var saved: Benchmark? = null
+        render {
+            com.cruxcoach.android.ui.training.benchmarks.BenchmarkEntryDialog(def, repo.profile(), 70.0, null, { "n" }, {}, { saved = it })
+        }
+        waitForTag("benchmark_mode_sets")
+        compose.onNodeWithTag("benchmark_sets").performTextReplacement("5")
+        compose.onNodeWithTag("benchmark_load").performTextReplacement("20")
+        compose.onNodeWithTag("benchmark_reps").performTextReplacement("5")
+        waitForTag("benchmark_preview")
+        click("benchmark_save")
+        until { saved != null }
+        assertEquals(5, saved!!.sets)
+        assertEquals(20.0, saved!!.loadKg)
+    }
+
+    @Test
+    fun `a typed workout adds catalogue exercises, new ones and its name`() {
+        val vm = RoutineEditorViewModel(service).tracked()
+        render { RoutineEditorScreen(routineId = null, from = null, onBack = {}, onSaved = {}, viewModel = vm) }
+        click("routine_editor_type")
+        waitForTag("workout_text_input")
+        compose.onNodeWithTag("workout_text_input").performTextReplacement("Oberkörper\nKlimmzüge 5x5 +20 kg\nPlank 3x60s\nRussian Twists 3x20 8kg")
+        waitForTag("workout_text_line_2")
+        waitForTag("workout_text_title")
+        click("workout_text_apply")
+        until { vm.state.value.items.size == 3 }
+        val items = vm.state.value.items.map { it.item }
+        assertEquals("pull.weighted_pull_up", items[0].slug)
+        assertEquals(20.0, items[0].loadKg)
+        assertEquals("core.front_plank", items[1].slug)
+        assertEquals(60, items[1].durationS)
+        assertTrue(items[2].slug.startsWith("user."), items[2].slug)
+        assertEquals("Oberkörper", vm.state.value.name)
+        assertTrue(repo.customExercises().any { it.slug == items[2].slug })
+        // The editor shows the workout's own load, and "auto" for the others.
+        scrollTo("routine_editor_list", hasTestTag("load_${vm.state.value.items[0].key}_value"))
+    }
+
+    @Test
+    fun `exercises typed into a free training are planned with their numbers`() {
+        val id = service.startWorkout(null, null)
+        val vm = WorkoutPlayerViewModel(service).tracked()
+        until { vm.state.value.phase == PlayerPhase.EMPTY }
+        render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
+        click("player_type")
+        waitForTag("workout_text_input")
+        compose.onNodeWithTag("workout_text_input").performTextReplacement("Kniebeuge 5x5 60kg\nLiegestütze 3x12")
+        waitForTag("workout_text_line_1")
+        click("workout_text_apply")
+        until { repo.setsFor(id).map { it.exerciseSlug }.distinct().size == 2 }
+        val squats = repo.setsFor(id).filter { it.exerciseSlug == "legs.back_squat" && it.setType == SetType.WORK }
+        assertEquals(5, squats.size)
+        assertTrue(squats.all { it.loadKg == 60.0 && it.targetReps == 5 }, "${squats.map { it.loadKg to it.targetReps }}")
+        assertTrue(repo.setsFor(id).filter { it.exerciseSlug == "push.push_up" }.all { it.targetReps == 12 })
+    }
+
+    @Test
+    fun `today shows the training at once, and the day's form is one optional tap`() {
+        // Owner 2026-11-21: nothing is asked before the suggestion; "tired" is the check-in's low energy.
+        val vm = loaded(TodayViewModel(service))
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        until { vm.state.value.suggestion != null }
+        scrollTo("today_list", hasTestTag("today_suggestion_start"))
+        assertTrue(compose.onAllNodesWithTag("today_quick_checkin").fetchSemanticsNodes().isEmpty())
+        val day = service.today().toString()
+        assertEquals(null, repo.checkin(day))
+        scrollTo("today_list", hasTestTag("today_form_tired"))
+        click("today_form_tired")
+        // The chip follows the saved check-in: "good" only answers once the card shows "tired".
+        until { repo.checkin(day)?.energy == 2 && vm.state.value.checkin?.energy == 2 }
+        compose.waitForIdle()
+        click("today_form_good")
+        until { repo.checkin(day)?.energy == 3 }
+        // What hurts today is spared today, not an injury: it is one of the questions behind "more".
+        vm.saveQuickCheckin(4, setOf(InjuryRegion.SHOULDER))
+        until { repo.checkin(day)?.sore == setOf(InjuryRegion.SHOULDER) }
+        assertEquals(4, repo.checkin(day)?.energy)
+        assertTrue(repo.activeInjuries().isEmpty())
+        // The card has taken the check-in in: a suggestion was there before it, and that one may load the shoulder
+        // (PR CI 2026-11-22 read it too early).
+        until { vm.state.value.checkin?.sore == setOf(InjuryRegion.SHOULDER) && vm.state.value.suggestion != null }
+        scrollTo("today_list", hasTestTag("today_suggestion_start"))
+        val slugs = vm.state.value.suggestion!!.routine.items.map { it.slug }
+        assertTrue(slugs.none { service.catalog[it]?.domains?.contains(com.cruxcoach.athlete.catalog.LoadDomain.SHOULDER) == true }, "$slugs")
+    }
+
+    @Test
+    fun `another suggestion picks the kind of training and the place`() {
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_suggestion_next"))
+        click("today_suggestion_next")
+        click("today_kind_legs_core")
+        until { vm.state.value.suggestion?.focus == SuggestionFocus.LEGS_CORE }
+        assertEquals(SuggestionReason.CHOSEN_TODAY, vm.state.value.suggestion!!.reasons.first())
+        // A finger day at a place without a hangboard turns into pull and push, with the reason;
+        // the place is picked in the same sheet (owner 2026-10-15).
+        vm.chooseFocus(SuggestionFocus.FINGER_STRENGTH)
+        until { vm.state.value.suggestion?.focus == SuggestionFocus.FINGER_STRENGTH }
+        click("today_suggestion_next")
+        click("today_next_place_${com.cruxcoach.athlete.logic.TrainingPlaces.NO_GEAR_ID}")
+        until {
+            val s = vm.state.value.suggestion
+            s != null && s.focus == SuggestionFocus.PULL_PUSH && SuggestionReason.NO_FINGER_EQUIPMENT in s.reasons
+        }
+        assertNull(vm.state.value.suggestion!!.routine.items.firstOrNull {
+            service.catalog[it.slug]?.equipment?.contains(com.cruxcoach.athlete.catalog.EquipmentV2.HANGBOARD) == true
+        })
+    }
+
+    private fun idle() = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    @Test
+    fun `once the week's training days are done, "train anyway" gives the training without the day limit, for the day`() {
+        // A Friday, two training days a week, climbing on Wednesday and Thursday (owner 2026-11-06).
+        val friday = kotlinx.datetime.LocalDate.parse("2026-03-06")
+        val ms = friday.atStartOfDayIn(service.zone).toEpochMilliseconds() + 18 * 3_600_000L
+        service.clock = { ms }
+        repo.updateProfile { it.copy(weeklyGoal = 2, coach = it.coach.copy(trainingDaysPerWeek = 2)) }
+        listOf("2026-03-04", "2026-03-05").forEach { day ->
+            service.saveClimbingDay(com.cruxcoach.athlete.model.ClimbingDayEntry("c-$day", day, com.cruxcoach.athlete.model.ClimbingDayKind.GYM_BOULDER,
+                90, com.cruxcoach.athlete.model.ClimbIntensity.VOLUME, updatedAt = ms))
+        }
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(4, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        val rest = vm.state.value.suggestion!!
+        assertEquals(SuggestionFocus.MOBILITY_RECOVERY, rest.focus)
+        assertEquals(SuggestionReason.WEEK_DAYS_DONE, rest.reasons.first())
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_train_anyway"))
+        click("today_train_anyway")
+        until { vm.state.value.suggestion?.focus.let { it != null && it != SuggestionFocus.MOBILITY_RECOVERY } }
+        assertTrue(SuggestionReason.WEEK_DAYS_DONE !in vm.state.value.suggestion!!.reasons)
+        val trained = vm.state.value.suggestion!!.routine.items.map { it.slug }
+        // The button belongs to the recovery card only.
+        idle()
+        assertTrue(compose.onAllNodesWithTag("today_train_anyway").fetchSemanticsNodes().isEmpty())
+        assertEquals(friday.toString(), service.today().toString())
+        assertTrue(repo.suggestionEventsForDay(friday.toString()).any { it.focus == com.cruxcoach.athlete.logic.PreferenceLearning.TRAIN_ANYWAY })
+        // It holds for the day, also after the app was closed.
+        val again = loaded(TodayViewModel(service))
+        until { again.state.value.suggestion != null && !again.state.value.asksBeforeSuggestion }
+        assertTrue(again.state.value.suggestion!!.focus != SuggestionFocus.MOBILITY_RECOVERY, "${again.state.value.suggestion!!.reasons}")
+        // The same training, not another one: the tap is no "another suggestion" (phone check 2026-11-07).
+        assertEquals(trained, again.state.value.suggestion!!.routine.items.map { it.slug })
+    }
+
+    @Test
+    fun `the time on the card changes today's training, only for today`() {
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        val usual = vm.state.value.suggestion!!
+        val preferred = repo.profile().sessionMinutes
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_duration"))
+        chooseDuration("90")
+        until { vm.state.value.minutesToday == 90 && (vm.state.value.suggestion?.totalMinutes ?: 0) > usual.totalMinutes + 15 }
+        assertTrue(SuggestionReason.MORE_TIME_TODAY in vm.state.value.suggestion!!.reasons, "${vm.state.value.suggestion!!.reasons}")
+        chooseDuration("20")
+        until { vm.state.value.minutesToday == 20 && vm.state.value.suggestion!!.totalMinutes <= 24 }
+        chooseDuration("usual")
+        until { vm.state.value.minutesToday == null && vm.state.value.suggestion!!.totalMinutes == usual.totalMinutes }
+        // Today only: the preferred duration stays.
+        assertEquals(preferred, repo.profile().sessionMinutes)
+    }
+
+    @Test
+    fun `a favourite in today's suggestion carries its star`() {
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        val main = vm.state.value.suggestion!!.routine.items.first { !it.warmup }.slug
+        repo.setFavorite(main, true)
+        until { main in vm.state.value.favorites && SuggestionReason.FAVORITES_USED in vm.state.value.suggestion!!.reasons }
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_item_$main"))
+        waitForTag("today_favorite_$main")
+    }
+
+    @Test
+    fun `an exercise on today's card is swapped, left out or never suggested – and the coach learns it`() {
+        // UX review 2026-10-16: one exercise could only be changed by reshuffling the whole suggestion.
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        fun items() = vm.state.value.suggestion!!.routine.items
+        val first = items().first { !it.warmup }
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_item_${first.slug}"))
+        click("today_item_${first.slug}")
+        waitForTag("today_swap_drop")
+        val alternatives = vm.alternatives(first.slug)
+        assertTrue(alternatives.isNotEmpty())
+        // Never more finger work through a swap than the rules allowed.
+        val fingerFree = com.cruxcoach.athlete.catalog.LoadDomain.FINGER !in service.catalog.fallbackFor(first.slug).domains
+        if (fingerFree) assertTrue(alternatives.none { com.cruxcoach.athlete.catalog.LoadDomain.FINGER in it.def.domains })
+        val to = alternatives.first().def.slug
+        val before = items().map { it.slug }
+        click("today_swap_to_$to")
+        until { items().any { it.slug == to } && items().none { it.slug == first.slug } }
+        assertEquals(first.sets, items().first { it.slug == to }.sets)
+        // Only the swapped exercise changes today, in its place.
+        assertEquals(before.map { if (it == first.slug) to else it }, items().map { it.slug })
+        val day = service.today().toString()
+        assertTrue(repo.suggestionEventsForDay(day).any {
+            it.kind == com.cruxcoach.athlete.model.SuggestionEventKind.SWAPPED && it.slugs == listOf(first.slug, to)
+        })
+        // Swapped back to the original: the card shows it again.
+        vm.swapExercise(to, first.slug)
+        until { items().any { it.slug == first.slug } && items().none { it.slug == to } }
+        // Left out today: gone without a replacement.
+        val count = items().size
+        val others = items().map { it.slug }.toSet() - first.slug
+        vm.dropExercise(first.slug)
+        until { items().none { it.slug == first.slug } && items().size == count - 1 }
+        // Left out without a replacement: the rest of the card stays as it was (device test 2026-10-17).
+        assertEquals(others, items().map { it.slug }.toSet())
+        // Never suggested: in the profile, out of the card.
+        val other = items().first { !it.warmup }.slug
+        vm.excludeExercise(other)
+        until { other in repo.profile().excludedExercises && items().none { it.slug == other } }
+    }
+
+    @Test
+    fun `a swap or leaving out on the card can be undone and teaches nothing then`() {
+        // Audit P2-14: Undo wherever the athlete decides; the ledger entry goes too.
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        fun items() = vm.state.value.suggestion!!.routine.items
+        val first = items().first { !it.warmup }
+        val to = vm.alternatives(first.slug).first().def.slug
+        val day = service.today().toString()
+        vm.swapExercise(first.slug, to)
+        until { items().any { it.slug == to } }
+        vm.undoCardChange()
+        until { items().any { it.slug == first.slug } && items().none { it.slug == to } }
+        until { repo.suggestionEventsForDay(day).none { it.kind == com.cruxcoach.athlete.model.SuggestionEventKind.SWAPPED } }
+        val count = items().size
+        vm.dropExercise(first.slug)
+        until { items().size == count - 1 }
+        vm.undoCardChange()
+        until { items().size == count && items().any { it.slug == first.slug } }
+        until { repo.suggestionEventsForDay(day).none { it.feedback == com.cruxcoach.athlete.model.SuggestionFeedback.DISLIKE_EXERCISE } }
+    }
+
+    @Test
+    fun `turned down a third time, the card asks once whether to stop suggesting it`() {
+        // Comparison review #8: instead of resting it again and again, ask once; "never" can be undone.
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        val slug = vm.state.value.suggestion!!.routine.items.first { !it.warmup }.slug
+        val day = 24L * 3600 * 1000
+        listOf(20, 9).forEach { ago ->
+            repo.logSuggestionEvent(com.cruxcoach.athlete.model.SuggestionEvent("old$ago", service.today().minus(kotlinx.datetime.DatePeriod(days = ago)).toString(),
+                System.currentTimeMillis() - ago * day, com.cruxcoach.athlete.model.SuggestionEventKind.NEXT, slugs = listOf(slug),
+                feedback = com.cruxcoach.athlete.model.SuggestionFeedback.DISLIKE_EXERCISE))
+        }
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        vm.dropExercise(slug)
+        until { vm.state.value.neverOffer == slug }
+        clickText(context.getString(com.cruxcoach.android.R.string.trt_never_offer_yes))
+        until { slug in repo.profile().excludedExercises && vm.state.value.neverOffer == null }
+        assertEquals("never", repo.setting("never.offered.$slug"))
+        // Asked once: another rejection does not ask again.
+        vm.includeExercise(slug)
+        until { slug !in repo.profile().excludedExercises }
+        vm.dropExercise(slug)
+        compose.waitForIdle()
+        assertEquals(null, vm.state.value.neverOffer)
+    }
+
+    @Test
+    fun `another suggestion offers kind, level and a new mix, and what hurts opens today's check-in`() {
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_suggestion_next"))
+        click("today_suggestion_next")
+        click("today_level_easier")
+        until { vm.state.value.levelShift == -1 && SuggestionReason.LEVEL_EASIER in vm.state.value.suggestion!!.reasons }
+        click("today_suggestion_next")
+        click("today_next_hurts")
+        waitForTag("today_checkin_sheet")
+        // Nothing became an injury.
+        assertTrue(repo.activeInjuries().isEmpty())
+    }
+
+    @Test
+    fun `favourites are chosen right next to routine or variety`() {
+        val vm = loaded(com.cruxcoach.android.ui.training.coach.CoachSetupViewModel(service, io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true)))
+        repeat(3) { vm.next() }
+        until { vm.state.value.step == 3 }
+        render { com.cruxcoach.android.ui.training.coach.CoachSetupScreen({}, {}, {}, {}, viewModel = vm) }
+        click("coach_favorites_add")
+        waitForTag("routine_picker_search")
+        compose.onNodeWithTag("routine_picker_search").performTextReplacement("Dead Bug")
+        click("routine_picker_row_core.dead_bug")
+        click("routine_picker_confirm")
+        until { "core.dead_bug" in repo.favorites() }
+        waitForTag("coach_favorite_core.dead_bug")
+        click("coach_favorite_core.dead_bug")
+        until { "core.dead_bug" !in repo.favorites() }
+    }
+
+    @Test
+    fun `a new search in the exercise picker starts at the top`() {
+        // Device test 2026-10-17: the list kept its scroll position while typing, so "Handgelenk" showed five
+        // rows and the best matches ("Handgelenkbeugen …") sat above them, out of sight.
+        kotlinx.coroutines.runBlocking { service.catalogStore.ensureLoaded() }
+        val catalog = service.catalog
+        render {
+            com.cruxcoach.android.ui.training.workouts.ExercisePickerSheet(catalog, emptySet(), "de", {}, {}, {})
+        }
+        waitForTag("routine_picker_list")
+        compose.onNodeWithTag("routine_picker_list").performScrollToIndex(40)
+        compose.onNodeWithTag("routine_picker_search").performTextReplacement("Handgelenk")
+        val first = catalog.search("Handgelenk", "de").first()
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithTag("routine_picker_row_${first.slug}").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    @Test
+    fun `today's choices survive a restart of the app`() {
+        // Device test 2026-10-17: the 90 minutes chosen on the card were gone after a restart.
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        vm.chooseMinutes(90)
+        vm.chooseCircuit(true)
+        vm.setCircuit(4, 20, 120)
+        val day = service.today().toString()
+        val left = vm.state.value.suggestion!!.routine.items.last { !it.warmup && it.circuit == null }.slug
+        vm.dropExercise(left)
+        // Wait for the ledger, not for the screen: the restart reads what was written (CI 2026-10-17 was faster than the write).
+        until { vm.state.value.minutesToday == 90 && repo.suggestionEventsForDay(day).let { ev ->
+            ev.any { it.focus.orEmpty().startsWith(com.cruxcoach.athlete.logic.PreferenceLearning.CHOSEN_FORMAT) } &&
+                ev.any { it.focus.orEmpty().startsWith(com.cruxcoach.athlete.logic.PreferenceLearning.CIRCUIT_SETUP) } &&
+                ev.any { it.value == com.cruxcoach.athlete.logic.PreferenceLearning.LEFT_OUT } } }
+        val again = loaded(TodayViewModel(service))
+        until { again.state.value.suggestion != null }
+        assertEquals(90, again.state.value.minutesToday)
+        assertEquals(vm.state.value.circuitToday, again.state.value.circuitToday)
+        // Left out today stays left out (it is not replaced by something else either).
+        assertTrue(again.state.value.suggestion!!.routine.items.none { it.slug == left }, "$left")
+    }
+
+    @Test
+    fun `a circuit fills the chosen time with more rounds`() {
+        // Device test 2026-10-17: the same sets as a circuit ended far below the chosen time (60 min → 28–38).
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        vm.chooseFocus(SuggestionFocus.PULL_PUSH)
+        vm.chooseMinutes(60)
+        until { vm.state.value.minutesToday == 60 && vm.state.value.suggestion?.focus == SuggestionFocus.PULL_PUSH && vm.state.value.circuitPossible }
+        val straight = vm.state.value.suggestion!!.estimatedMinutes
+        vm.chooseCircuit(true)
+        until { vm.state.value.circuitToday }
+        val s = vm.state.value.suggestion!!
+        val key = s.routine.items.first { it.circuit != null }.circuit!!
+        val rounds = com.cruxcoach.athlete.logic.Circuits.rounds(s.routine.items, key)
+        if (straight >= 60 - TodayViewModel.CIRCUIT_TOLERANCE_MIN) {
+            assertTrue(s.estimatedMinutes >= 60 - TodayViewModel.CIRCUIT_TOLERANCE_MIN || rounds == TodayViewModel.MAX_CIRCUIT_ROUNDS,
+                "straight $straight min, circuit ${s.estimatedMinutes} min in $rounds rounds")
+        }
+    }
+
+    @Test
+    fun `what hurts today spares the suggestion but never empties an own workout`() {
+        // Device test 2026-10-16: a sore shoulder took pull-ups, bench press and plank out of the athlete's own workout.
+        val day = service.today().toString()
+        repo.saveCheckin(com.cruxcoach.athlete.model.Checkin(day, 1, sore = setOf(InjuryRegion.SHOULDER)))
+        val id = service.startWorkout(Routine("r", "Own", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 3, repsMin = 5, repsMax = 5),
+            RoutineItem("legs.back_squat", sets = 3, repsMin = 5, repsMax = 5, loadKg = 40.0))), null)
+        assertEquals(setOf("pull.weighted_pull_up", "legs.back_squat"), repo.setsFor(id).map { it.exerciseSlug }.toSet())
+    }
+
+    @Test
+    fun `a set done again after not done keeps the athlete's next load and reopens at the plan`() {
+        val (id, vm) = player(Routine("r", "Pull", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 3, repsMin = 5, repsMax = 5, loadKg = 20.0, restS = 60))))
+        vm.completeCurrent()
+        until { vm.state.value.phase == PlayerPhase.REST && vm.state.value.restArmed }
+        vm.updateNext(vm.state.value.next!!.set.copy(loadKg = 18.0))
+        until { work(id).drop(1).all { it.loadKg == 18.0 } }
+        vm.setReserve(0)
+        until { work(id).first().rir == 0 }
+        vm.endRest()
+        until { vm.state.value.phase == PlayerPhase.SET }
+        vm.edit(work(id).first().id)
+        until { vm.state.value.editingId == work(id).first().id }
+        vm.update(work(id).first().copy(reps = 3))
+        until { work(id).first().reps == 3 }
+        vm.reopen()
+        // Open again at the plan: 5 reps, no reserve answer.
+        until { !work(id).first().isCompleted && work(id).first().reps == 5 && work(id).first().rir == null }
+        // The player stays on the reopened set even when a row read before the write arrives late.
+        until { vm.state.value.current?.set?.let { it.id == work(id).first().id && !it.isCompleted } == true }
+        Thread.sleep(600); idle()
+        assertEquals(work(id).first().id, vm.state.value.current?.set?.id)
+        vm.update(vm.state.value.current!!.set.copy(reps = 3))
+        vm.completeCurrent()
+        until { vm.state.value.phase == PlayerPhase.REST && vm.state.value.restArmed }
+        Thread.sleep(300); idle()
+        // Missed reps would take a step off – the athlete already chose 18 kg for the next sets.
+        assertTrue(work(id).drop(1).all { it.loadKg == 18.0 }, "${work(id).map { it.loadKg }}")
+    }
+
+    @Test
+    fun `an own exercise can be deleted and leaves workouts and history readable`() {
+        val slug = kotlinx.coroutines.runBlocking { service.createCustomExercise("Russian Twists", com.cruxcoach.athlete.catalog.ExerciseCategoryV2.CORE,
+            com.cruxcoach.athlete.catalog.ExerciseKind.LOAD_REPS, com.cruxcoach.athlete.catalog.LoadMode.EXTERNAL, false, emptyList(), emptyList()) }
+        repo.saveRoutine(Routine("r", "Mixed", items = listOf(RoutineItem(slug), RoutineItem("push.push_up"))))
+        repo.saveRoutine(Routine("o", "Only", items = listOf(RoutineItem(slug))))
+        val vm = com.cruxcoach.android.ui.training.exercises.ExerciseDetailViewModel(service).tracked()
+        var left = false
+        render { com.cruxcoach.android.ui.training.exercises.ExerciseDetailScreen(slug, onBack = { left = true }, onOpenExercise = {}, onOpenWorkout = {}, viewModel = vm) }
+        click("exercise_detail_more")
+        click("exercise_detail_delete")
+        click("exercise_detail_delete_confirm")
+        until { left }
+        assertNull(service.catalog[slug])
+        assertEquals(listOf("push.push_up"), repo.routines().single { it.id == "r" }.items.map { it.slug })
+        assertTrue(repo.routines().none { it.id == "o" })
+        assertEquals("Russian twists", service.catalog.fallbackFor(slug).name("de"))
+    }
+
+    @Test
+    fun `a performance value entered by mistake can be deleted`() {
+        service.saveBenchmark(Benchmark("b", "pull.weighted_pull_up", loadKg = 20.0, reps = 5, bodyweightKg = 70.0,
+            source = BenchmarkSource.MANUAL, measuredAt = System.currentTimeMillis(), sets = 5))
+        val vm = loaded(com.cruxcoach.android.ui.training.benchmarks.BenchmarksViewModel(service))
+        render { com.cruxcoach.android.ui.training.benchmarks.BenchmarksScreen({}, {}, {}, viewModel = vm) }
+        scrollTo("benchmarks_list", hasTestTag("benchmark_delete_pull.weighted_pull_up_both"))
+        click("benchmark_delete_pull.weighted_pull_up_both")
+        click("benchmark_delete_confirm")
+        until { repo.benchmarks("pull.weighted_pull_up").isEmpty() }
+    }
+}

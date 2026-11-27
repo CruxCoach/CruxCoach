@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Body tracking (FEAT-067). -->
+<resources>
+    <string name="trb_trend_info_text">Your weight swings by 1–2\u00A0kg from day to day, mostly water, salt, food and training. The trend smooths those swings out – each reading pulls it only a tenth of the way – so you see what really changes. Gaps are fine; weighing now and then is enough.</string>
+    <string name="trb_tile_trend">Trend</string>
+    <string name="trb_tile_rate">Per week</string>
+    <string name="trb_tile_entries">Readings</string>
+    <string name="trb_direction_up">slightly rising</string>
+    <string name="trb_direction_flat">stable</string>
+    <string name="trb_direction_down">slightly falling</string>
+    <string name="trb_direction_unknown">not enough readings yet</string>
+    <string name="trb_range_1m">1M</string>
+    <string name="trb_range_3m">3M</string>
+    <string name="trb_range_6m">6M</string>
+    <string name="trb_range_1y">1Y</string>
+    <string name="trb_range_all">All</string>
+    <string name="trb_chart_description">Weight trend from %1$s to %2$s, from %3$s to %4$s.</string>
+    <string name="trb_chart_description_hidden">Weight trend from %1$s to %2$s: %3$s.</string>
+    <string name="trb_no_weight">No weight logged yet. Tap + to start – weighing now and then is enough.</string>
+    <string name="trb_measurements">Measurements</string>
+    <string name="trb_add_measurement">Measurement</string>
+    <string name="trb_delta">%1$s vs. previous</string>
+    <string name="trb_no_measurements">No measurements yet.</string>
+    <string name="trb_ape_index">Ape index</string>
+    <string name="trb_ape_info_text">Arm span minus height. A positive value means your arms reach further than you are tall, which helps on long moves. It describes your build, not a training goal. Enter height and arm span once.</string>
+    <string name="trb_ape_missing">Enter height and arm span to see your ape index.</string>
+    <string name="trb_strength_title">Strength to weight</string>
+    <string name="trb_strength_info_text">Shown is the best load per training day as a percentage of your body weight: for hangs body weight plus added weight, for block lifts the lifted weight, for weighted pull-ups the estimated maximum. Each set remembers the body weight of its day.</string>
+    <string name="trb_strength_empty">No strength values yet. Enter what you can do in one exercise, or do a short test: that is the first point.</string>
+    <string name="trb_strength_best">Best: %1$d\u00A0%%</string>
+    <string name="trb_strength_chart_description">Strength to weight over time</string>
+    <string name="trb_recent">Recent entries</string>
+    <string name="trb_legacy_badge">from an older version</string>
+    <string name="trb_hidden_value">hidden</string>
+    <string name="trb_dialog_add_title">Add measurement</string>
+    <string name="trb_dialog_edit_title">Edit measurement</string>
+    <string name="trb_field_metric">Measurement</string>
+    <string name="trb_field_value">Value (%1$s)</string>
+    <string name="trb_field_date">Date: %1$s</string>
+    <string name="trb_value_invalid">Please enter a plausible value.</string>
+    <string name="trb_deleted">Entry deleted</string>
+    <string name="trb_undo">Undo</string>
+    <string name="trb_settings_hint">Units and hiding numbers are in the training settings.</string>
+
+    <!-- Waistline import -->
+    <string name="trb_import_action">Import from Waistline</string>
+    <string name="trb_import_title">Import from Waistline</string>
+    <string name="trb_import_format_json">Waistline database backup (JSON)</string>
+    <string name="trb_import_format_csv">Waistline diary export (CSV)</string>
+    <string name="trb_import_range">%1$s – %2$s</string>
+    <string name="trb_import_found">Values found</string>
+    <plurals name="trb_import_skipped">
+        <item quantity="one">%d value skipped (unreadable or implausible)</item>
+        <item quantity="other">%d values skipped (unreadable or implausible)</item>
+    </plurals>
+    <string name="trb_import_date_order">Date order</string>
+    <string name="trb_import_date_order_hint">The dates in this file could be day/month or month/day. Check that the date range above looks right.</string>
+    <string name="trb_import_day_month">Day/Month</string>
+    <string name="trb_import_month_day">Month/Day</string>
+    <plurals name="trb_import_conflicts">
+        <item quantity="one">%d value falls on a day that already has an entry here.</item>
+        <item quantity="other">%d values fall on days that already have an entry here.</item>
+    </plurals>
+    <string name="trb_import_overwrite">Overwrite existing values</string>
+    <string name="trb_import_confirm">Import</string>
+    <plurals name="trb_import_done">
+        <item quantity="one">%d value imported</item>
+        <item quantity="other">%d values imported</item>
+    </plurals>
+    <plurals name="trb_import_kept">
+        <item quantity="one">%d existing value kept</item>
+        <item quantity="other">%d existing values kept</item>
+    </plurals>
+    <string name="trb_import_empty">No body data found in this file. In Waistline, export under Settings → Import/Export: “Export database” (JSON) or “Export diary” (CSV).</string>
+    <string name="trb_import_failed">The file could not be read.</string>
+    <string name="trb_import_too_large">The file is too large (max. 20 MB).</string>
+    <string name="trb_waistline_badge">Waistline</string>
+
+    <!-- Measurement round -->
+    <string name="trb_round_title">Measurement round</string>
+    <string name="trb_round_card_text">Weight, waist, arms … enter several values at once.</string>
+    <string name="trb_round_text">Every field is optional – fill in what you measured today.</string>
+    <string name="trb_round_action">Start</string>
+    <string name="trb_round_last">last %1$s</string>
+    <plurals name="trb_round_saved">
+        <item quantity="one">%d value saved</item>
+        <item quantity="other">%d values saved</item>
+    </plurals>
+</resources>

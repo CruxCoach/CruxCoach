@@ -69,7 +69,9 @@ fun BoardSyncInlineCard(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val modelState by viewModel.modelState.collectAsStateWithLifecycle()
-    val boardCounts by viewModel.boardCounts.collectAsStateWithLifecycle()
+    val storedBoardCounts by viewModel.boardCounts.collectAsStateWithLifecycle()
+    val boardCounts = storedBoardCounts.orEmpty()
+    val countsKnown = storedBoardCounts != null
     val downloadBrands by viewModel.downloadBrands.collectAsStateWithLifecycle()
     var selectionDraft by rememberSaveable { mutableStateOf<Set<BoardBrand>?>(null) }
     var initialReviewShown by rememberSaveable { mutableStateOf(false) }
@@ -468,6 +470,7 @@ fun BoardSyncInlineCard(
             CompactDatabasePreparation(
                 state = state,
                 boardCounts = boardCounts,
+                countsKnown = countsKnown,
                 activeBrand = activeBrand,
                 selectedBrands = downloadBrands.orEmpty(),
                 onRetry = startSync,
@@ -479,6 +482,7 @@ fun BoardSyncInlineCard(
             DatabaseImportSection(
                 state = state,
                 boardCounts = boardCounts,
+                countsKnown = countsKnown,
                 activeBrand = activeBrand,
                 selectedBrands = downloadBrands.orEmpty(),
                 onStartSync = startSync,
@@ -508,6 +512,7 @@ internal fun CompactDatabasePreparation(
     onLoadBoard: (BoardBrand) -> Unit,
     onChangeSelection: (() -> Unit)? = null,
     canChangeSelection: Boolean = true,
+    countsKnown: Boolean = true,
 ) {
     var showDetails by rememberSaveable { mutableStateOf(false) }
     // The selection, plus whatever is still loading or failed: a board ticked off
@@ -590,7 +595,8 @@ internal fun CompactDatabasePreparation(
             AnimatedVisibility(showDetails && supportedBoards.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     BoardCatalogueStatusList(boardCounts, activeBrand, selectedBrands, state.boardSteps, state.boardErrors,
-                        state.isSyncing, state.localShareInProgress, onLoadBoard, onlySelected = true)
+                        state.isSyncing, state.localShareInProgress, onLoadBoard, onlySelected = true,
+                        countsKnown = countsKnown)
                     state.errorMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error) }
                 }
@@ -616,7 +622,7 @@ private fun NetworkWarningBanner() {
             Text(
                 stringResource(R.string.board_sync_no_network_banner),
                 style = MaterialTheme.typography.bodyMedium,
-                color = ErrorRed,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold,
             )
         }
@@ -639,7 +645,7 @@ private fun NoWifiWarningBanner() {
             Text(
                 stringResource(R.string.board_sync_no_wifi_banner),
                 style = MaterialTheme.typography.bodyMedium,
-                color = OrangeAccent,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold,
             )
         }
@@ -650,6 +656,7 @@ private fun NoWifiWarningBanner() {
 private fun DatabaseImportSection(
     state: BoardSyncState,
     boardCounts: Map<String, Long>,
+    countsKnown: Boolean,
     activeBrand: BoardBrand,
     selectedBrands: Set<BoardBrand>,
     onStartSync: () -> Unit,
@@ -724,6 +731,7 @@ private fun DatabaseImportSection(
                 // so the overview is never replaced by a full-screen checklist.
                 BoardCatalogueStatusList(
                     boardCounts = boardCounts,
+                    countsKnown = countsKnown,
                     activeBrand = activeBrand,
                     selectedBrands = selectedBrands,
                     boardSteps = state.boardSteps,
@@ -923,6 +931,7 @@ private fun BoardCatalogueStatusList(
     onLoadBoard: (BoardBrand) -> Unit,
     onlySelected: Boolean = false,
     onChangeSelection: (() -> Unit)? = null,
+    countsKnown: Boolean = true,
 ) {
     val boards = remember {
         listOf(BoardBrand.KILTER, BoardBrand.MOONBOARD) +
@@ -948,6 +957,7 @@ private fun BoardCatalogueStatusList(
             BoardStatusRow(
                 brand = brand,
                 count = boardCounts[brand.wireValue] ?: 0L,
+                countKnown = countsKnown,
                 isActive = brand == activeBrand,
                 step = if (inShare) null else step,
                 sharedPhasePending = inShare,
@@ -965,6 +975,7 @@ private fun BoardCatalogueStatusList(
 private fun BoardStatusRow(
     brand: BoardBrand,
     count: Long,
+    countKnown: Boolean,
     isActive: Boolean,
     step: ImportStep?,
     sharedPhasePending: Boolean,
@@ -980,6 +991,9 @@ private fun BoardStatusRow(
     // AlreadyCurrent and falls back to the stored catalogue count.
     val displayCount = catalogueDisplayCount(count, step)
     val loaded = displayCount > 0L
+    // The stored counts are still being read (seconds for a large catalogue): no "not
+    // loaded" warning and no download button for a catalogue that may well be there.
+    val counting = !countKnown && !loaded && !boardSyncing && !sharedPhasePending && !hasError
 
     // Inline progress label (reuses the step strings) + bar fraction.
     val progressLabel: String? = when (step) {
@@ -1035,6 +1049,11 @@ private fun BoardStatusRow(
                 sharedPhasePending -> CircularProgressIndicator(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                )
+                counting -> CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp).testTag("board_status_counting_${brand.wireValue}"),
                     strokeWidth = 2.dp,
                 )
                 hasError -> Icon(
@@ -1093,6 +1112,7 @@ private fun BoardStatusRow(
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.widthIn(max = 140.dp),
                 )
+                counting -> Unit
                 loaded -> Text(
                     "%,d".format(displayCount),
                     style = MaterialTheme.typography.bodySmall,
@@ -1103,13 +1123,13 @@ private fun BoardStatusRow(
                     else stringResource(R.string.board_sync_status_dash),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (isActive || hasError) OrangeAccent
-                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             // Per-board reload (loaded) / download (empty). Hidden while any
             // sync runs so the row shows progress, not a dead button.
-            if (!anySyncing && downloadSelected) {
+            if (!anySyncing && downloadSelected && !counting) {
                 Spacer(Modifier.width(4.dp))
                 IconButton(
                     onClick = onLoad,
@@ -1174,7 +1194,7 @@ private fun AutoSyncOverdueBanner(days: Int) {
             Text(
                 stringResource(R.string.board_sync_overdue, days),
                 style = MaterialTheme.typography.bodySmall,
-                color = WarningYellow,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
     }

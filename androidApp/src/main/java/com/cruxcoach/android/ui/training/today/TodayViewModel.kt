@@ -1,0 +1,1282 @@
+package com.cruxcoach.android.ui.training.today
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.athlete.AthleteService
+import com.cruxcoach.athlete.catalog.LoadDomain
+import com.cruxcoach.athlete.logic.*
+import com.cruxcoach.athlete.model.*
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.minus
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.plus
+import javax.inject.Inject
+
+/** A level step kept from [offer]: [before] the kept step for the kind, [todayShift] today's choice, [eventIds] the ledger entries. */
+data class LevelKept(val offer: PreferenceLearning.LevelOffer, val before: Int?, val todayShift: Int, val eventIds: List<String>)
+
+/** One day in the week strip. */
+/** The weekday's usual workout ([entry]) that could go into the standard week. */
+data class HabitOffer(val isoDay: Int, val entry: String)
+
+data class HabitTaken(val isoDay: Int, val before: Map<Int, String>)
+
+data class WeekDay(
+    val date: LocalDate, val climbed: Boolean, val trained: Boolean, val paused: Boolean, val isToday: Boolean,
+    /** What is planned on the day ([DayPlans.entry]); null = free. */
+    val planned: String? = null,
+    /** A climbing or board day is planned (also a usual climbing weekday). */
+    val climbPlanned: Boolean = false,
+)
+
+/**
+ * Gentle nudges on the hub, each with one action. What to train today is the
+ * daily suggestion's job ([SessionSuggester]); these only cover setup.
+ */
+enum class TodaySuggestion { CONFIGURE_EQUIPMENT, SET_BENCHMARKS, BASELINE_TEST, LOG_WEIGHT,
+    /** After the first training, while no week is planned: the coach asks for the climbing days (owner 2026-11-21). */
+    PLAN_WEEK }
+
+/** A running comeback plan on today's card. */
+data class ComebackToday(
+    val injury: Injury,
+    val entry: com.cruxcoach.athlete.model.ComebackEntry?,
+    val due: List<com.cruxcoach.athlete.logic.DueSession>,
+    val prompts: Int,
+)
+
+data class TodayState(
+    val loading: Boolean = true,
+    val profile: AthleteProfile = AthleteProfile(),
+    val today: LocalDate? = null,
+    val activity: DayActivity? = null,
+    val dayLoad: DayLoad = DayLoad.REST,
+    val checkin: Checkin? = null,
+    val readiness: Readiness = ReadinessEvaluator.evaluate(null, emptyList()),
+    val injuries: List<Injury> = emptyList(),
+    val openPause: PausePeriod? = null,
+    val openWorkout: Workout? = null,
+    val todaysWorkouts: List<Workout> = emptyList(),
+    val streak: StreakState? = null,
+    val week: List<WeekDay> = emptyList(),
+    val trendKg: Double? = null,
+    val weeklyRateKg: Double? = null,
+    val lastWeighDay: String? = null,
+    val fuelTargets: FuelTargets.Targets? = null,
+    val proteinToday: Double = 0.0,
+    val fatToday: Double = 0.0,
+    val carbsToday: Double = 0.0,
+    val waterTodayMl: Int = 0,
+    /** Energy eaten today (logged kcal, else from the macros); null without entries. */
+    val kcalToday: Double? = null,
+    /** Today's estimated need and, while losing weight, the plan behind the calorie target. */
+    val need: com.cruxcoach.athlete.logic.EnergyBalance.Need? = null,
+    /** Today's weight-loss plan as today's targets see it (planned training included, audit W4). */
+    val fuelPlan: com.cruxcoach.athlete.logic.WeightPlan.Plan? = null,
+    /** The last seven days' needs: the goal sheet says what the chosen pace really adds up to. */
+    val weekNeeds: List<com.cruxcoach.athlete.logic.EnergyBalance.Need> = emptyList(),
+    val heightCm: Double? = null,
+    val energy: com.cruxcoach.athlete.logic.EnergyReport = com.cruxcoach.athlete.logic.EnergyReport(),
+    val loadSpikes: List<LoadDomain> = emptyList(),
+    val suggestions: List<TodaySuggestion> = emptyList(),
+    val startedWorkout: Boolean = false,
+    /** The started training should open in the guided player (routines), not the list. */
+    val startedGuided: Boolean = false,
+    /** Today's suggested training, null while a training is open. */
+    val suggestion: SessionSuggestion? = null,
+    /** Name of the athlete's own routine when the week plan picked it. */
+    val plannedName: String? = null,
+    val suggestionSaved: Boolean = false,
+    /** For exercise names on the suggestion card. */
+    val catalog: com.cruxcoach.athlete.catalog.ExerciseCatalog = com.cruxcoach.athlete.catalog.ExerciseCatalog.EMPTY,
+    /** How today's form will change the suggestion when it starts (sets, load): the card shows the same sets. */
+    val dayForm: com.cruxcoach.athlete.logic.ReadinessModifier? = null,
+    /** Turned down for the third time: the card asks once whether to stop suggesting it (comparison review #8). */
+    val neverOffer: String? = null,
+    /** Position in the training cycle (FEAT-071), null without a block. */
+    val block: BlockState? = null,
+    /** The athlete's real training length when it differs clearly from the preferred one. */
+    val durationHint: Int? = null,
+    /** Body weight for the performance values in the evidence line. */
+    val bodyweightKg: Double? = null,
+    /** This week's volume per area (weekly plan), empty when it could not be computed. */
+    val weekly: List<AreaProgress> = emptyList(),
+    /** What the athlete chose to train today ("another suggestion"); null = the coach decides. */
+    val wish: com.cruxcoach.athlete.logic.SuggestionFocus? = null,
+    /** Minutes chosen for today on the card; null = the preferred duration. */
+    val minutesToday: Int? = null,
+    /** Favourite exercises, starred on the card. */
+    val favorites: Set<String> = emptySet(),
+    /** Exercises of the suggestion that are new to the athlete (issue #68): "new to you" with the way to the steps. */
+    val newToYou: Set<String> = emptySet(),
+    /** Today's "easier" (−1) / "harder" (+1) answer from the "another suggestion" sheet. */
+    val levelShift: Int = 0,
+    /** What the athlete usually chooses on today's weekday (kind, duration), learned from earlier choices. */
+    val usual: PreferenceLearning.UsualChoice? = null,
+    /** Today's suggestion as a circuit (owner 2026-10-17): one set of each in turn, round after round. */
+    val circuitToday: Boolean = false,
+    /** At least two of today's exercises can go into a circuit (pull, push, prehab, core, legs). */
+    val circuitPossible: Boolean = false,
+    /** Ids of today's climbing days logged by hand or from Health Connect: the filled tile opens them (device test D30). */
+    val climbingEntriesToday: List<String> = emptyList(),
+    /** "Easier"/"harder" twice for today's kind: the card asks once whether to keep the step (comparison review #10). */
+    val levelOffer: PreferenceLearning.LevelOffer? = null,
+    /** A level step just kept, for the snackbar and "Rückgängig". */
+    val levelKept: LevelKept? = null,
+    /** The board logbook shows a clearly higher working grade than the saved one: "take it over?" once. */
+    val gradeOffer: String? = null,
+    /** A logbook grade just taken over (new, before), for the snackbar and "Rückgängig". */
+    val gradeTaken: Pair<String, String?>? = null,
+    /** A climbing day just deleted from Today's tile, for the snackbar and "Rückgängig" (device test D45). */
+    val climbDeleted: AthleteService.DeletedClimb? = null,
+    /** The date plans before "Heute Ruhetag", for the snackbar and "Rückgängig" (owner 2026-10-19). */
+    val restTodayUndo: Map<String, String>? = null,
+    /** "Heute klettere ich" just set: the date plan before it, for "Rückgängig". */
+    val climbTodayUndo: Map<String, String>? = null,
+    /** The climbing day just taken back (second tap, another kind chosen): the date plan before it, for "Rückgängig". */
+    val noClimbTodayUndo: Map<String, String>? = null,
+    /** "Leichte Woche starten" just tapped: the block start before it ("" = none), for "Rückgängig". */
+    val lighterWeekUndo: String? = null,
+    /** Per exercise of today's suggestion: last time and the plan, for "last time 3 × 5" and "+1 rep" on its row. */
+    val rows: Map<String, TodayRow> = emptyMap(),
+    /** "Montags machst du meist …": take the usual workout into the standard week (owner 2026-10-19). */
+    val habitOffer: HabitOffer? = null,
+    /** The standard week before the offer was taken, for the snackbar and "Rückgängig". */
+    val habitTaken: HabitTaken? = null,
+) {
+    /**
+     * Nothing is asked before today's training any more (owner 2026-11-21: "the training shows at once"): the day's
+     * form is one optional tap on the card. Kept so callers that waited for the questions read "none".
+     */
+    val asksBeforeSuggestion: Boolean get() = false
+}
+
+/** One exercise of today's card: the last training's work sets and what the next one plans ([AthleteService.nextTarget]). */
+data class TodayRow(val last: List<com.cruxcoach.athlete.model.ExerciseSet>, val next: com.cruxcoach.athlete.logic.NextTargets.Next, val sets: Int)
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@HiltViewModel
+class TodayViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
+
+    private val _state = MutableStateFlow(TodayState())
+    val state: StateFlow<TodayState> = _state.asStateFlow()
+
+    /** Bumped to re-read the day now instead of at the next minute (device test 2026-10-16, 00:00). */
+    private val dayCheck = MutableStateFlow(0)
+
+    /**
+     * The data collector. Started from the init block at the end of the class: a refresh on the IO thread uses
+     * fields declared further down (the lock, today's choices), which are only set once the constructor got
+     * there (CI 2026-10-17: "Cannot enter synchronized block because refreshLock is null" on a slow runner).
+     */
+    private fun startCollecting() {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            // The day the hub shows follows the clock, so a screen left open
+            // over midnight switches to the new day's check-in, food and water.
+            // A check-in saved just after midnight belongs to the new day: saving re-reads the day at once.
+            val days = dayCheck.flatMapLatest { flow { while (true) { emit(service.today().toString()); delay(60_000) } } }.distinctUntilChanged()
+            // Any change in these tables re-derives the whole hub; it is cheap.
+            days.flatMapLatest { today -> combine(
+                repo.observeProfile(),
+                repo.observeCheckin(today),
+                repo.observeActiveInjuries(),
+                repo.observeOpenWorkout(),
+                combine(
+                    // A climbing day entered on the tile, a Health Connect sync or a board session re-derive the hub.
+                    combine(repo.observeRecentWorkouts(30),
+                        service.observeActivityChanges(LocalDate.parse(today).minus(DatePeriod(days = 60)).toString())) { w, _ -> w },
+                    // Weight and height feed the targets and the energy estimate.
+                    // Favourites only re-trigger the suggestion; it reads them itself.
+                    combine(repo.observeSeries(BodyMetric.WEIGHT.key), repo.observeSeries(BodyMetric.HEIGHT.key), repo.observeFavorites()) { w, h, f -> Triple(w.size, h.size, f.size) },
+                    repo.observeFoodLog(today),
+                    repo.observeHydration(today),
+                    repo.observePauses(),
+                ) { _, _, food, water, pauses -> Triple(food, water, pauses) },
+            ) { profile, checkin, injuries, open, extra -> Inputs(profile, checkin, injuries, open, extra.first, extra.second, extra.third) } }
+                .collect { refresh(it) }
+        }
+    }
+
+    private data class Inputs(
+        val profile: AthleteProfile, val checkin: Checkin?, val injuries: List<Injury>, val open: Workout?,
+        val food: List<FoodLogEntry>, val water: List<HydrationEntry>, val pauses: List<PausePeriod>,
+    )
+
+    private var lastInputs: Inputs? = null
+    /** "Another suggestion" counter; resets with the day. */
+    private var variant = 0
+    private var variantDay: LocalDate? = null
+
+    /** Today's answers from the "another suggestion" sheet; reset with the day. */
+    private var budgetFactor = 1.0
+    private var levelShift = 0
+    private var wish: com.cruxcoach.athlete.logic.SuggestionFocus? = null
+    private var minutesToday: Int? = null
+    /** "Als Zirkel" for today, with the athlete's rounds and rests if changed in the sheet. */
+    private var circuitToday = false
+    private var circuitRounds: Int? = null
+    private var circuitRestS: Int? = null
+    private var circuitRoundRestS: Int? = null
+    private val dislikedToday = mutableSetOf<String>()
+    /** Exercises the athlete swapped on the card today: suggested slug → own pick ("" = left out). */
+    private val swapsToday = mutableMapOf<String, String>()
+    /** The engine input of the shown suggestion, for the alternatives of a swap (read on the main thread). */
+    @Volatile private var lastInput: SuggestionInput? = null
+    /** Level steps to offer for good, from the ledger at the last suggestion (comparison review #10). */
+    @Volatile private var lastLevelOffers: List<PreferenceLearning.LevelOffer> = emptyList()
+    /** Today's weekday habit; "the coach decides" for today sets [ignoreUsualKind]. */
+    private var lastUsual: PreferenceLearning.UsualChoice? = null
+    /** The usual workout at the last suggestion ([PreferenceLearning.habit]). */
+    @Volatile private var lastHabit: PreferenceLearning.Habit? = null
+    private var ignoreUsualKind = false
+    /** "Another suggestion" or "the coach decides" on the usual workout: something else today. */
+    private var ignoreHabit = false
+    /** "Train anyway" on the recovery card: the week's training days do not limit today. */
+    private var trainAnyway = false
+    /** "Anyway" for the kind the coach held back today; resets with the day. */
+    private var insist = false
+    /** Today's plan as this screen last stored it for nutrition ([AthleteService.rememberPlannedToday]). */
+    private var plannedWritten: String? = null
+    /** Suggestions already in the ledger as SHOWN today (focus + slugs). */
+    private val shownToday = mutableSetOf<String>()
+
+    private val refreshLock = Any()
+
+    /** One refresh at a time, so "another suggestion" and the data collector never overwrite each other with older inputs. */
+    private fun refresh(i: Inputs) = synchronized(refreshLock) { refreshUnlocked(i) }
+
+    private fun refreshUnlocked(input: Inputs) {
+        val today = service.today()
+        // The day's place decides the equipment: a place picked yesterday falls back to the default.
+        val placed = TrainingPlaces.inUse(input.profile, today.toString())
+        if (placed != input.profile) runCatching { service.usePlaceOfToday() }
+        val i = input.copy(profile = placed)
+        lastInputs = i
+        if (variantDay != today) {
+            variant = 0; variantDay = today
+            budgetFactor = 1.0; levelShift = 0; wish = null; minutesToday = null; dislikedToday.clear(); shownToday.clear(); swapsToday.clear(); ignoreUsualKind = false; ignoreHabit = false
+            trainAnyway = false; insist = false
+            circuitToday = false; circuitRounds = null; circuitRestS = null; circuitRoundRestS = null
+            runCatching {
+                val todays = service.repo.suggestionEventsForDay(today.toString()).sortedBy { it.createdAt }
+                todays.filter { it.kind == SuggestionEventKind.SHOWN }.forEach { shownToday += signature(it.focus, it.slugs) }
+                // After a restart, today's suggestion is the one the athlete shaped (device test 2026-10-17: the
+                // chosen 90 min were gone after the app was restarted).
+                restoreToday(todays)
+            }
+        }
+        val activities = service.activities(days = 7 * 26)
+        val activity = activities[today.toString()]
+        // What hurts today (check-in) is spared like an injury, without becoming one.
+        val injuriesToday = i.injuries + com.cruxcoach.athlete.logic.Soreness.injuries(i.checkin)
+        val readiness = ReadinessEvaluator.evaluate(i.checkin, injuriesToday)
+        val trend = service.weightTrend()
+        val streak = service.streak(i.profile, activities)
+        val weekStart = ConsistencyStreak.weekStart(today)
+        val openPause = i.pauses.firstOrNull { it.endDay == null }
+        val week = (0 until 7).map { offset ->
+            val date = weekStart.plus(DatePeriod(days = offset))
+            val a = activities[date.toString()]
+            WeekDay(
+                date = date,
+                climbed = a != null && (a.climbingMinutes > 0 || a.climbingEfforts > 0),
+                trained = a != null && a.workoutMinutes > 0,
+                paused = i.pauses.any { p -> covers(p, date, today) },
+                isToday = date == today,
+                planned = DayPlans.entry(i.profile, date),
+                climbPlanned = DayPlans.climbingPlanned(i.profile, date),
+            )
+        }
+        val repo = service.repo
+        val recentSets = repo.completedSetsSince(System.currentTimeMillis() - 28L * 24 * 3600 * 1000)
+        val workoutDays = repo.workoutsBetween(today.minus(DatePeriod(days = 27)).toString(), today.toString())
+            .associate { it.id to LocalDate.parse(it.day) }
+        val climbingDays = activities.values.filter { it.climbingMinutes > 0 || it.climbingEfforts > 0 }
+            .mapNotNull { runCatching { LocalDate.parse(it.day) }.getOrNull() }.toSet()
+        val spikes = LoadBalance.compute(today, climbingDays,
+            recentSets.mapNotNull { s -> workoutDays[s.workoutId]?.let { it to s } }, service.catalog)
+            .filter { it.spike }.map { it.domain }
+            // Read and acknowledged this week: no card until the next week.
+            .takeIf { service.repo.setting(LOAD_SPIKE_SEEN) != WeeklyVolume.weekStartOf(today).toString() }.orEmpty()
+
+        val suggestions = buildList {
+            if (!i.profile.equipmentConfigured) add(TodaySuggestion.CONFIGURE_EQUIPMENT)
+            val benchmarks = repo.allBenchmarks()
+            if (benchmarks.isEmpty()) add(TodaySuggestion.SET_BENCHMARKS)
+            val lastTest = benchmarks.maxOfOrNull { it.measuredAt } ?: 0L
+            val eightWeeks = 56L * 24 * 3600 * 1000
+            if (benchmarks.isNotEmpty() && i.injuries.isEmpty() && System.currentTimeMillis() - lastTest > eightWeeks) add(TodaySuggestion.BASELINE_TEST)
+            if (i.profile.bodyEnabled && trend.isEmpty()) add(TodaySuggestion.LOG_WEIGHT)
+            // Asked when the answer changes something: once there is a first training and still no week.
+            if (i.profile.weekPlan.isEmpty() && i.profile.datePlan.isEmpty() && i.profile.coach.climbingDays.isEmpty() &&
+                runCatching { repo.trainedExercises().isNotEmpty() }.getOrDefault(false)) add(TodaySuggestion.PLAN_WEEK)
+        }
+
+        val loadStatus = runCatching { service.loadStatus() }.getOrNull()
+        val block = blockState(i, loadStatus, today)
+        val weekly = runCatching { weeklyProgress(i, activities, block, today, weekStart) }.getOrDefault(emptyList())
+        val (daily, plannedName) = if (i.open != null) null to null else suggest(i, readiness, activities, block, loadStatus, weekly, weekStart)
+        daily?.let { s ->
+            val sig = signature(s.focus.name, s.routine.items.map { it.slug })
+            if (shownToday.add(sig)) service.logSuggestion(SuggestionEventKind.SHOWN, s.focus.name, s.routine.items.map { it.slug })
+        }
+        // Nutrition follows today's planned training until it is done (audit W4); an open training keeps the plan.
+        daily?.let { s -> runCatching { plannedWritten = service.rememberPlannedToday(s, plannedWritten) } }
+        val planned = runCatching { service.plannedForTargets(activity) }.getOrNull()
+        val fuelActivity = planned?.activity ?: activity
+        val durationHint = runCatching {
+            PreferenceLearning.suggestedSessionMinutes(repo.workoutsBetween(today.minus(DatePeriod(days = 42)).toString(), today.toString()),
+                i.profile.sessionMinutes, today)
+        }.getOrNull()
+
+        val dayForm = service.todaysModifier().let { m -> if (daily?.shortenedForFatigue == true) m.copy(setsDelta = 0) else m }
+            .takeIf { !it.isNeutral }
+        // The weekday's usual workout on a weekday the standard week leaves free: offered once, "Nein danke" holds for weeks.
+        val habitOffer = runCatching {
+            val h = lastHabit
+            val iso = today.dayOfWeek.isoDayNumber
+            val declined = h?.let { repo.setting(PreferenceLearning.habitOfferKey(iso, it.entry))?.toLongOrNull() }
+            val fresh = declined == null || System.currentTimeMillis() - declined > PreferenceLearning.WINDOW_DAYS * 86_400_000L
+            if (h != null && h.kind == PreferenceLearning.HabitKind.WEEKDAY && h.isoDay == iso && fresh &&
+                daily?.reasons?.firstOrNull() == SuggestionReason.USUAL_ROUTINE_WEEKDAY &&
+                i.profile.weekPlan[iso] == null && !DayPlans.isOverridden(i.profile, today)) HabitOffer(iso, h.entry) else null
+        }.getOrNull()
+        // Each row says what last time was and what today adds: the numbers the training will plan.
+        // The return ramp is the one the suggestion was just built with: no second look back over half a year.
+        val built = lastInput
+        val steps = if (daily == null) com.cruxcoach.athlete.logic.NextTargets.Steps.CAREFUL
+            else runCatching { service.planSteps(returnState = built?.let { input -> { Result.success(input.returnState) } }) }
+                .getOrDefault(com.cruxcoach.athlete.logic.NextTargets.Steps.CAREFUL)
+        val rows = runCatching {
+            val planned = daily?.routine?.items.orEmpty().filter { !it.warmup }.map { item ->
+                dayForm?.let { com.cruxcoach.athlete.logic.ReadinessModifiers.applyToItem(item, service.catalog.fallbackFor(item.slug), it) } ?: item
+            }
+            val sets = planned.associate { it.slug to it.sets }
+            service.rowTargets(planned, steps, dayForm).mapValues { (slug, t) -> TodayRow(t.last, t.next, sets[slug] ?: 0) }
+        }.getOrDefault(emptyMap())
+        _state.update {
+            it.copy(
+                loading = false,
+                suggestion = daily,
+                rows = rows,
+                dayForm = dayForm,
+                plannedName = plannedName,
+                habitOffer = habitOffer,
+                block = block,
+                durationHint = durationHint,
+                bodyweightKg = service.currentBodyweight(),
+                weekly = weekly,
+                catalog = service.catalog,
+                profile = i.profile,
+                today = today,
+                activity = activity,
+                dayLoad = FuelTargets.dayLoad(activity),
+                checkin = i.checkin,
+                readiness = readiness,
+                injuries = i.injuries,
+                openPause = openPause,
+                openWorkout = i.open,
+                todaysWorkouts = repo.workoutsBetween(today.toString(), today.toString()).filter { w -> !w.isOpen },
+                streak = streak,
+                week = week,
+                trendKg = trend.lastOrNull()?.trend,
+                weeklyRateKg = TrendWeight.weeklyRate(trend),
+                lastWeighDay = trend.lastOrNull()?.day?.toString(),
+                fuelTargets = service.fuelTargets(fuelActivity, i.profile),
+                proteinToday = i.food.sumOf { e -> e.proteinG ?: 0.0 },
+                fatToday = i.food.sumOf { e -> e.fatG ?: 0.0 },
+                carbsToday = i.food.sumOf { e -> e.carbsG ?: 0.0 },
+                waterTodayMl = i.water.sumOf { w -> w.ml },
+                kcalToday = i.food.mapNotNull { e -> com.cruxcoach.athlete.logic.MacroTotals.energy(e)?.kcal }.takeIf { it.isNotEmpty() }?.sum(),
+                need = service.energyNeed(i.profile, fuelActivity),
+                fuelPlan = planned?.let { runCatching { service.todayWeightPlan(i.profile, fuelActivity, activities) }.getOrNull() },
+                weekNeeds = runCatching { service.weekNeeds(i.profile, if (planned != null) service.withToday(activities, fuelActivity) else activities) }
+                    .getOrDefault(emptyList()),
+                heightCm = service.heightCm(),
+                energy = service.energyReport(i.profile, activities),
+                loadSpikes = spikes,
+                suggestions = suggestions,
+                wish = wish,
+                minutesToday = minutesToday,
+                circuitToday = circuitToday && daily?.routine?.items?.any { it.circuit != null } == true,
+                circuitPossible = daily?.let { circuitCandidates(it) } ?: false,
+                favorites = runCatching { repo.favorites() }.getOrDefault(emptySet()),
+                newToYou = lastInput?.let { input -> daily?.routine?.items?.map { item -> item.slug }
+                    ?.filter { slug -> SessionSuggester.isNewTo(input, slug) }?.toSet() }.orEmpty(),
+                levelShift = levelShift,
+                levelOffer = daily?.let { s -> lastLevelOffers.firstOrNull { it.focus == s.focus } },
+                gradeOffer = runCatching { service.gradeOffer(i.profile) }.getOrNull(),
+                usual = lastUsual,
+                climbingEntriesToday = runCatching { repo.climbingDaysSince(today.toString()) }.getOrDefault(emptyList())
+                    .filter { e -> e.day == today.toString() }.map { e -> e.id },
+            )
+        }
+    }
+
+    /** Today's swaps, drops, level, kind, time and circuit from the ledger, in the order they were made. */
+    private fun restoreToday(events: List<com.cruxcoach.athlete.model.SuggestionEvent>) {
+        var chosenKinds = 0
+        for (e in events) when (e.kind) {
+            SuggestionEventKind.SWAPPED -> {
+                val from = e.slugs.getOrNull(0)
+                val to = e.slugs.getOrNull(1)
+                if (from != null && to != null) {
+                    val key = originalOf(from)
+                    if (key == to) swapsToday.remove(key) else swapsToday[key] = to
+                }
+            }
+            SuggestionEventKind.NEXT -> when (e.feedback) {
+                // "Leave it out today" stays left out after a restart; "not today" picks something else.
+                SuggestionFeedback.DISLIKE_EXERCISE -> e.slugs.singleOrNull()?.let {
+                    if (e.value == PreferenceLearning.LEFT_OUT) swapsToday[originalOf(it)] = "" else dislikedToday += it
+                }
+                // The level chips set the level, they do not add up (lighter, then harder = harder).
+                SuggestionFeedback.TOO_EASY -> levelShift = 1
+                SuggestionFeedback.TOO_HARD -> levelShift = -1
+                else -> Unit
+            }
+            SuggestionEventKind.FEEDBACK -> {
+                val focus = e.focus.orEmpty()
+                when {
+                    // "Kenne ich nicht" holds for the day like a swap.
+                    focus == PreferenceLearning.DONT_KNOW -> {
+                        val from = e.slugs.getOrNull(0)
+                        val to = e.slugs.getOrNull(1)
+                        if (from != null && to != null) {
+                            val key = originalOf(from)
+                            if (key == to) swapsToday.remove(key) else swapsToday[key] = to
+                        }
+                    }
+                    focus.startsWith(PreferenceLearning.CHOSEN_LEVEL) -> levelShift = (e.value?.toInt() ?: 0).coerceIn(-1, 1)
+                    focus == PreferenceLearning.CHOSEN_MINUTES -> minutesToday = e.value?.toInt()
+                    focus.startsWith(PreferenceLearning.CHOSEN_KIND) -> {
+                        chosenKinds++
+                        val name = focus.removePrefix(PreferenceLearning.CHOSEN_KIND)
+                        wish = name.takeIf { it.isNotEmpty() }?.let { runCatching { com.cruxcoach.athlete.logic.SuggestionFocus.valueOf(it) }.getOrNull() }
+                        ignoreUsualKind = wish == null
+                        // "Anyway" was for the kind before: a later one sets it again.
+                        insist = false
+                    }
+                    focus.startsWith(PreferenceLearning.CHOSEN_FORMAT) ->
+                        circuitToday = focus.removePrefix(PreferenceLearning.CHOSEN_FORMAT) == "circuit"
+                    // Also written with a NEXT, which is no "another suggestion" either (phone check 2026-11-07).
+                    focus == PreferenceLearning.TRAIN_ANYWAY -> { trainAnyway = true; chosenKinds++ }
+                    // "Anyway" for the kind the coach held back: decided for the day, a restart does not ask again –
+                    // until it is taken back with the day it was for (value 0).
+                    focus == PreferenceLearning.INSIST -> insist = e.value != 0.0
+                    focus.startsWith(PreferenceLearning.CIRCUIT_SETUP) -> {
+                        val f = focus.removePrefix(PreferenceLearning.CIRCUIT_SETUP).split(",")
+                        circuitRounds = f.getOrNull(0)?.toIntOrNull()
+                        circuitRestS = f.getOrNull(1)?.toIntOrNull()
+                        circuitRoundRestS = f.getOrNull(2)?.toIntOrNull()
+                    }
+                }
+            }
+            else -> Unit
+        }
+        // "Another suggestion" taps: a kind choice and "train anyway" also write a NEXT, so they do not count as one, and neither
+        // does a level chip.
+        variant = (events.count { it.kind == SuggestionEventKind.NEXT && it.feedback != SuggestionFeedback.DISLIKE_EXERCISE &&
+            it.feedback != SuggestionFeedback.TOO_EASY && it.feedback != SuggestionFeedback.TOO_HARD } - chosenKinds).coerceAtLeast(0)
+    }
+
+    private fun signature(focus: String?, slugs: List<String>) = (focus ?: "") + "|" + slugs.joinToString(",")
+
+    /** The training cycle ([TodayCoach.blockState]). */
+    private fun blockState(i: Inputs, loadStatus: LoadStatus?, today: LocalDate): BlockState? =
+        service.todayCoach().blockState(i.profile, loadStatus, today)
+
+    /** The weekly volume plan ([TodayCoach.weeklyProgress]). */
+    private fun weeklyProgress(
+        i: Inputs, activities: Map<String, DayActivity>, block: BlockState?, today: LocalDate, weekStart: LocalDate,
+    ): List<AreaProgress> = service.todayCoach().weeklyProgress(i.profile, i.injuries, activities, block, today, weekStart)
+
+    private fun suggest(
+        i: Inputs, readiness: Readiness, activities: Map<String, DayActivity>, block: BlockState?, loadStatus: LoadStatus?,
+        weekly: List<AreaProgress> = emptyList(), weekStart: LocalDate? = null,
+    ): Pair<SessionSuggestion?, String?> =
+        runCatching {
+            val today = service.today()
+            // Everything the engine needs comes from the shared builder, the same one the training simulation runs (issue #59).
+            val built = service.todayCoach().build(
+                profile = i.profile, checkin = i.checkin, injuries = i.injuries, pauses = i.pauses, readiness = readiness,
+                activities = activities, block = block, loadStatus = loadStatus, weekly = weekly, weekStart = weekStart,
+                logbook = runCatching { service.logbookSummary() }.getOrNull(), today = today,
+                choices = com.cruxcoach.athlete.data.TodayCoach.Choices(
+                    variant = variant, budgetFactor = budgetFactor, levelShift = levelShift, wish = wish, minutesToday = minutesToday,
+                    dislikedToday = dislikedToday.toSet(), ignoreHabit = ignoreHabit, ignoreUsualKind = ignoreUsualKind,
+                    trainAnyway = trainAnyway, insist = insist,
+                ),
+            )
+            lastHabit = built.habit
+            lastLevelOffers = built.levelOffers
+            lastUsual = built.usual
+            val input = built.input
+            lastInput = input
+            // The athlete's swaps on the card stay for the day, whatever else changes.
+            val swapped = SessionSuggester.withSwaps(SessionSuggester.suggest(input), swapsToday.toMap(), service.catalog)
+            val suggestion = if (circuitToday) asCircuit(swapped) else swapped
+            val plannedName = suggestion.plannedEntry
+                ?.takeIf { !it.startsWith("builtin:") && it != PLAN_BOARD && it != PLAN_REST }
+                ?.let { id -> input.routines.firstOrNull { it.id == id }?.name }
+            suggestion to plannedName
+        }.getOrElse { null to null }
+
+    /** "Another suggestion": same rules, different picks. */
+    fun nextSuggestion() = nextSuggestion(null, null)
+
+    /**
+     * "Another suggestion" with an optional reason that works at once: less
+     * time shortens today's budget, a disliked exercise stays out today (and
+     * counts against it later), too easy / too hard shifts today's level.
+     * Equipment and pain are fixed where they live (the screen navigates).
+     */
+    fun nextSuggestion(feedback: SuggestionFeedback?, slug: String?) = io {
+        synchronized(refreshLock) {
+            val s = _state.value.suggestion
+            val slugs = if (feedback == SuggestionFeedback.DISLIKE_EXERCISE && slug != null) listOf(slug)
+                else s?.routine?.items?.map { it.slug }.orEmpty()
+            service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, slugs, feedback)
+            when (feedback) {
+                // "Keine Zeit": the next shorter duration, the same one the card's time menu offers.
+                SuggestionFeedback.NO_TIME -> minutesToday = shorterThan(s?.totalMinutes ?: _state.value.profile.sessionMinutes)
+                SuggestionFeedback.DISLIKE_EXERCISE -> slug?.let { dislikedToday += it }
+                SuggestionFeedback.TOO_EASY -> levelShift = (levelShift + 1).coerceAtMost(1)
+                SuggestionFeedback.TOO_HARD -> levelShift = (levelShift - 1).coerceAtLeast(-1)
+                else -> Unit
+            }
+            variant++
+            // Another suggestion than the usual workout: the coach builds one today (owner 2026-10-19: always possible).
+            if (s?.reasons?.firstOrNull() == SuggestionReason.USUAL_ROUTINE_WEEKDAY || s?.reasons?.firstOrNull() == SuggestionReason.USUAL_ROUTINE) {
+                ignoreHabit = true
+            }
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /**
+     * "Anyway" on the card (owner 2026-11-22): the coach held the chosen or planned kind back because of the fingers;
+     * the athlete read why and decides. Holds for that kind for the day, also after a restart (recorded like "train
+     * anyway"); another kind chosen afterwards gets the coach's advice again.
+     */
+    fun insistToday() = io {
+        synchronized(refreshLock) {
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.INSIST, emptyList())
+            insist = true
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /**
+     * "Anyway" goes with the day it was for: taken back in memory and in the ledger, so a restart does not bring it
+     * back. Call with [refreshLock] held.
+     */
+    private fun takeBackInsist() {
+        if (!insist) return
+        service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.INSIST, emptyList(), value = 0.0)
+        insist = false
+    }
+
+    /**
+     * "Heute klettere ich" (owner 2026-11-22): today becomes a climbing day or a board session, this day only – the
+     * coach plans the warm-up, a short block after it and the days around it. Snackbar with "Rückgängig".
+     */
+    fun climbToday(kind: com.cruxcoach.athlete.model.ClimbingDayKind?) = io {
+        val today = service.today()
+        val current = DayPlans.entry(service.repo.profile(), today)
+        // Today already is that kind of day. The sheet shows its chip as selected and takes the day back with
+        // [noClimbToday]; this is the tap of a sheet that did not show it (no suggestion on screen, or not yet).
+        val already = if (kind == null) current == com.cruxcoach.athlete.model.PLAN_BOARD else DayPlans.climbOf(current)?.kind == kind
+        synchronized(refreshLock) {
+            if (giveUpChosenKind()) {
+                // The plan stays as it is: only the kind chosen over it goes, and the card shows the day again.
+                if (already) lastInputs?.let { refreshUnlocked(it) }
+            } else if (!already) takeBackInsist()
+        }
+        // The plan itself is not written again: a planned hard or limit day must not turn into a volume day by a tap
+        // on its own kind, nor is there a change to undo.
+        if (already) return@io
+        var before: Map<String, String>? = null
+        val entry = kind?.let { DayPlans.Climb(it, com.cruxcoach.athlete.model.ClimbIntensity.VOLUME).entry } ?: com.cruxcoach.athlete.model.PLAN_BOARD
+        service.repo.updateProfile { p ->
+            before = p.datePlan
+            DayPlans.withDay(p, today, entry, today)
+        }
+        _state.update { it.copy(climbTodayUndo = before) }
+    }
+
+    fun consumeClimbTodayUndo() = _state.update { it.copy(climbTodayUndo = null) }
+
+    /**
+     * A kind chosen earlier today gives way to the climbing day: cleared before the plan is written and recorded like
+     * "the coach decides", so it does not come back after a restart; "anyway" goes with it. Call with [refreshLock]
+     * held. True when there was one.
+     */
+    private fun giveUpChosenKind(): Boolean {
+        if (wish == null) return false
+        val s = _state.value.suggestion
+        service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), null)
+        service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_KIND, emptyList())
+        wish = null
+        ignoreUsualKind = true
+        insist = false
+        return true
+    }
+
+    /**
+     * A second tap on the chosen kind under "Heute klettere ich", or another kind of training chosen for today: today
+     * is no climbing day after all (Nokia walk 2026-11-22: the tap closed the sheet and nothing changed, and "Zug &
+     * Druck" kept the climbing day's title). The day goes back to what it was before the climbing was planned on it:
+     * the standard week's entry, or "the coach decides" ([DayPlans.withoutClimbing]). Snackbar with "Rückgängig".
+     */
+    fun noClimbToday() = io {
+        // "Anyway" for a board day the coach held back goes with the day, before the plan is written.
+        synchronized(refreshLock) { takeBackInsist() }
+        clearClimbToday()?.let { back -> _state.update { it.copy(noClimbTodayUndo = back.before) } }
+    }
+
+    /** What [clearClimbToday] changed: the date plans before it, for "Rückgängig", and the profile after it. */
+    private class ClimbingTakenBack(val before: Map<String, String>, val after: AthleteProfile)
+
+    /** Takes today's climbing or board day back; null where today is none by its plan. */
+    private fun clearClimbToday(): ClimbingTakenBack? {
+        val today = service.today()
+        var before: Map<String, String>? = null
+        var after: AthleteProfile? = null
+        service.repo.updateProfile { p ->
+            val back = DayPlans.withoutClimbing(p, today, today)
+            if (back.datePlan != p.datePlan) { before = p.datePlan; after = back } else { before = null; after = null }
+            back
+        }
+        val plans = before
+        val profile = after
+        return if (plans != null && profile != null) ClimbingTakenBack(plans, profile) else null
+    }
+
+    fun consumeNoClimbTodayUndo() = _state.update { it.copy(noClimbTodayUndo = null) }
+
+    /**
+     * "Rückgängig" after the climbing day was taken back: the plan before is back, and with it the climbing day – a
+     * kind of training chosen over it gives way, as when the day is set ([climbToday]).
+     */
+    fun undoNoClimbToday(before: Map<String, String>) = io {
+        synchronized(refreshLock) { giveUpChosenKind() }
+        service.repo.updateProfile { it.copy(datePlan = before) }
+    }
+
+    /**
+     * "Leichte Woche starten" on the load card: the training block jumps to its lighter week (as the summary's offer
+     * does), and the card is read. The block start before it comes back with "Rückgängig".
+     */
+    fun startLighterWeek() = io {
+        val today = service.today()
+        val start = today.minus(DatePeriod(days = 7 * (TrainingBlocks.INTRO_WEEKS + TrainingBlocks.BUILD_WEEKS)))
+        var before: String? = null
+        service.repo.updateProfile { p -> before = p.coach.blockStartDay; p.copy(coach = p.coach.copy(blockStartDay = start.toString())) }
+        service.repo.putSetting(LOAD_SPIKE_SEEN, WeeklyVolume.weekStartOf(today).toString())
+        _state.update { it.copy(lighterWeekUndo = before ?: "") }
+    }
+
+    fun consumeLighterWeekUndo() = _state.update { it.copy(lighterWeekUndo = null) }
+
+    fun undoLighterWeek(before: String) = io {
+        service.repo.updateProfile { p -> p.copy(coach = p.coach.copy(blockStartDay = before.ifEmpty { null })) }
+        service.repo.putSetting(LOAD_SPIKE_SEEN, "")
+    }
+
+    /** "Verstanden" on the load card: quiet for the rest of this week; a new week tells again. */
+    fun dismissLoadSpike() = io {
+        service.repo.putSetting(LOAD_SPIKE_SEEN, WeeklyVolume.weekStartOf(service.today()).toString())
+        synchronized(refreshLock) { lastInputs?.let { refreshUnlocked(it) } }
+    }
+
+    /**
+     * "Train anyway" on the recovery card (owner 2026-11-06): once the week's training days are done, one tap
+     * gives the training Today would suggest without the day limit. Holds for the day, also after a restart.
+     */
+    fun trainAnyway() = io {
+        synchronized(refreshLock) {
+            val s = _state.value.suggestion
+            service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), null)
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.TRAIN_ANYWAY, emptyList())
+            trainAnyway = true
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /**
+     * "What do you feel like today?" (owner 2026-10-15): the athlete picks the kind of
+     * training; null goes back to the coach's choice. Safety rules still apply.
+     */
+    fun chooseFocus(focus: com.cruxcoach.athlete.logic.SuggestionFocus?) = io {
+        synchronized(refreshLock) {
+            val s = _state.value.suggestion
+            service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), null)
+            // The coach learns the athlete's usual choice per weekday from this ([PreferenceLearning.usualChoices]).
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_KIND + (focus?.name ?: ""), emptyList())
+            ignoreUsualKind = focus == null
+            if (focus == null) ignoreHabit = true
+            // Another kind of training than the planned climbing: the athlete decides, today is no climbing day then.
+            val back = if (focus != null && focus != com.cruxcoach.athlete.logic.SuggestionFocus.BOARD_DAY) clearClimbToday() else null
+            wish = focus
+            // "Anyway" was for the kind before: the coach's advice about the new one is said again.
+            insist = false
+            // With the plan as it is now: the refresh the write starts comes later, and until then the card showed the
+            // new kind with the climbing day still behind it.
+            lastInputs?.let { refreshUnlocked(if (back != null) it.copy(profile = back.after) else it) }
+            if (back != null) _state.update { it.copy(noClimbTodayUndo = back.before) }
+        }
+    }
+
+    /**
+     * "Wie lange heute?" on the card (owner 2026-10-16): today's suggestion is built for [minutes];
+     * null goes back to the preferred duration. Only for today, like the chosen kind.
+     */
+    fun chooseMinutes(minutes: Int?) = io {
+        synchronized(refreshLock) {
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_MINUTES, emptyList(), value = minutes?.toDouble())
+            // "As usual" on a weekday with a habit of its own: the preferred duration, explicitly.
+            minutesToday = minutes ?: _state.value.profile.sessionMinutes.takeIf { lastUsual?.minutes != null }
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /**
+     * "Als Zirkel" on the card (owner 2026-10-17): today's pull, push, prehab, core and leg work in one
+     * circuit – one set of each in turn; finger and power work stay before it. Only for today; the choice
+     * goes into the ledger, so a weekday habit can be learned later.
+     */
+    fun chooseCircuit(on: Boolean) = io {
+        synchronized(refreshLock) {
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_FORMAT + (if (on) "circuit" else ""), emptyList())
+            circuitToday = on
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /** Rounds and rests of today's circuit, from its sheet; null keeps the coach's value. */
+    fun setCircuit(rounds: Int?, circuitRestS: Int?, roundRestS: Int?) = io {
+        synchronized(refreshLock) {
+            circuitRounds = rounds
+            this.circuitRestS = circuitRestS
+            circuitRoundRestS = roundRestS
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+        // Survives a restart like the other choices of today (audit P2-13).
+        service.logSuggestion(SuggestionEventKind.FEEDBACK,
+            PreferenceLearning.CIRCUIT_SETUP + listOf(rounds, circuitRestS, roundRestS).joinToString(",") { it?.toString().orEmpty() }, emptyList())
+    }
+
+    private fun circuitCandidates(s: com.cruxcoach.athlete.logic.SessionSuggestion): Boolean =
+        s.routine.items.count { !it.warmup && com.cruxcoach.athlete.logic.Circuits.eligibleToday(service.catalog[it.slug], it) } >= 2
+
+    /** Today's suggestion with its suitable exercises in one circuit, the time estimated for that. */
+    private fun asCircuit(s: com.cruxcoach.athlete.logic.SessionSuggestion): com.cruxcoach.athlete.logic.SessionSuggestion {
+        val catalog = service.catalog
+        var items = com.cruxcoach.athlete.logic.Circuits.asCircuitToday(s.routine.items, catalog)
+        val key = items.firstOrNull { it.circuit != null }?.circuit ?: return s
+        // A circuit saves the rests between sets: with the same sets it ended far below the chosen time
+        // (60 min → 38). More rounds fill the time – only when the straight suggestion filled it too, so an
+        // intentionally light week stays light – up to five rounds; the athlete's own round count wins.
+        val target = minutesToday ?: (lastInputs?.profile?.sessionMinutes ?: s.estimatedMinutes)
+        if (circuitRounds == null && s.estimatedMinutes >= target - CIRCUIT_TOLERANCE_MIN) {
+            var rounds = com.cruxcoach.athlete.logic.Circuits.rounds(items, key)
+            while (rounds < MAX_CIRCUIT_ROUNDS && SessionSuggester.estimateMinutes(items, catalog) < target - CIRCUIT_TOLERANCE_MIN) {
+                rounds++
+                items = com.cruxcoach.athlete.logic.Circuits.setRounds(items, key, rounds)
+            }
+        }
+        circuitRounds?.let { items = com.cruxcoach.athlete.logic.Circuits.setRounds(items, key, it) }
+        if (circuitRestS != null || circuitRoundRestS != null) {
+            val first = items.first { it.circuit == key }
+            items = com.cruxcoach.athlete.logic.Circuits.setRests(items, key, circuitRestS ?: first.circuitRestS, circuitRoundRestS ?: first.roundRestS)
+        }
+        return s.copy(routine = s.routine.copy(items = items), estimatedMinutes = SessionSuggester.estimateMinutes(items, catalog))
+    }
+
+    /** Today's "easier" (−1) or "harder" (+1), 0 back to the coach's level; the coach learns nothing from it beyond today. */
+    fun chooseLevel(shift: Int) = io {
+        synchronized(refreshLock) {
+            val s = _state.value.suggestion
+            val feedback = when { shift > 0 -> SuggestionFeedback.TOO_EASY; shift < 0 -> SuggestionFeedback.TOO_HARD; else -> null }
+            if (feedback != null) service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), feedback)
+            // Back to the coach's level: noted too, so a restart and the "for good?" offer see it (comparison review #10).
+            else if (levelShift != 0) service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_LEVEL + (s?.focus?.name ?: ""),
+                emptyList(), value = 0.0)
+            levelShift = shift.coerceIn(-1, 1)
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /**
+     * The answer to [TodayState.levelOffer]: [keep] takes the step for the kind of training for good (visible and
+     * forgettable on "What the coach learned"; today's own chip goes back to the coach's level, which is now that
+     * step); no asks nothing for [PreferenceLearning.LEVEL_WINDOW_DAYS] days.
+     */
+    fun answerLevelOffer(keep: Boolean) {
+        val offer = _state.value.levelOffer ?: return
+        lastLevelOffers = lastLevelOffers - offer
+        _state.update { it.copy(levelOffer = null) }
+        io {
+            val kind = offer.focus.name
+            val before = service.repo.profile().keptLevels[kind]
+            val answer = service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.LEVEL_ANSWER + kind, emptyList(),
+                value = if (keep) offer.direction.toDouble() else 0.0)
+            if (!keep) {
+                // Recomputed under the lock, so a refresh that ran meanwhile cannot bring the question back.
+                synchronized(refreshLock) { lastInputs?.let { refreshUnlocked(it) } }
+                return@io
+            }
+            val today = synchronized(refreshLock) {
+                val shift = levelShift
+                val back = if (shift != 0) service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_LEVEL + kind,
+                    emptyList(), value = 0.0) else null
+                levelShift = 0
+                shift to back
+            }
+            val now = ((before ?: 0) + offer.direction).coerceIn(-1, 1)
+            service.repo.updateProfile { p -> p.copy(keptLevels = if (now == 0) p.keptLevels - kind else p.keptLevels + (kind to now)) }
+            _state.update { it.copy(levelKept = LevelKept(offer, before, today.first, listOfNotNull(answer, today.second))) }
+        }
+    }
+
+    /** "Rückgängig" after keeping a level step: the step, today's choice and the answer as before. */
+    fun undoLevelKept(kept: LevelKept) {
+        _state.update { it.copy(levelKept = null) }
+        io {
+            val kind = kept.offer.focus.name
+            synchronized(refreshLock) {
+                kept.eventIds.forEach(service::forgetSuggestion)
+                levelShift = kept.todayShift
+            }
+            service.repo.updateProfile { p ->
+                p.copy(keptLevels = if (kept.before == null) p.keptLevels - kind else p.keptLevels + (kind to kept.before))
+            }
+        }
+    }
+
+    fun consumeLevelKept() = _state.update { it.copy(levelKept = null) }
+
+    /** The answer to [TodayState.gradeOffer]: take the logbook's grade over, or not ask again for it. */
+    fun answerGradeOffer(take: Boolean) {
+        val grade = _state.value.gradeOffer ?: return
+        _state.update { it.copy(gradeOffer = null) }
+        io {
+            if (take) {
+                val before = service.takeOverGrade(grade)
+                _state.update { it.copy(gradeTaken = grade to before) }
+            } else service.declineGrade(grade)
+        }
+    }
+
+    /** "Rückgängig" after taking a logbook grade over: the grade before is back. */
+    fun undoGradeTaken(taken: Pair<String, String?>) {
+        _state.update { it.copy(gradeTaken = null) }
+        io { service.repo.updateProfile { p -> p.copy(coach = p.coach.copy(currentGrade = taken.second)) } }
+    }
+
+    fun consumeGradeTaken() = _state.update { it.copy(gradeTaken = null) }
+
+    /** A climbing day was deleted in the sheet: Today offers "Rückgängig" (device test D45). */
+    fun climbingDeleted(d: AthleteService.DeletedClimb) = _state.update { it.copy(climbDeleted = d) }
+
+    fun consumeClimbDeleted() = _state.update { it.copy(climbDeleted = null) }
+
+    /**
+     * "Heute keine Zeit – Ruhetag" (owner 2026-10-19): today is planned as a rest day, this day only; the days
+     * around it follow on their own. Snackbar with "Rückgängig".
+     */
+    fun restToday() = io {
+        val today = service.today()
+        var before: Map<String, String>? = null
+        service.repo.updateProfile { p ->
+            before = p.datePlan
+            DayPlans.withDay(p, today, com.cruxcoach.athlete.model.PLAN_REST, today)
+        }
+        _state.update { it.copy(restTodayUndo = before) }
+    }
+
+    fun consumeRestTodayUndo() = _state.update { it.copy(restTodayUndo = null) }
+
+    /** "Übernehmen": the usual workout goes into the standard week on its weekday. Snackbar with "Rückgängig". */
+    fun acceptHabitOffer() {
+        val offer = _state.value.habitOffer ?: return
+        _state.update { it.copy(habitOffer = null) }
+        io {
+            var before: Map<Int, String> = emptyMap()
+            service.repo.updateProfile { p -> before = p.weekPlan; p.copy(weekPlan = p.weekPlan + (offer.isoDay to offer.entry)) }
+            _state.update { it.copy(habitTaken = HabitTaken(offer.isoDay, before)) }
+        }
+    }
+
+    /** "Nein danke": not asked again for this weekday and workout for [PreferenceLearning.WINDOW_DAYS] days. */
+    fun declineHabitOffer() {
+        val offer = _state.value.habitOffer ?: return
+        _state.update { it.copy(habitOffer = null) }
+        io { service.repo.putSetting(PreferenceLearning.habitOfferKey(offer.isoDay, offer.entry), System.currentTimeMillis().toString()) }
+    }
+
+    fun consumeHabitTaken() = _state.update { it.copy(habitTaken = null) }
+
+    fun undoHabitTaken(taken: HabitTaken) = io { service.repo.updateProfile { it.copy(weekPlan = taken.before) } }
+
+    fun undoRestToday(before: Map<String, String>) = io { service.repo.updateProfile { it.copy(datePlan = before) } }
+
+    /** "Rückgängig" after deleting a climbing day: the entry and its board-overlap choice are back. */
+    fun undoClimbingDelete(d: AthleteService.DeletedClimb) = io { service.restoreClimbingDay(d) }
+
+    /**
+     * What could replace [slug] on today's card (owner 2026-10-16: "jede Empfehlung mit wenig Aufwand
+     * überschreibbar"): the same kind of work through the same safety filters as the suggestion.
+     */
+    fun alternatives(slug: String): List<SessionSuggester.Alternative> {
+        // No lock: a refresh holds it through its database reads, and this runs on the main thread; input and
+        // state are immutable snapshots.
+        val input = lastInput ?: return emptyList()
+        val s = _state.value.suggestion ?: return emptyList()
+        return runCatching { SessionSuggester.alternatives(input, s, slug) }.getOrDefault(emptyList())
+    }
+
+    /** The suggested slug [shown] stands for (itself, or the one it replaced earlier today). */
+    private fun originalOf(shown: String): String = swapsToday.entries.firstOrNull { it.value == shown }?.key ?: shown
+
+    /** The last swap or "leave out" on the card, for "Rückgängig": the card's entry before it and the ledger entry. */
+    private class CardUndo(var key: String? = null, var previous: String? = null, var eventId: String? = null)
+    @Volatile private var cardUndo: CardUndo? = null
+    private var cardJob: kotlinx.coroutines.Job? = null
+
+    /** The athlete's pick instead of [from] for today; the coach learns from it (−1 for [from], +1 for [to]). */
+    fun swapExercise(from: String, to: String) {
+        val undo = CardUndo().also { cardUndo = it }
+        cardJob = viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            synchronized(refreshLock) {
+                val key = originalOf(from)
+                undo.key = key; undo.previous = swapsToday[key]
+                if (key == to) swapsToday.remove(key) else swapsToday[key] = to
+                undo.eventId = service.logSuggestion(SuggestionEventKind.SWAPPED, _state.value.suggestion?.focus?.name, listOf(from, to))
+                lastInputs?.let { refreshUnlocked(it) }
+            }
+            offerNeverIfRepeated(from)
+        }
+    }
+
+    /** "Kenne ich nicht" (issue #68): what would take [slug]'s place, Basic or known to the athlete; null when nothing fits. */
+    fun familiarSwap(slug: String): com.cruxcoach.athlete.catalog.ExerciseDefinition? {
+        val input = lastInput ?: return null
+        val s = _state.value.suggestion ?: return null
+        return runCatching {
+            // What was swapped away or left out elsewhere on the card today stays away; the slot's own pick may come back.
+            // Read under the lock: the swaps change on the IO thread.
+            val away = synchronized(refreshLock) { swapsToday.keys.toSet() - originalOf(slug) }
+            SessionSuggester.familiarSwap(input, s.routine.items, s.focus, slug, exclude = away)
+        }.getOrNull()
+    }
+
+    /**
+     * "Kenne ich nicht": [to] instead of [from] for today, like a swap, but no dislike and no rest for [from] and no
+     * point for [to] (the coach picked it); [from] is only not the coach's new pick for a while.
+     */
+    fun dontKnowExercise(from: String, to: String) {
+        val undo = CardUndo().also { cardUndo = it }
+        cardJob = viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            synchronized(refreshLock) {
+                val key = originalOf(from)
+                undo.key = key; undo.previous = swapsToday[key]
+                // Back to the coach's own pick of the slot: no swap left.
+                if (key == to) swapsToday.remove(key) else swapsToday[key] = to
+                undo.eventId = service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.DONT_KNOW, listOf(from, to))
+                lastInputs?.let { refreshUnlocked(it) }
+            }
+        }
+    }
+
+    /** "Heute weglassen": out of today's suggestion without a replacement; counts like "keine Lust". */
+    fun dropExercise(slug: String) {
+        val undo = CardUndo().also { cardUndo = it }
+        cardJob = viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            synchronized(refreshLock) {
+                val key = originalOf(slug)
+                undo.key = key; undo.previous = swapsToday[key]
+                swapsToday[key] = ""
+                undo.eventId = service.logSuggestion(SuggestionEventKind.NEXT, _state.value.suggestion?.focus?.name, listOf(slug),
+                    SuggestionFeedback.DISLIKE_EXERCISE, value = PreferenceLearning.LEFT_OUT)
+                lastInputs?.let { refreshUnlocked(it) }
+            }
+            offerNeverIfRepeated(slug)
+        }
+    }
+
+    /** "Rückgängig" after a swap or "leave out" on the card (audit P2-14): the card as before, nothing learned. */
+    fun undoCardChange() {
+        val undo = cardUndo ?: return
+        cardUndo = null
+        val job = cardJob
+        io {
+            job?.join()
+            val key = undo.key ?: return@io
+            synchronized(refreshLock) {
+                val previous = undo.previous
+                if (previous == null) swapsToday.remove(key) else swapsToday[key] = previous
+                undo.eventId?.let(service::forgetSuggestion)
+                lastInputs?.let { refreshUnlocked(it) }
+            }
+            if (_state.value.neverOffer != null) _state.update { it.copy(neverOffer = null) }
+        }
+    }
+
+    /** "Nie vorschlagen" from the card; the profile change brings the new suggestion. */
+    fun excludeExercise(slug: String) = io {
+        synchronized(refreshLock) { swapsToday.entries.removeAll { it.value == slug } }
+        service.setExcluded(slug, true)
+    }
+
+    /** "Rückgängig" after "Nie vorschlagen". */
+    fun includeExercise(slug: String) = io { service.setExcluded(slug, false) }
+
+    /**
+     * After a rejection: on the third one the card asks once "stop suggesting it?" instead of only resting it
+     * again and again; asked at most once per exercise (answer or dismiss).
+     */
+    private fun offerNeverIfRepeated(slug: String) {
+        val repo = service.repo
+        val key = "never.offered.$slug"
+        if (repo.setting(key) != null || slug in repo.profile().excludedExercises) return
+        val today = service.today()
+        val sinceMs = System.currentTimeMillis() - PreferenceLearning.WINDOW_DAYS * 24L * 3600 * 1000
+        val count = PreferenceLearning.rejections(repo.suggestionEventsSince(sinceMs), today, repo.profile().learningResets)[slug] ?: 0.0
+        if (count >= PreferenceLearning.OFFER_NEVER_AFTER) _state.update { it.copy(neverOffer = slug) }
+    }
+
+    /** The answer to [TodayState.neverOffer]: never again, or keep it (it rests a while and may come back). */
+    fun answerNeverOffer(never: Boolean) {
+        val slug = _state.value.neverOffer ?: return
+        _state.update { it.copy(neverOffer = null) }
+        io {
+            service.repo.putSetting("never.offered.$slug", if (never) "never" else "kept")
+            if (never) excludeExercise(slug)
+        }
+    }
+
+    /** Takes over the real training length as the preferred duration. */
+    fun applyDurationHint() = io {
+        val minutes = _state.value.durationHint ?: return@io
+        service.repo.updateProfile { it.copy(sessionMinutes = minutes) }
+    }
+
+    /**
+     * Where "adapt" opens the editor: the planned own workout itself when the
+     * suggestion is that workout unchanged, otherwise a draft that keeps every
+     * item detail (warm-up flags, sides, sets cut to the time budget).
+     */
+    fun editTarget(title: String): Pair<String?, String?> {
+        val s = _state.value.suggestion ?: return null to null
+        val planned = s.plannedEntry
+        val changed = setOf(SuggestionReason.PLAN_FILTERED_FOR_INJURY, SuggestionReason.FINGERS_LOADED_RECENTLY,
+            SuggestionReason.FINGERS_TIRED, SuggestionReason.SHORTENED_TO_TIME, SuggestionReason.RECOVERY_AFTER_LIMIT,
+            SuggestionReason.RECOVERY_AFTER_HARD, SuggestionReason.RECOVERY_AFTER_VOLUME, SuggestionReason.FINGER_LOAD_RISING,
+            SuggestionReason.SKIN_LOAD_RISING, SuggestionReason.GUARDRAIL_YOUTH, SuggestionReason.BLOCK_INTRO,
+            SuggestionReason.BLOCK_DELOAD, SuggestionReason.BLOCK_TAPER)
+        viewModelScope.launch(Dispatchers.IO) { service.logSuggestion(SuggestionEventKind.EDITED, s.focus.name, s.routine.items.map { it.slug }) }
+        if (s.focus == SuggestionFocus.PLANNED && planned != null && !planned.startsWith("builtin:") && s.reasons.none { it in changed }) {
+            return planned to null
+        }
+        service.offerEditorDraft(s.routine.copy(name = title, builtinKey = null))
+        return null to "draft:" + s.routine.items.joinToString(",") { it.slug }
+    }
+
+    /** A start waiting for "continue the open training or end it". */
+    val pendingStart = MutableStateFlow<com.cruxcoach.android.ui.training.workout.PendingStart?>(null)
+
+    /** Runs [begin] at once, or after the athlete chose what happens to another open training. */
+    private fun guardedStart(routineId: String?, title: String?, begin: suspend (replace: Boolean) -> Unit) = io {
+        val conflict = service.openConflict(routineId)
+        if (conflict != null) pendingStart.value = com.cruxcoach.android.ui.training.workout.PendingStart(conflict, title, begin)
+        else begin(false)
+    }
+
+    /** true: end the open training and start; false: continue the open one; null: start nothing. */
+    fun resolveStart(replace: Boolean?) = io {
+        val pending = pendingStart.value ?: return@io
+        pendingStart.value = null
+        if (replace != null) pending.start(replace)
+    }
+
+    /** Starts today's suggestion in the guided player; [title] is the localized focus title. */
+    fun startSuggestion(title: String) {
+        val suggestion = _state.value.suggestion ?: return
+        val routine = service.suggestionRoutine(suggestion, title)
+        guardedStart(routine.id, title) { replace ->
+            if (replace) service.closeOpenWorkout()
+            service.startSuggestion(suggestion, routine, title)
+            _state.update { it.copy(startedWorkout = true, startedGuided = true) }
+        }
+    }
+
+    /** Keeps the suggestion as one of the athlete's own workouts. */
+    fun saveSuggestion(title: String) = io {
+        val suggestion = _state.value.suggestion ?: return@io
+        val now = System.currentTimeMillis()
+        service.repo.saveRoutine(suggestion.routine.copy(id = service.repo.newId(), name = title, builtinKey = null,
+            createdAt = now, updatedAt = now))
+        service.logSuggestion(SuggestionEventKind.SAVED, suggestion.focus.name, suggestion.routine.items.map { it.slug })
+        _state.update { it.copy(suggestionSaved = true) }
+    }
+
+    fun consumeSuggestionSaved() = _state.update { it.copy(suggestionSaved = false) }
+
+
+    private fun covers(p: PausePeriod, day: LocalDate, today: LocalDate): Boolean {
+        val start = runCatching { LocalDate.parse(p.startDay) }.getOrNull() ?: return false
+        val end = p.endDay?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: today
+        return day in start..end
+    }
+
+    /**
+     * The questions before the suggestion: how strong the athlete feels (the check-in's
+     * energy) and what hurts today. Both optional; saving with neither means "skip".
+     */
+    fun saveQuickCheckin(strength: Int?, sore: Set<com.cruxcoach.athlete.model.InjuryRegion>) = io {
+        val day = service.today().toString()
+        val old = service.repo.checkin(day)
+        service.repo.saveCheckin((old ?: Checkin(day, System.currentTimeMillis()))
+            .copy(createdAt = System.currentTimeMillis(), energy = strength ?: old?.energy, sore = sore))
+        dayCheck.update { it + 1 }
+    }
+
+    fun saveCheckin(sleep: Int?, energy: Int?, skin: Int?, fingers: Int?, sick: Boolean, sore: Set<com.cruxcoach.athlete.model.InjuryRegion> = emptySet()) = io {
+        val day = service.today().toString()
+        service.repo.saveCheckin(Checkin(day, System.currentTimeMillis(), sleep, energy, skin, fingers, sick = sick, sore = sore))
+        dayCheck.update { it + 1 }
+        if (sick && service.repo.openPause() == null) {
+            service.repo.savePause(PausePeriod(service.repo.newId(), PauseReason.ILLNESS, day))
+        }
+    }
+
+    fun clearCheckin() = io { service.repo.deleteCheckin(service.today().toString()) }
+
+    fun endPause() = io {
+        val open = service.repo.openPause() ?: return@io
+        service.repo.savePause(open.copy(endDay = service.today().toString()))
+    }
+
+    fun startRoutine(key: String, title: String? = null) {
+        val routine = BuiltinRoutines.byKey(key) ?: return
+        guardedStart(routine.id, title) { replace ->
+            if (replace) service.closeOpenWorkout()
+            service.startWorkout(routine, null)
+            _state.update { it.copy(startedWorkout = true, startedGuided = true) }
+        }
+    }
+
+    fun startEmptyWorkout() = guardedStart(null, null) { replace ->
+        if (replace) service.closeOpenWorkout()
+        service.startWorkout(null, null)
+        _state.update { it.copy(startedWorkout = true, startedGuided = false) }
+    }
+
+    fun consumeStartedWorkout() = _state.update { it.copy(startedWorkout = false, startedGuided = false) }
+
+    // ── Comeback plans (owner 2026-10-20) ────────────────────────────
+
+    private val _comebacks = MutableStateFlow<List<ComebackToday>>(emptyList())
+    /** Running comeback plans for today's card; separate from the hub so a diary tap does not re-derive the suggestion. */
+    val comebacks: StateFlow<List<ComebackToday>> = _comebacks.asStateFlow()
+
+    private fun collectComebacks() {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            combine(service.repo.observeActiveInjuries(), service.repo.observeAllComebackEntries()) { injuries, entries ->
+                val today = service.today()
+                val now = System.currentTimeMillis()
+                injuries.filter { it.activePlan != null }.map { injury ->
+                    val mine = entries.filter { it.injuryId == injury.id }
+                    ComebackToday(
+                        injury = injury,
+                        entry = mine.firstOrNull { it.day == today.toString() },
+                        due = com.cruxcoach.athlete.logic.Comeback.due(injury, mine, today, now)
+                            .filter { it.status == com.cruxcoach.athlete.logic.DueStatus.DUE && it.spec.items.isNotEmpty() },
+                        prompts = com.cruxcoach.athlete.logic.Comeback.prompts(injury, mine, today).size,
+                    )
+                }
+            }.collect { _comebacks.value = it }
+        }
+    }
+
+    fun comebackToday(injuryId: String, change: (com.cruxcoach.athlete.model.ComebackEntry) -> com.cruxcoach.athlete.model.ComebackEntry) = io {
+        val comebacks = com.cruxcoach.android.athlete.ComebackService(service)
+        comebacks.saveEntry(change(comebacks.entry(injuryId)))
+    }
+
+    fun startComebackSession(injuryId: String, index: Int, name: String) =
+        guardedStart(null, name) { replace ->
+            if (replace) service.closeOpenWorkout()
+            com.cruxcoach.android.athlete.ComebackService(service).startSession(injuryId, index, name)
+            _state.update { it.copy(startedWorkout = true, startedGuided = true) }
+        }
+
+    fun addWater(ml: Int) = io { service.repo.addHydration(service.today().toString(), ml) }
+
+    /** Undo for the water tile: the newest glass of today goes again. */
+    fun removeLastWater() = io {
+        service.repo.hydration(service.today().toString()).maxByOrNull { it.loggedAt }?.let { service.repo.deleteHydration(it.id) }
+    }
+
+    /** From the checklist's equipment sheet: what the athlete has, and that it was asked. */
+    /** The equipment of the place the athlete trains at today. */
+    fun saveEquipment(equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) = io { service.savePlaceEquipment(null, equipment) }
+
+    /** Train somewhere else today; the suggestion follows that place's equipment. */
+    fun pickPlace(placeId: String) = io { service.pickPlace(placeId) }
+
+    fun logWeight(kg: Double) = io {
+        val now = System.currentTimeMillis()
+        service.repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, kg, "kg", now))
+    }
+
+    fun logHeight(cm: Double) = io {
+        service.repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.HEIGHT.key, cm, "cm", System.currentTimeMillis()))
+    }
+
+    fun saveWeightGoal(lose: Boolean, targetKg: Double?, paceKg: Double) = io { service.saveWeightGoal(lose, targetKg, paceKg) }
+
+    private fun io(block: suspend () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); block() }
+    }
+
+    init {
+        startCollecting()
+        collectComebacks()
+    }
+
+    companion object {
+        /** A circuit within this many minutes of the chosen time counts as fitting. */
+        const val CIRCUIT_TOLERANCE_MIN = 4
+        /** Rounds a circuit grows to at most to fill the chosen time (like sets on straight work). */
+        const val MAX_CIRCUIT_ROUNDS = 5
+        /** The card's "Wie lange heute?" choices in minutes. */
+        val DURATION_OPTIONS = listOf(15, 20, 30, 45, 60, 75, 90, 120)
+        /** Setting: the week (its Monday) in which the load card was acknowledged. */
+        const val LOAD_SPIKE_SEEN = "loadspike.seen"
+
+        /** The next choice clearly below [minutes], at least the shortest. */
+        internal fun shorterThan(minutes: Int): Int = DURATION_OPTIONS.lastOrNull { it < minutes - 2 } ?: DURATION_OPTIONS.first()
+    }
+}

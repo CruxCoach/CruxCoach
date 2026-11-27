@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Canvas
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.theme.OrangeAccent
 
 private val ChartOrange = Color(0xFFFF6B1A)
 private val ChartGrey = Color(0xFF9E9E9E)
@@ -152,7 +153,7 @@ private fun HeaderCard(stats: MapStats) {
                 "${stats.total}",
                 style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.Bold,
-                color = ChartOrange,
+                color = OrangeAccent,
             )
             com.cruxcoach.android.ui.common.InfoHeading(
                 stringResource(R.string.map_stats_total_locations),

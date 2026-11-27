@@ -75,6 +75,19 @@ class SqlCipherKeyManager(private val prefs: SharedPreferences) {
         }
     }
 
+    /**
+     * Key for the per-pubkey athlete database (training, body, fueling). Same
+     * master key, separate HKDF label, so the two databases never share a key.
+     */
+    fun getDerivedAthleteKeyForPubkey(pubkeyHex: String): ByteArray {
+        val masterKey = getDecryptedDbKey()
+        try {
+            return hkdfSha256(masterKey, pubkeyHex.toByteArray(), INFO_ATHLETE_DB, 32)
+        } finally {
+            masterKey.fill(0)
+        }
+    }
+
     private fun getMasterKey() = keyStore.getKey(KEYSTORE_ALIAS, null) as SecretKey
 
     companion object {
@@ -83,6 +96,7 @@ class SqlCipherKeyManager(private val prefs: SharedPreferences) {
         private const val PREF_IV = "enc_db_key_iv"
         private const val GCM_TAG_LENGTH = 128
         private val INFO_SECURE_DB = "cruxcoach-secure-db".toByteArray()
+        private val INFO_ATHLETE_DB = "cruxcoach-athlete-db".toByteArray()
 
         init { System.loadLibrary("sqlcipher") }
 

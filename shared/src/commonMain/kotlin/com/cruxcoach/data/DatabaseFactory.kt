@@ -3,6 +3,7 @@ package com.cruxcoach.data
 import app.cash.sqldelight.ColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
 import com.cruxcoach.db.board.Climbs
+import com.cruxcoach.db.athlete.AthleteDatabase
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.board.FramesBinaryCodec
@@ -13,6 +14,11 @@ expect class BoardDriverFactory {
 
 expect class SecureDriverFactory {
     fun createDriver(dbName: String = "cruxcoach_secure.db"): SqlDriver
+}
+
+/** Encrypted driver for the per-identity athlete database (training, body, fueling). */
+expect class AthleteDriverFactory {
+    fun createDriver(dbName: String): SqlDriver
 }
 
 private val framesAdapter = object : ColumnAdapter<String, ByteArray> {
@@ -49,3 +55,6 @@ fun createSecureDatabase(driverFactory: SecureDriverFactory, dbName: String = "c
     val driver = driverFactory.createDriver(dbName)
     return SecureDatabase(driver = driver)
 }
+
+fun createAthleteDatabase(driverFactory: AthleteDriverFactory, dbName: String): AthleteDatabase =
+    AthleteDatabase(driver = driverFactory.createDriver(dbName))

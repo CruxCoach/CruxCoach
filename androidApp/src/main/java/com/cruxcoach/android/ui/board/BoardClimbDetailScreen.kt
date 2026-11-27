@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -18,6 +19,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Straighten
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
@@ -36,6 +39,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.PanTool
@@ -117,6 +121,7 @@ fun BoardClimbDetailScreen(
     onNavigateToFork: (climbUuid: String) -> Unit = {},
     onNavigateToEdit: (climbUuid: String) -> Unit = {},
     onNavigateToSetter: (pubkey: String) -> Unit = {},
+    onNavigateToGames: (climbUuid: String, angle: Int) -> Unit = { _, _ -> },
     viewModel: BoardClimbDetailViewModel = hiltViewModel()
 ) {
     PerfLogger.navMilestone("BoardClimbDetailScreen composing")
@@ -129,6 +134,19 @@ fun BoardClimbDetailScreen(
     val (tour, tourStep) = rememberBrowserTour()
     val tourTargets = remember { TourTargets() }
     val isRestTimerRunning by viewModel.isRestTimerRunning.collectAsStateWithLifecycle()
+    val ledEffects by viewModel.ledEffects.collectAsStateWithLifecycle(
+        initialValue = com.cruxcoach.android.led.LedEffectsState(),
+    )
+    val ledEffectRestart by viewModel.ledEffectRestart.collectAsStateWithLifecycle(
+        initialValue = LedEffectRestart.NONE,
+    )
+    var showLedEffects by remember { mutableStateOf(false) }
+    // Help for "the board lights other holds": the usual cause is a wrong board size.
+    val sizeCheckViewModel: BoardSizeCheckViewModel = hiltViewModel()
+    // Looked up with the climb, not when the menu opens: on the phone the entry then appeared a
+    // moment late and pushed the items below it down.
+    val sizeCheckBoard by sizeCheckViewModel.savedBoard.collectAsStateWithLifecycle()
+    var sizeCheck by remember { mutableStateOf<SavedBoardForCheck?>(null) }
     val isSharingEnabled by viewModel.isSharingEnabled.collectAsStateWithLifecycle()
     val pageCache by viewModel.pageCache.collectAsStateWithLifecycle()
     val addToListViewModel: AddToListViewModel = hiltViewModel()
@@ -353,6 +371,33 @@ fun BoardClimbDetailScreen(
                 viewModel = addToListViewModel,
             )
         }
+    }
+
+    sizeCheck?.let { saved ->
+        BoardSizeCheckSheet(
+            brand = saved.brand,
+            sizeId = saved.sizeId,
+            layoutId = saved.layoutId,
+            applyOnConfirm = true,
+            onDismiss = { sizeCheck = null },
+            viewModel = sizeCheckViewModel,
+        )
+    }
+
+    if (showLedEffects) {
+        com.cruxcoach.android.ui.settings.LedEffectQuickSheet(
+            state = ledEffects,
+            onSelect = viewModel::selectLedEffect,
+            onStrobeNoticeSeen = viewModel::confirmLedStrobeNotice,
+            onConnect = {
+                showLedEffects = false
+                showBleSheet = true
+            },
+            // Only on the climb whose effect ended, and only where it sends that
+            // climb again (a shared session resends its current climb).
+            onSendAgain = viewModel::restartLedEffect.takeIf { ledEffectRestart != LedEffectRestart.NONE },
+            onDismiss = { showLedEffects = false },
+        )
     }
 
     // Per-use custom rest-timer duration (settings value stays the
@@ -682,6 +727,79 @@ fun BoardClimbDetailScreen(
                                     }
                                 }
                                 HorizontalDivider()
+                                // Wall games play this climb (endurance,
+                                // traverse) on the active board. Quantum
+                                // shares its lights, so it has no games.
+                                // Not offered at all while the games are
+                                // switched off (WallGamesFeature).
+                                val gameClimb = state.climb
+                                if (com.cruxcoach.android.ui.board.games.WallGamesFeature.enabled &&
+                                    gameClimb != null && gameClimb.brand != BoardBrand.QUANTUM
+                                ) {
+                                    DropdownMenuItem(
+                                        enabled = tourTargets.active == null,
+                                        text = { Text(stringResource(R.string.wall_games_play_climb)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.SportsEsports,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            onNavigateToGames(gameClimb.uuid, state.angle)
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_wall_games"),
+                                    )
+                                }
+                                // LED effects quick pick: change or turn off the
+                                // effect right where the climb is lit.
+                                if (ledEffects.boardShowsEffects) {
+                                    val effectLabel = stringResource(
+                                        com.cruxcoach.android.led.LedAnimationRegistry
+                                            .byId(ledEffects.effectId).labelResId,
+                                    )
+                                    DropdownMenuItem(
+                                        enabled = tourTargets.active == null,
+                                        text = { Text(stringResource(R.string.led_effect_menu, effectLabel)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Outlined.AutoAwesome,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            showLedEffects = true
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_led_effect"),
+                                    )
+                                }
+                                // Wrong holds lit: the board-size check, for the
+                                // saved board when this climb is on it.
+                                val sizeCheckOffer = sizeCheckBoard
+                                if (sizeCheckOffer != null && sizeCheckOffer.offered &&
+                                    sizeCheckOffer.brand == state.climb?.brand
+                                ) {
+                                    DropdownMenuItem(
+                                        enabled = tourTargets.active == null,
+                                        text = { Text(stringResource(R.string.board_size_check_menu)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Outlined.Straighten,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            sizeCheck = sizeCheckOffer
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_size_check"),
+                                    )
+                                }
                                 // Mirror toggle — a display-only left/right flip
                                 // of the climb. Only shown for layouts that are
                                 // actually mirrorable (Aurora `is_mirrored`):
@@ -1325,6 +1443,9 @@ private fun BoardLayerRack(
                                 onClick = { onSelectSuggestion(suggestedSlot, suggestedColor) },
                                 enabled = controlsAllowed && !state.ble.isSending,
                                 modifier = Modifier.testTag("quantum_layer_select_suggestion"),
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = CruxCoachDesign.colors.onPositiveContainer,
+                                ),
                             ) {
                                 Text(stringResource(R.string.quantum_layer_select_suggestion))
                             }
@@ -1486,8 +1607,9 @@ private fun BoardLayerRack(
                                         contentDescription = slotDescription
                                     },
                                 shape = RoundedCornerShape(12.dp),
+                                // Opaque, so the coloured status line keeps its contrast when selected.
                                 color = if (selected) {
-                                    OrangeAccent.copy(alpha = 0.16f)
+                                    CruxCoachDesign.colors.brandAccentContainer
                                 } else MaterialTheme.colorScheme.surface,
                                 border = androidx.compose.foundation.BorderStroke(
                                     if (selected) 2.dp else 1.dp,
@@ -1545,10 +1667,13 @@ private fun BoardLayerRack(
                                                 statusLabel,
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = when (slotUi.visualState) {
-                                                    QuantumLayerVisualState.ON_BOARD -> SuccessGreen
+                                                    QuantumLayerVisualState.ON_BOARD,
+                                                    QuantumLayerVisualState.SENT -> SuccessGreen
                                                     QuantumLayerVisualState.FAILED -> ErrorRed
                                                     QuantumLayerVisualState.UNKNOWN -> WarningYellow
-                                                    else -> OrangeAccent
+                                                    else -> if (selected) {
+                                                        CruxCoachDesign.colors.onBrandAccentContainer
+                                                    } else OrangeAccent
                                                 },
                                             )
                                             if (layer != null && layer.confirmedRouteUuid != null &&
@@ -2102,6 +2227,7 @@ private fun BoardDetailBottomActions(
         ) {
             BoardDetailActionDock(
                 loggingEnabled = !state.isLoading && !state.isQuickLogging,
+                counts = remember(state.userAscents) { climbLogCounts(state.userAscents) },
                 lamp = BoardDeliveryPolicy.lampMode(
                     decision = decision,
                     hasDirectPayload = hasDirectPayload,
@@ -2131,19 +2257,31 @@ private fun BoardDetailBottomActions(
  * middle one is in.
  */
 @Composable
-private fun DockButtonContent(icon: ImageVector, contentDescription: String, label: String) {
+private fun DockButtonContent(
+    icon: ImageVector,
+    contentDescription: String,
+    label: String,
+    iconTint: Color = LocalContentColor.current,
+    /** How often this button's log exists for the climb; shown after the word as "Top (3)", nothing at zero. */
+    count: Int = 0,
+) {
+    val counted = if (count > 0) stringResource(R.string.board_dock_label_count, label, count) else null
+    // A narrow phone with a large font has no room for the number: then the word alone, never a cut one.
+    var countFits by remember(counted) { mutableStateOf(true) }
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(27.dp))
+        Icon(icon, contentDescription = contentDescription, tint = iconTint, modifier = Modifier.size(27.dp))
         Spacer(Modifier.height(1.dp))
         Text(
-            label,
+            if (counted != null && countFits) counted else label,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
+            softWrap = false,
+            onTextLayout = { if (it.hasVisualOverflow) countFits = false },
         )
     }
 }
@@ -2151,6 +2289,8 @@ private fun DockButtonContent(icon: ImageVector, contentDescription: String, lab
 @Composable
 private fun BoardDetailActionDock(
     loggingEnabled: Boolean,
+    /** This climber's logged tries and tops of the climb, in brackets on the two logging buttons. */
+    counts: ClimbLogCounts,
     lamp: BoardDetailLampMode,
     lightEnabled: Boolean,
     lightInProgress: Boolean,
@@ -2171,14 +2311,16 @@ private fun BoardDetailActionDock(
                 .height(64.dp)
                 .testTag("boarddetail_quick_attempt").tourTarget(TourTarget.QUICK_ATTEMPT),
             shape = RoundedCornerShape(18.dp),
-            color = ErrorRed.copy(alpha = 0.13f),
-            contentColor = ErrorRed,
+            color = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
             border = androidx.compose.foundation.BorderStroke(1.dp, ErrorRed.copy(alpha = 0.42f)),
         ) {
             DockButtonContent(
                 icon = Icons.Default.Close,
                 contentDescription = stringResource(R.string.board_ascent_attempt),
                 label = stringResource(R.string.board_dock_attempt),
+                iconTint = ErrorRed,
+                count = counts.tries,
             )
         }
         when (lamp) {
@@ -2196,7 +2338,7 @@ private fun BoardDetailActionDock(
                 // between a red and an orange one read as the disabled one.
                 // The icon carries the difference.
                 color = OrangeAccent,
-                contentColor = DarkBackground,
+                contentColor = CruxCoachDesign.colors.onBrandAccent,
                 shadowElevation = 4.dp,
             ) {
                 DockButtonContent(
@@ -2221,7 +2363,7 @@ private fun BoardDetailActionDock(
                         ),
                     shape = RoundedCornerShape(18.dp),
                     color = OrangeAccent,
-                    contentColor = DarkBackground,
+                    contentColor = CruxCoachDesign.colors.onBrandAccent,
                     shadowElevation = 4.dp,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -2229,7 +2371,7 @@ private fun BoardDetailActionDock(
                             CircularProgressIndicator(
                                 modifier = Modifier.size(25.dp),
                                 strokeWidth = 2.5.dp,
-                                color = DarkBackground,
+                                color = CruxCoachDesign.colors.onBrandAccent,
                             )
                         } else {
                             DockButtonContent(
@@ -2257,14 +2399,16 @@ private fun BoardDetailActionDock(
                 .height(64.dp)
                 .testTag("boarddetail_quick_send").tourTarget(TourTarget.QUICK_SEND),
             shape = RoundedCornerShape(18.dp),
-            color = SuccessGreen.copy(alpha = 0.16f),
-            contentColor = SuccessGreen,
+            color = CruxCoachDesign.colors.positiveContainer,
+            contentColor = CruxCoachDesign.colors.onPositiveContainer,
             border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.46f)),
         ) {
             DockButtonContent(
                 icon = Icons.Default.Check,
                 contentDescription = stringResource(R.string.board_ascent_send),
                 label = stringResource(R.string.board_dock_top),
+                iconTint = SuccessGreen,
+                count = counts.tops,
             )
         }
     }
@@ -2409,7 +2553,12 @@ private fun CompactClimbOverview(
                             modifier = Modifier.size(15.dp),
                         )
                         Text(
-                            text = "${climb.ascensionistCount ?: 0}",
+                            // With a large font the row runs out of the card at the count: thousands are enough then.
+                            text = (climb.ascensionistCount ?: 0).let { count ->
+                                if (count >= 10_000 && androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) {
+                                    stringResource(R.string.board_detail_count_thousands, count / 1000)
+                                } else "$count"
+                            },
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2522,6 +2671,18 @@ private fun ClimbDetailInfoSheet(
                 climb.method?.let { MethodBadge(it) }
                 if (climb.benchmarkDifficulty > 0.0) BenchmarkBadge()
             }
+            if (climb.brand == BoardBrand.SHINYWALL) {
+                // Categories and foot rules of a Shiny Wall catalogue route.
+                val tags = com.cruxcoach.domain.board.ShinyWallTag.presentTags(climb.hsm)
+                if (tags.isNotEmpty()) {
+                    Text(
+                        tags.sortedBy { it.ordinal }.map { stringResource(shinyWallTagLabel(it)) }.joinToString(" · "),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = OrangeAccent,
+                    )
+                }
+            }
             climb.faUsername?.let { username ->
                 val date = climb.faAt?.let(::formatAscentDate)
                 Text(
@@ -2616,7 +2777,7 @@ private fun ClimbDetailInfoSheet(
                         }
                     },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.testTag("boarddetail_sharing_debug"),
                 )
             }
@@ -2758,14 +2919,14 @@ private fun MethodBadge(method: String) {
         else -> return  // unknown token from a newer catalogue: say nothing
     }
     Surface(
-        color = OrangeAccent.copy(alpha = 0.12f),
+        color = CruxCoachDesign.colors.brandAccentContainer,
         shape = RoundedCornerShape(6.dp)
     ) {
         Text(
             stringResource(label),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            color = OrangeAccent,
+            color = CruxCoachDesign.colors.onBrandAccentContainer,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
         )
     }
@@ -2775,9 +2936,19 @@ private fun MethodBadge(method: String) {
 @Composable
 private fun MatchBadge(isNomatch: Boolean) {
     val color = if (isNomatch) ErrorRed else SuccessGreen
+    val containerColor = if (isNomatch) {
+        MaterialTheme.colorScheme.errorContainer
+    } else {
+        CruxCoachDesign.colors.positiveContainer
+    }
+    val labelColor = if (isNomatch) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        CruxCoachDesign.colors.onPositiveContainer
+    }
     val label = stringResource(if (isNomatch) R.string.board_detail_no_matching else R.string.board_detail_matching)
     Surface(
-        color = color.copy(alpha = 0.12f),
+        color = containerColor,
         shape = RoundedCornerShape(6.dp)
     ) {
         Row(
@@ -2790,7 +2961,7 @@ private fun MatchBadge(isNomatch: Boolean) {
                 label,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
-                color = color
+                color = labelColor
             )
         }
     }
@@ -2799,7 +2970,7 @@ private fun MatchBadge(isNomatch: Boolean) {
 @Composable
 private fun BenchmarkBadge() {
     Surface(
-        color = OrangeAccent.copy(alpha = 0.12f),
+        color = CruxCoachDesign.colors.brandAccentContainer,
         shape = RoundedCornerShape(6.dp)
     ) {
         Row(
@@ -2817,7 +2988,7 @@ private fun BenchmarkBadge() {
                 stringResource(R.string.board_detail_benchmark),
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
-                color = OrangeAccent
+                color = CruxCoachDesign.colors.onBrandAccentContainer
             )
         }
     }

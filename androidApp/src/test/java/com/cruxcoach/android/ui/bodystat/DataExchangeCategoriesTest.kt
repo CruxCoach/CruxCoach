@@ -13,9 +13,18 @@ class DataExchangeCategoriesTest {
                 Category.BOARD_LOGBOOK,
                 Category.CLIMB_LISTS,
                 Category.OWN_CLIMBS,
+                // 0.2.4: training, body measurements and fueling have real screens.
+                Category.TRAINING,
+                Category.BODY_STATS,
+                Category.FUEL,
+                // FEAT-072: injuries and the comeback diary, health data that is exported only when ticked.
+                Category.HEALTH,
             ),
             VISIBLE_CATEGORIES,
         )
+        assertEquals(setOf(Category.HEALTH), OPT_IN_CATEGORIES)
+        assertFalse(Category.HEALTH in DataExchangeState().exportCategories)
+        assertFalse(Category.HEALTH in Category.DEFAULTS)
     }
 
     @Test

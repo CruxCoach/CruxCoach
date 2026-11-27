@@ -65,6 +65,25 @@ class SessionSummaryBuilderTest {
     }
 
     @Test
+    fun `the end-of-session summary judges flashes by the logbook with its attempts`() {
+        // Tries on an earlier day, then a first-go send in this session: no flash,
+        // neither in the summary nor on its share card.
+        val logbook = listOf(
+            ascent(uuid = "old-bid", isSend = false, bidCount = 3L, climbedAt = "2026-02-01T18:00:00"),
+            ascent(uuid = "send-1", bidCount = 1L, climbedAt = "2026-03-05T18:00:00"),
+            ascent(uuid = "flash", climbUuid = "c-2", bidCount = 1L, climbedAt = "2026-03-05T18:10:00"),
+            ascent(uuid = "later", climbUuid = "c-3", bidCount = 1L, climbedAt = "2026-03-06T10:00:00"),
+        )
+        val summary = SessionSummaryBuilder.summaryOf(
+            logbook, "2026-03-05T17:00:00", "2026-03-05T19:00:00", zones, GradeScale.FRENCH,
+        )
+        assertEquals(2, summary.totalSends)
+        assertEquals(1, summary.flashCount)
+        assertEquals(1, summary.recap!!.flashes)
+        assertEquals(1, summary.recap!!.topClimbs.count { it.flash })
+    }
+
+    @Test
     fun `first-ever first-try send counts as a flash`() {
         val send = ascent(uuid = "send-1", bidCount = 1L)
         val summary = SessionSummaryBuilder.build(

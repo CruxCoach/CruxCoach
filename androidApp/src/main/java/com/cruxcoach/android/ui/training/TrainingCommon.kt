@@ -1,0 +1,577 @@
+package com.cruxcoach.android.ui.training
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.MonitorWeight
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Today
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.booleanResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.RestTimerBannerSlot
+import com.cruxcoach.athlete.catalog.EquipmentV2
+import com.cruxcoach.athlete.catalog.ExerciseCategoryV2
+import com.cruxcoach.athlete.catalog.LoadDomain
+import com.cruxcoach.athlete.logic.DayLoad
+import com.cruxcoach.athlete.logic.Units
+import com.cruxcoach.athlete.model.BodyMetric
+import com.cruxcoach.athlete.model.Grip
+import com.cruxcoach.athlete.model.InjuryRegion
+import com.cruxcoach.athlete.model.InjurySide
+import com.cruxcoach.athlete.model.Meal
+import com.cruxcoach.athlete.model.Routine
+import com.cruxcoach.athlete.model.SetType
+import com.cruxcoach.athlete.model.Side
+import com.cruxcoach.athlete.model.UnitSystem
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+/** Navigation targets of the training, body and fueling area. */
+object TrainingRoutes {
+    const val TODAY = "today"
+    const val EXERCISES = "exercises?pickFor={pickFor}"
+    fun exercises(pickForWorkout: String? = null) = if (pickForWorkout == null) "exercises" else "exercises?pickFor=$pickForWorkout"
+    const val EXERCISE_DETAIL = "exercise/{slug}"
+    fun exerciseDetail(slug: String) = "exercise/$slug"
+    const val WORKOUT = "workout"
+    const val WORKOUT_SUMMARY = "workout_summary/{workoutId}"
+    fun workoutSummary(id: String) = "workout_summary/$id"
+    const val ROUTINES = "routines"
+    const val TRAINING_HISTORY = "training_history"
+    const val BODY = "body"
+    const val FUEL = "fuel"
+    const val INJURIES = "injuries"
+    const val COMEBACK = "comeback/{injuryId}"
+    fun comeback(injuryId: String) = "comeback/$injuryId"
+    const val WEEKLY_REVIEW = "weekly_review"
+    const val ATHLETE_SETTINGS = "athlete_settings"
+    /** One page of the settings (overview → page). */
+    const val ATHLETE_SETTINGS_SECTION = "athlete_settings/{section}"
+    fun athleteSettings(section: String) = "athlete_settings/$section"
+    /** The nutrition page (gear on the nutrition screen). */
+    const val ATHLETE_SETTINGS_NUTRITION = "athlete_settings/nutrition"
+    const val CUSTOM_EXERCISE = "custom_exercise"
+    const val WORKOUT_PLAYER = "workout_player"
+    const val BENCHMARKS = "benchmarks"
+    const val WORKOUTS = "workouts"
+    const val STATS = "training_stats"
+    const val EXERCISE_STATS = "exercise_stats/{slug}"
+    fun exerciseStats(slug: String) = "exercise_stats/$slug"
+    /** routineId = own routine to edit; from = "builtin:<key>" or a slug list "ex:<slug>,<slug>" to start a new one from. */
+    const val ROUTINE_EDITOR = "routine_editor?routineId={routineId}&from={from}"
+    fun routineEditor(routineId: String? = null, from: String? = null): String = buildString {
+        append("routine_editor")
+        val q = listOfNotNull(routineId?.let { "routineId=" + android.net.Uri.encode(it) }, from?.let { "from=" + android.net.Uri.encode(it) })
+        if (q.isNotEmpty()) append("?" + q.joinToString("&"))
+    }
+    const val WEEK_PLAN = "training_week_plan"
+    // FEAT-071 coach
+    const val COACH_SETUP = "coach_setup"
+    const val BASICS = "training_basics"
+    const val CLIMBER_PROFILE = "climber_profile"
+    const val FORCE_GAUGE = "force_gauge"
+    const val CLIMBING_DAYS = "climbing_days"
+}
+
+/**
+ * The four tabs of the training area (UX round 2026-10-09): Today, Training
+ * (workouts and exercises), Nutrition and Progress (statistics and body).
+ */
+enum class TrainingTab(val route: String) {
+    TODAY(TrainingRoutes.TODAY),
+    WORKOUTS(TrainingRoutes.WORKOUTS),
+    FUEL(TrainingRoutes.FUEL),
+    STATS(TrainingRoutes.STATS),
+}
+
+/** Bottom bar of the training area; the board app keeps its own drawer navigation. */
+@Composable
+fun TrainingTabBar(selected: TrainingTab, onSelect: (TrainingTab) -> Unit) {
+    val labels = androidx.compose.ui.platform.LocalDensity.current.fontScale < 1.3f
+    NavigationBar {
+        TrainingTab.entries.forEach { tab ->
+            val (icon, label) = when (tab) {
+                TrainingTab.TODAY -> androidx.compose.material.icons.Icons.Default.Today to R.string.tr_tab_today
+                TrainingTab.WORKOUTS -> androidx.compose.material.icons.Icons.Default.FitnessCenter to R.string.tr_tab_training
+                TrainingTab.FUEL -> androidx.compose.material.icons.Icons.Default.Restaurant to R.string.tr_nav_fuel
+                TrainingTab.STATS -> androidx.compose.material.icons.Icons.Default.Insights to R.string.tr_tab_progress
+            }
+            NavigationBarItem(
+                selected = tab == selected,
+                onClick = { if (tab != selected) onSelect(tab) },
+                // Without a label the icon names the tab for screen readers.
+                icon = { Icon(icon, contentDescription = if (labels) null else stringResource(label)) },
+                // At a large font the labels do not fit ("Traini", "Ernäh", even the selected one): icons only.
+                label = if (labels) { { Text(stringResource(label), maxLines = 1) } } else null,
+                modifier = Modifier.testTag("training_tab_${tab.name.lowercase()}"),
+            )
+        }
+    }
+}
+
+/** The training area's snackbars: at a large font the action gets its own line ("Rückgängig" took half the width). */
+@Composable
+fun TrainingSnackbarHost(state: SnackbarHostState) {
+    val large = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f
+    SnackbarHost(state) { Snackbar(it, actionOnNewLine = large) }
+}
+
+/** Workouts and exercises are the two halves of the Training tab. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TrainingSwitch(exercises: Boolean, onWorkouts: () -> Unit, onExercises: () -> Unit) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        SegmentedButton(selected = !exercises, onClick = { if (exercises) onWorkouts() },
+            shape = SegmentedButtonDefaults.itemShape(0, 2), modifier = Modifier.testTag("training_switch_workouts")) {
+            Text(stringResource(R.string.tr_tab_workouts))
+        }
+        SegmentedButton(selected = exercises, onClick = { if (!exercises) onExercises() },
+            shape = SegmentedButtonDefaults.itemShape(1, 2), modifier = Modifier.testTag("training_switch_exercises")) {
+            Text(stringResource(R.string.tr_tab_exercises))
+        }
+    }
+}
+
+/** Language for catalogue texts: German UI → German texts, everything else English. */
+@Composable
+fun catalogLanguage(): String {
+    val locale = LocalConfiguration.current.locales.get(0) ?: Locale.getDefault()
+    return if (locale.language == "de") "de" else "en"
+}
+
+// ── Labels ───────────────────────────────────────────────────────────
+
+@Composable
+fun categoryLabel(c: ExerciseCategoryV2): String = stringResource(when (c) {
+    ExerciseCategoryV2.FINGER -> R.string.tr_cat_finger
+    ExerciseCategoryV2.PULL -> R.string.tr_cat_pull
+    ExerciseCategoryV2.PUSH -> R.string.tr_cat_push
+    ExerciseCategoryV2.ANTAGONIST -> R.string.tr_cat_antagonist
+    ExerciseCategoryV2.CORE -> R.string.tr_cat_core
+    ExerciseCategoryV2.LEGS -> R.string.tr_cat_legs
+    ExerciseCategoryV2.MOBILITY -> R.string.tr_cat_mobility
+    ExerciseCategoryV2.WARMUP -> R.string.tr_cat_warmup
+    ExerciseCategoryV2.POWER -> R.string.tr_cat_power
+    ExerciseCategoryV2.ENDURANCE -> R.string.tr_cat_endurance
+    ExerciseCategoryV2.TECHNIQUE -> R.string.tr_cat_technique
+})
+
+@Composable
+fun equipmentLabel(e: EquipmentV2): String = stringResource(when (e) {
+    EquipmentV2.NONE -> R.string.tr_eq_none
+    EquipmentV2.MAT -> R.string.tr_eq_mat
+    EquipmentV2.HANGBOARD -> R.string.tr_eq_hangboard
+    EquipmentV2.PICKUP_BLOCK -> R.string.tr_eq_pickup_block
+    EquipmentV2.PICKUP_BLOCK_PAIR -> R.string.tr_eq_pickup_block_pair
+    EquipmentV2.PULL_UP_BAR -> R.string.tr_eq_pull_up_bar
+    EquipmentV2.RINGS -> R.string.tr_eq_rings
+    EquipmentV2.DUMBBELL -> R.string.tr_eq_dumbbell
+    EquipmentV2.KETTLEBELL -> R.string.tr_eq_kettlebell
+    EquipmentV2.BARBELL -> R.string.tr_eq_barbell
+    EquipmentV2.PLATES -> R.string.tr_eq_plates
+    EquipmentV2.BANDS -> R.string.tr_eq_bands
+    EquipmentV2.BENCH -> R.string.tr_eq_bench
+    EquipmentV2.BOX -> R.string.tr_eq_box
+    EquipmentV2.CABLE -> R.string.tr_eq_cable
+    EquipmentV2.WALL -> R.string.tr_eq_wall
+    EquipmentV2.BOARD -> R.string.tr_eq_board
+    EquipmentV2.CAMPUS_BOARD -> R.string.tr_eq_campus_board
+    EquipmentV2.FOAM_ROLLER -> R.string.tr_eq_foam_roller
+    EquipmentV2.PULLEY -> R.string.tr_eq_pulley
+    EquipmentV2.DIP_BARS -> R.string.tr_eq_dip_bars
+})
+
+@Composable
+fun domainLabel(d: LoadDomain): String = stringResource(when (d) {
+    LoadDomain.FINGER -> R.string.tr_dom_finger
+    LoadDomain.WRIST -> R.string.tr_dom_wrist
+    LoadDomain.ELBOW -> R.string.tr_dom_elbow
+    LoadDomain.SHOULDER -> R.string.tr_dom_shoulder
+    LoadDomain.SKIN -> R.string.tr_dom_skin
+    LoadDomain.LOWER_BODY -> R.string.tr_dom_lower_body
+    LoadDomain.BACK -> R.string.tr_dom_back
+    LoadDomain.SYSTEMIC -> R.string.tr_dom_systemic
+})
+
+@Composable
+fun gripLabel(g: Grip): String = stringResource(when (g) {
+    Grip.HALF_CRIMP -> R.string.tr_grip_half_crimp
+    Grip.OPEN_HAND -> R.string.tr_grip_open_hand
+    Grip.FULL_CRIMP -> R.string.tr_grip_full_crimp
+    Grip.THREE_FINGER_DRAG -> R.string.tr_grip_three_finger_drag
+    Grip.FRONT_TWO -> R.string.tr_grip_front_two
+    Grip.MIDDLE_TWO -> R.string.tr_grip_middle_two
+    Grip.PINCH -> R.string.tr_grip_pinch
+    Grip.SLOPER -> R.string.tr_grip_sloper
+    Grip.JUG -> R.string.tr_grip_jug
+})
+
+@Composable
+fun regionLabel(r: InjuryRegion): String = stringResource(when (r) {
+    InjuryRegion.FINGER -> R.string.tr_region_finger
+    InjuryRegion.WRIST -> R.string.tr_region_wrist
+    InjuryRegion.ELBOW -> R.string.tr_region_elbow
+    InjuryRegion.SHOULDER -> R.string.tr_region_shoulder
+    InjuryRegion.BACK -> R.string.tr_region_back
+    InjuryRegion.HIP -> R.string.tr_region_hip
+    InjuryRegion.KNEE -> R.string.tr_region_knee
+    InjuryRegion.ANKLE -> R.string.tr_region_ankle
+    InjuryRegion.SKIN -> R.string.tr_region_skin
+    InjuryRegion.OTHER -> R.string.tr_region_other
+})
+
+@Composable
+fun sideLabel(s: Side): String = stringResource(if (s == Side.LEFT) R.string.tr_side_left else R.string.tr_side_right)
+
+@Composable
+fun injurySideLabel(s: InjurySide): String = stringResource(when (s) {
+    InjurySide.LEFT -> R.string.tr_side_left
+    InjurySide.RIGHT -> R.string.tr_side_right
+    InjurySide.BOTH -> R.string.tr_side_both
+})
+
+/**
+ * An injured region with its side inside a sentence or a list: "left wrist" in English, "Handgelenk links" in German
+ * (RC1 walk: "Wrist Left, Elbow Right", "Ellbogen Rechts"). English writes the region in lower case there; a list
+ * that opens a line starts it with a capital itself.
+ */
+@Composable
+fun injuryPlaceLabel(region: InjuryRegion, side: InjurySide?): String {
+    val label = regionLabel(region)
+    val inText = if (booleanResource(R.bool.tr_region_lower_case_in_text)) label.lowercase(Locale.ROOT) else label
+    return when (side) {
+        null -> inText
+        InjurySide.LEFT -> stringResource(R.string.tr_region_side_left, inText)
+        InjurySide.RIGHT -> stringResource(R.string.tr_region_side_right, inText)
+        InjurySide.BOTH -> stringResource(R.string.tr_region_side_both, inText)
+    }
+}
+
+@Composable
+fun metricLabel(m: BodyMetric): String = stringResource(when (m) {
+    BodyMetric.WEIGHT -> R.string.tr_metric_weight
+    BodyMetric.BODY_FAT -> R.string.tr_metric_body_fat
+    BodyMetric.HEIGHT -> R.string.tr_metric_height
+    BodyMetric.ARM_SPAN -> R.string.tr_metric_arm_span
+    BodyMetric.FOREARM -> R.string.tr_metric_forearm
+    BodyMetric.UPPER_ARM -> R.string.tr_metric_upper_arm
+    BodyMetric.CHEST -> R.string.tr_metric_chest
+    BodyMetric.WAIST -> R.string.tr_metric_waist
+    BodyMetric.HIPS -> R.string.tr_metric_hips
+    BodyMetric.THIGH -> R.string.tr_metric_thigh
+    BodyMetric.CALF -> R.string.tr_metric_calf
+    BodyMetric.NECK -> R.string.tr_metric_neck
+})
+
+@Composable
+fun mealLabel(m: Meal): String = stringResource(when (m) {
+    Meal.BREAKFAST -> R.string.tr_meal_breakfast
+    Meal.LUNCH -> R.string.tr_meal_lunch
+    Meal.DINNER -> R.string.tr_meal_dinner
+    Meal.SNACK -> R.string.tr_meal_snack
+    Meal.PRE_TRAINING -> R.string.tr_meal_pre_training
+    Meal.POST_TRAINING -> R.string.tr_meal_post_training
+})
+
+@Composable
+fun dayLoadLabel(d: DayLoad): String = stringResource(when (d) {
+    DayLoad.REST -> R.string.tr_dayload_rest
+    DayLoad.LIGHT -> R.string.tr_dayload_light
+    DayLoad.MODERATE -> R.string.tr_dayload_moderate
+    DayLoad.HARD -> R.string.tr_dayload_hard
+    DayLoad.VERY_HARD -> R.string.tr_dayload_very_hard
+})
+
+@Composable
+fun setTypeLabel(t: SetType): String = stringResource(when (t) {
+    SetType.WARMUP -> R.string.tr_settype_warmup
+    SetType.WORK -> R.string.tr_settype_work
+    SetType.TEST -> R.string.tr_settype_test
+})
+
+/** Built-in routines carry a key; their names live in resources. */
+@Composable
+fun routineName(r: Routine): String = builtinRoutineText(r.builtinKey)?.first?.let { stringResource(it) } ?: r.name
+
+@Composable
+fun routineDescription(r: Routine): String? = builtinRoutineText(r.builtinKey)?.second?.let { stringResource(it) } ?: r.notes
+
+/** Name resource of a built-in routine outside composition (notifications). */
+fun builtinRoutineNameRes(key: String?): Int? = builtinRoutineText(key)?.first
+
+private fun builtinRoutineText(key: String?): Pair<Int, Int>? = when (key) {
+    "warmup_board" -> R.string.tr_routine_warmup_board to R.string.tr_routine_warmup_board_desc
+    "finger_basics" -> R.string.tr_routine_finger_basics to R.string.tr_routine_finger_basics_desc
+    "injury_one_arm" -> R.string.tr_routine_injury_one_arm to R.string.tr_routine_injury_one_arm_desc
+    "pull_antagonist" -> R.string.tr_routine_pull_antagonist to R.string.tr_routine_pull_antagonist_desc
+    "antagonist_15" -> R.string.tr_routine_antagonist_15 to R.string.tr_routine_antagonist_15_desc
+    "legs_basics" -> R.string.tr_routine_legs_basics to R.string.tr_routine_legs_basics_desc
+    "core_climber" -> R.string.tr_routine_core_climber to R.string.tr_routine_core_climber_desc
+    "mobility_10" -> R.string.tr_routine_mobility_10 to R.string.tr_routine_mobility_10_desc
+    "baseline_tests" -> R.string.tr_routine_baseline_tests to R.string.tr_routine_baseline_tests_desc
+    else -> null
+}
+
+// ── Formatting ───────────────────────────────────────────────────────
+
+/** "12.5", "-10", "7" — at most [decimals] decimals, trailing zeros trimmed. */
+fun formatNumber(value: Double, decimals: Int = 1): String {
+    val factor = if (decimals <= 0) 1.0 else Math.pow(10.0, decimals.toDouble())
+    val rounded = (value * factor).roundToInt() / factor
+    if (abs(rounded - rounded.roundToInt()) < 1e-9) return rounded.roundToInt().toString()
+    val sep = java.text.DecimalFormatSymbols.getInstance(Locale.getDefault()).decimalSeparator
+    return String.format(Locale.getDefault(), "%.${decimals}f", rounded).trimEnd('0').trimEnd(sep)
+}
+
+/** Plate steps like 1.25 kg need two decimals; body weights and loads read best with one. */
+internal fun massDecimals(v: Double): Int {
+    val quarter = abs(v * 4 - Math.round(v * 4)) < 1e-6
+    val tenth = abs(v * 10 - Math.round(v * 10)) < 1e-6
+    return if (quarter && !tenth) 2 else 1
+}
+
+@Composable
+fun formatMass(kg: Double, units: UnitSystem, signed: Boolean = false): String {
+    val v = Units.massToDisplay(kg, units)
+    val text = (if (signed && v > 0) "+" else "") + formatNumber(v, massDecimals(v))
+    return stringResource(if (units == UnitSystem.IMPERIAL) R.string.tr_format_lb else R.string.tr_format_kg, text)
+}
+
+@Composable
+fun formatLength(cm: Double, units: UnitSystem): String {
+    val v = Units.lengthToDisplay(cm, units)
+    return stringResource(if (units == UnitSystem.IMPERIAL) R.string.tr_format_in else R.string.tr_format_cm, formatNumber(v))
+}
+
+fun formatClock(seconds: Int): String {
+    val s = seconds.coerceAtLeast(0)
+    return if (s >= 3600) String.format(Locale.ROOT, "%d:%02d:%02d", s / 3600, (s / 60) % 60, s % 60)
+    else String.format(Locale.ROOT, "%d:%02d", s / 60, s % 60)
+}
+
+/** Parses user input with comma or dot decimals; null when empty/invalid. */
+fun parseDecimal(text: String): Double? = text.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() }
+
+// ── Building blocks ──────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TrainingScaffold(
+    title: String,
+    onBack: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit = {},
+    floatingActionButton: @Composable () -> Unit = {},
+    snackbarHost: @Composable () -> Unit = {},
+    /** The guided player shows its own rest screen; the global banner would repeat it. */
+    showRestBanner: Boolean = true,
+    bottomBar: @Composable () -> Unit = {},
+    /** Fixed under the app bar, e.g. the Workouts | Exercises switch. */
+    subHeader: @Composable () -> Unit = {},
+    content: @Composable (PaddingValues) -> Unit,
+) {
+    Scaffold(
+        modifier = modifier,
+        topBar = {
+            Column {
+                TopAppBar(
+                    // One line with "…": at 320 dp and the largest font a clipped title read "Fingerkraf" (UI pass 0.2.5).
+                    title = { Text(title, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                    navigationIcon = {
+                        if (onBack != null) {
+                            IconButton(onClick = onBack, modifier = Modifier.testTag("training_back")) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                            }
+                        }
+                    },
+                    actions = actions,
+                )
+                subHeader()
+                if (showRestBanner) RestTimerBannerSlot()
+            }
+        },
+        floatingActionButton = floatingActionButton,
+        snackbarHost = snackbarHost,
+        bottomBar = bottomBar,
+        content = content,
+    )
+}
+
+@Composable
+fun SectionTitle(
+    text: String,
+    modifier: Modifier = Modifier,
+    keepBeside: Boolean = false,
+    trailing: @Composable RowScope.() -> Unit = {},
+) {
+    // The action below the title when both do not fit in a row ("Mein/e Work/outs" at 320 dp and the largest font);
+    // an ⓘ stays beside it ([keepBeside]).
+    LabelBesideOrAbove(
+        modifier = modifier.padding(top = 16.dp, bottom = 8.dp),
+        keepBeside = keepBeside,
+        label = { Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) },
+        stepper = trailing,
+    )
+}
+
+/**
+ * Stat tiles side by side, one under the other at a large font: three in a row broke their labels letter by letter at
+ * 320 dp and the largest font (UI pass 0.2.5). [content] gets each tile's modifier from its weight in the row.
+ */
+@Composable
+fun TileRow(content: @Composable (weight: (Float) -> Modifier) -> Unit) {
+    if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { content { Modifier.fillMaxWidth() } }
+    } else Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Side by side, all as tall as the tallest.
+        content { w -> Modifier.weight(w).fillMaxHeight() }
+    }
+}
+
+@Composable
+fun StatTile(label: String, value: String, modifier: Modifier = Modifier, supporting: String? = null) {
+    Card(modifier) {
+        Column(Modifier.padding(12.dp)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            if (supporting != null) {
+                Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+fun EmptyHint(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        modifier = modifier.fillMaxWidth().padding(24.dp),
+        textAlign = TextAlign.Center,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** "Ring rows instead of pull-ups" / "Without plank": one choice the athlete changed or kept (comparison review #3). */
+@Composable
+internal fun keptChangeText(replaced: String, chosen: String?, catalog: com.cruxcoach.athlete.catalog.ExerciseCatalog, language: String): String =
+    if (chosen != null) stringResource(R.string.trk_instead, catalog.fallbackFor(chosen).name(language), catalog.fallbackFor(replaced).name(language))
+    else stringResource(R.string.trk_without, catalog.fallbackFor(replaced).name(language))
+
+/**
+ * The label beside its stepper (or badge, value, action) when it fits there without breaking a word and, at a large
+ * font, without becoming a narrow column; above it otherwise, with the stepper at the end below: "Zusatzgewicht" or
+ * "Gewicht pro Hantel" next to two 56 dp buttons broke mid-word at 360 dp, and a title beside a badge or a text button
+ * broke into single letters at 320 dp and the largest font (UI pass 0.2.5). Below a font scale of 1.3 the label wraps
+ * beside the stepper as in a Row.
+ *
+ * [growth] is how much taller than on one line the label may get beside the stepper at a large font: 2 lets one line
+ * wrap to two, 1.5 lets a title with one line under it grow by one line, 1 keeps it on one line. [keepBeside] keeps an
+ * icon (ⓘ, a menu) beside its label, which wraps next to it: below, it looked lost.
+ */
+@Composable
+internal fun LabelBesideOrAbove(
+    label: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    growth: Float = 2f,
+    keepBeside: Boolean = false,
+    stepper: @Composable RowScope.() -> Unit,
+) {
+    val row: @Composable () -> Unit = { Row(verticalAlignment = Alignment.CenterVertically, content = stepper) }
+    val policy = remember(growth, keepBeside) { LabelBesideOrAbovePolicy(growth, keepBeside) }
+    androidx.compose.ui.layout.Layout(contents = listOf(label, row), modifier = modifier.fillMaxWidth(), measurePolicy = policy)
+}
+
+private class LabelBesideOrAbovePolicy(private val growth: Float, private val keepBeside: Boolean) :
+    androidx.compose.ui.layout.MultiContentMeasurePolicy {
+    private val INF = androidx.compose.ui.unit.Constraints.Infinity
+
+    /**
+     * Beside when the label fits next to the stepper on one line, or wraps there without breaking a word (at a large
+     * font to at most [growth] times its height on one line); an unbounded width always fits. Text with a line limit
+     * measures only up to its limit, so labels that may wrap far have none.
+     */
+    private fun androidx.compose.ui.unit.Density.beside(label: androidx.compose.ui.layout.IntrinsicMeasurable, stepperWidth: Int, width: Int): Boolean {
+        if (width == INF || keepBeside) return true
+        val room = width - stepperWidth
+        if (room <= 0) return false
+        if (label.maxIntrinsicWidth(INF) <= room) return true
+        if (label.minIntrinsicWidth(INF) > room) return false
+        if (fontScale < 1.3f) return true
+        // An eighth on top covers rounding: two lines measure a pixel more than twice one.
+        val oneLine = label.maxIntrinsicHeight(INF)
+        return label.maxIntrinsicHeight(room) <= oneLine * growth + oneLine / 8
+    }
+
+    override fun androidx.compose.ui.layout.MeasureScope.measure(
+        measurables: List<List<androidx.compose.ui.layout.Measurable>>,
+        constraints: androidx.compose.ui.unit.Constraints,
+    ): androidx.compose.ui.layout.MeasureResult {
+        val s = measurables[1].first().measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val l = measurables[0].first()
+        val bounded = constraints.hasBoundedWidth
+        // placeRelative: in a right-to-left language the label starts on the right and the stepper sits on the left.
+        return if (beside(l, s.width, if (bounded) constraints.maxWidth else INF)) {
+            val lp = l.measure(if (bounded) androidx.compose.ui.unit.Constraints(maxWidth = (constraints.maxWidth - s.width).coerceAtLeast(0))
+                else androidx.compose.ui.unit.Constraints())
+            val width = if (bounded) constraints.maxWidth else lp.width + s.width
+            // A minimum height (a 48 dp row) centres the content, as a Row would.
+            val height = maxOf(lp.height, s.height, constraints.minHeight)
+            layout(width, height) {
+                lp.placeRelative(0, (height - lp.height) / 2)
+                s.placeRelative(width - s.width, (height - s.height) / 2)
+            }
+        } else {
+            val width = constraints.maxWidth
+            val lp = l.measure(androidx.compose.ui.unit.Constraints(maxWidth = width))
+            val top = maxOf(0, (constraints.minHeight - lp.height - s.height) / 2)
+            layout(width, maxOf(lp.height + s.height, constraints.minHeight)) {
+                lp.placeRelative(0, top)
+                s.placeRelative(width - s.width, top + lp.height)
+            }
+        }
+    }
+
+    // The card around it sizes its accent bar from intrinsic heights: answer with the same choice as measure().
+    private fun androidx.compose.ui.unit.Density.height(measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, width: Int): Int {
+        val l = measurables[0].first()
+        val s = measurables[1].first()
+        val sw = s.maxIntrinsicWidth(INF)
+        val sh = s.maxIntrinsicHeight(sw)
+        return if (beside(l, sw, width)) maxOf(l.maxIntrinsicHeight(if (width == INF) INF else (width - sw).coerceAtLeast(0)), sh)
+            else l.maxIntrinsicHeight(width) + sh
+    }
+
+    override fun androidx.compose.ui.layout.IntrinsicMeasureScope.minIntrinsicHeight(
+        measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, width: Int,
+    ): Int = height(measurables, width)
+
+    override fun androidx.compose.ui.layout.IntrinsicMeasureScope.maxIntrinsicHeight(
+        measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, width: Int,
+    ): Int = height(measurables, width)
+
+    // Stacked, the wider of the two; kept beside, the label's narrowest plus the stepper.
+    override fun androidx.compose.ui.layout.IntrinsicMeasureScope.minIntrinsicWidth(
+        measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, height: Int,
+    ): Int = if (keepBeside) measurables[0].first().minIntrinsicWidth(height) + measurables[1].first().maxIntrinsicWidth(height)
+        else maxOf(measurables[0].first().minIntrinsicWidth(height), measurables[1].first().minIntrinsicWidth(height))
+
+    override fun androidx.compose.ui.layout.IntrinsicMeasureScope.maxIntrinsicWidth(
+        measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, height: Int,
+    ): Int = measurables[0].first().maxIntrinsicWidth(height) + measurables[1].first().maxIntrinsicWidth(height)
+}

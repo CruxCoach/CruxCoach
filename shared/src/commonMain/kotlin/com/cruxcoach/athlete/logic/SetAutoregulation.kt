@@ -1,0 +1,196 @@
+package com.cruxcoach.athlete.logic
+
+import com.cruxcoach.athlete.catalog.ExerciseDefinition
+import com.cruxcoach.athlete.catalog.ExerciseKind
+import com.cruxcoach.athlete.catalog.LoadMode
+import com.cruxcoach.athlete.model.ExerciseSet
+import com.cruxcoach.athlete.model.SetType
+import kotlin.math.abs
+import kotlin.math.max
+
+/** Why the rest of a block changed after a set. */
+enum class AdjustReason {
+    /** Fewer reps than planned. */
+    MISSED_REPS,
+    /** Reps made, nothing left in the tank. */
+    NO_RESERVE,
+    /** Clearly more in the tank than the plan meant. */
+    BIG_RESERVE,
+    /** The hold ended before the planned time. */
+    HOLD_FAILED,
+    /** The hold had several seconds to spare. */
+    HOLD_EASY,
+}
+
+/**
+ * Change for the remaining planned sets of one block (same exercise, same
+ * side): added/lifted load, reps or hold time. All three are deltas against
+ * the plan, so applying the same adjustment twice must be avoided — callers
+ * pass what they already applied (see [SetAutoregulation.difference]).
+ */
+data class SetAdjustment(
+    val loadDeltaKg: Double = 0.0,
+    val repsDelta: Int = 0,
+    val durationDeltaS: Double = 0.0,
+    val reason: AdjustReason,
+) {
+    val isZero: Boolean get() = abs(loadDeltaKg) < 1e-9 && repsDelta == 0 && abs(durationDeltaS) < 1e-9
+}
+
+/**
+ * Set-to-set autoregulation for climbers: after a completed
+ * work set the next sets of the same block move by one small step.
+ *
+ * - Reps (with or without load): missed reps or no reserve (RIR 0) → one
+ *   weight step less, or one rep less without load; a big reserve (the
+ *   athlete's "3+") with all reps made → one step more.
+ * - Weighted holds: a hold that ends clearly early → about 5 % less total
+ *   load (at least one step); 3+ seconds to spare → one step more. RIR 0 on a
+ *   hold is the intended effort for max hangs and changes nothing.
+ * - Body-weight holds: the time moves instead of the load.
+ *
+ * Increases never go beyond the performance-value prescription plus one step
+ * ([ceilingKg]); warm-ups, tests, intervals and climbing never change. Lunges,
+ * sit-ups and other body-weight work that cannot be assisted never go below
+ * body weight: from there a repetition comes off instead.
+ *
+ * Feeling out ([feelOut], the first session with an exercise whose start load
+ * is only a guess): loads move by about 10 % instead of one step, both ways,
+ * and a big reserve may go beyond the guess – two sets find the real load
+ * whether the guess was too high or too low.
+ */
+object SetAutoregulation {
+
+    /** The reserve answer the UI offers as "3+" counts as a big reserve. */
+    const val BIG_RESERVE = 3
+    private const val HOLD_TOLERANCE = 0.9
+    private const val HOLD_LOAD_SHARE = 0.05
+    private const val MIN_HOLD_S = 3.0
+    private const val EASY_HOLD_STEP_S = 2.0
+    /** Share of the load one feeling-out step moves. */
+    const val FEEL_OUT_SHARE = 0.10
+
+    fun adjust(
+        def: ExerciseDefinition,
+        done: ExerciseSet,
+        nextPlanned: ExerciseSet?,
+        incrementKg: Double,
+        ceilingKg: Double? = null,
+        feelOut: Boolean = false,
+    ): SetAdjustment? {
+        if (!done.isCompleted || done.setType != SetType.WORK) return null
+        val increment = incrementKg.takeIf { it > 0 } ?: 1.0
+        val loaded = def.load == LoadMode.EXTERNAL || def.load == LoadMode.BODYWEIGHT_PLUS
+        // Feeling out a guessed start load: about 10 % of the lifted load per set, never less than one step.
+        val feel = feelOut && loaded && done.loadKg != null
+        val step = if (feel) max(increment, StrengthMath.roundTo(abs(done.loadKg!!) * FEEL_OUT_SHARE, increment)) else increment
+        val ceiling = if (feel) null else ceilingKg
+        return when (def.kind) {
+            ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> reps(def, done, nextPlanned, loaded, step, ceiling)
+            ExerciseKind.HANG -> hold(def, done, nextPlanned, loaded, step, ceiling, feel)
+            ExerciseKind.TIME, ExerciseKind.INTERVAL, ExerciseKind.CLIMB -> null
+        }
+    }
+
+    /**
+     * Body-weight work that no band or pulley makes lighter (lunges, sit-ups): its added load ends at zero, here as in
+     * the plan ([LoadPrescriber.assistable]). The training simulation found walking lunges going to "−1 kg", "−2 kg",
+     * "−3 kg" set by set (2026-11-22).
+     */
+    private fun unassisted(def: ExerciseDefinition): Boolean = def.load == LoadMode.BODYWEIGHT_PLUS && !LoadPrescriber.assistable(def)
+
+    private fun reps(def: ExerciseDefinition, done: ExerciseSet, next: ExerciseSet?, loaded: Boolean, step: Double, ceilingKg: Double?): SetAdjustment? {
+        val target = done.targetReps
+        val achieved = done.reps
+        val missed = target != null && achieved != null && achieved < target
+        val rir = done.rir
+        return when {
+            missed || rir == 0 -> {
+                val reason = if (missed) AdjustReason.MISSED_REPS else AdjustReason.NO_RESERVE
+                // What can come off: a step, or what is left above body weight where nothing can assist. Read from the
+                // set just done: the next sets may hold this very step already, when the reserve answer comes in after it.
+                val drop = if (unassisted(def)) minOf(step, max(0.0, done.loadKg ?: 0.0)) else step
+                if (loaded && done.loadKg != null && drop > 1e-9) SetAdjustment(loadDeltaKg = -drop, reason = reason)
+                else {
+                    val plannedReps = next?.targetReps ?: target ?: return null
+                    if (plannedReps <= 1) null else SetAdjustment(repsDelta = -1, reason = reason)
+                }
+            }
+            rir != null && rir >= BIG_RESERVE && (target == null || (achieved ?: 0) >= target) -> {
+                if (loaded && done.loadKg != null) increase(next, step, ceilingKg, AdjustReason.BIG_RESERVE)
+                else SetAdjustment(repsDelta = 1, reason = AdjustReason.BIG_RESERVE)
+            }
+            else -> null
+        }
+    }
+
+    private fun hold(def: ExerciseDefinition, done: ExerciseSet, next: ExerciseSet?, loaded: Boolean, step: Double, ceilingKg: Double?, feel: Boolean = false): SetAdjustment? {
+        val target = done.targetDurationS ?: return null
+        val held = done.durationS ?: return null
+        val failed = held < target * HOLD_TOLERANCE
+        val easy = !failed && (done.rir ?: 0) >= BIG_RESERVE
+        return when {
+            failed && loaded && done.loadKg != null -> {
+                // Per dumbbell for a pair: the drop applies to the number the athlete loads.
+                val total = StrengthMath.effectiveLoad(def, done.loadKg, done.bodyweightKg)
+                    ?.let { if (def.load == LoadMode.EXTERNAL) LoadRules.logged(def, it) else it } ?: done.loadKg
+                // Feeling out drops the full step (about 10 %); otherwise about 5 % of the total load.
+                val drop = if (feel) step else max(step, StrengthMath.roundTo(total * HOLD_LOAD_SHARE, step))
+                // Lifted weight cannot go below zero; added weight may turn into assistance.
+                val limited = if (def.load == LoadMode.EXTERNAL) minOf(drop, max(0.0, (next?.targetLoadKg ?: done.loadKg))) else drop
+                if (limited <= 0.0) null else SetAdjustment(loadDeltaKg = -limited, reason = AdjustReason.HOLD_FAILED)
+            }
+            failed -> {
+                val planned = next?.targetDurationS ?: target
+                val cut = max(1.0, target - held)
+                val delta = -minOf(cut, planned - MIN_HOLD_S)
+                if (delta >= 0.0) null else SetAdjustment(durationDeltaS = delta, reason = AdjustReason.HOLD_FAILED)
+            }
+            easy && loaded && done.loadKg != null -> increase(next, step, ceilingKg, AdjustReason.HOLD_EASY)
+            easy -> SetAdjustment(durationDeltaS = EASY_HOLD_STEP_S, reason = AdjustReason.HOLD_EASY)
+            else -> null
+        }
+    }
+
+    private fun increase(next: ExerciseSet?, step: Double, ceilingKg: Double?, reason: AdjustReason): SetAdjustment? {
+        val planned = next?.targetLoadKg ?: next?.loadKg
+        if (ceilingKg != null && planned != null && planned + step > ceilingKg + 1e-9) return null
+        return SetAdjustment(loadDeltaKg = step, reason = reason)
+    }
+
+    /** What still has to be applied when [previous] was applied for the same set already. */
+    fun difference(current: SetAdjustment?, previous: SetAdjustment?): SetAdjustment? {
+        if (previous == null) return current
+        val reason = current?.reason ?: previous.reason
+        val d = SetAdjustment(
+            loadDeltaKg = (current?.loadDeltaKg ?: 0.0) - previous.loadDeltaKg,
+            repsDelta = (current?.repsDelta ?: 0) - previous.repsDelta,
+            durationDeltaS = (current?.durationDeltaS ?: 0.0) - previous.durationDeltaS,
+            reason = reason,
+        )
+        return d.takeUnless { it.isZero }
+    }
+
+    /**
+     * Applies [delta] to one planned set: target and the prefilled value move
+     * together, so the set still counts as untouched by the athlete.
+     */
+    fun apply(def: ExerciseDefinition, set: ExerciseSet, delta: SetAdjustment): ExerciseSet {
+        val minLoad = if (def.load == LoadMode.EXTERNAL || unassisted(def)) 0.0 else Double.NEGATIVE_INFINITY
+        fun load(v: Double?) = v?.let { (it + delta.loadDeltaKg).coerceAtLeast(minLoad) }
+        fun reps(v: Int?) = v?.let { (it + delta.repsDelta).coerceAtLeast(1) }
+        fun secs(v: Double?) = v?.let { (it + delta.durationDeltaS).coerceAtLeast(MIN_HOLD_S) }
+        return set.copy(
+            targetLoadKg = load(set.targetLoadKg), loadKg = load(set.loadKg),
+            targetReps = reps(set.targetReps), reps = reps(set.reps),
+            targetDurationS = secs(set.targetDurationS), durationS = secs(set.durationS),
+        )
+    }
+
+    /** A planned set the athlete has not edited yet: prefilled values still equal the plan. */
+    fun untouched(set: ExerciseSet): Boolean =
+        !set.isCompleted &&
+            (set.loadKg ?: 0.0) == (set.targetLoadKg ?: 0.0) &&
+            (set.reps == null || set.targetReps == null || set.reps == set.targetReps) &&
+            (set.durationS == null || set.targetDurationS == null || set.durationS == set.targetDurationS)
+}

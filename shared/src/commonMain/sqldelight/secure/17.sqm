@@ -1,0 +1,18 @@
+-- Migration 17 → 18: spray walls (FEAT-078) remember what is still to send or
+-- take back. Purely additive.
+--
+-- head_pending: a published wall's name, angle and gym are in its head event.
+-- When only they change, the head goes out on its own; head_pending keeps that
+-- until a relay takes it, also across a restart. NULL = nothing to send;
+-- otherwise a counter that rises with every such change, so a head that went
+-- out clears only the change it was built from.
+--
+-- withdraw_started: a withdrawal is under way, or a relay took a tombstone of
+-- one that did not finish (a photo left on its server, a refused signature). It
+-- is set before the first tombstone goes out, so a withdrawal cut off midway
+-- keeps it, and cleared when no relay took anything. While it is set the relays
+-- may no longer show the wall, so nothing of it is published until the
+-- withdrawal is done. NULL = none; otherwise when it started (ms).
+
+ALTER TABLE spray_wall ADD COLUMN head_pending INTEGER;
+ALTER TABLE spray_wall ADD COLUMN withdraw_started INTEGER;

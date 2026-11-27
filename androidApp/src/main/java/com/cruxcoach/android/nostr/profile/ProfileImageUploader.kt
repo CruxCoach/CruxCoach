@@ -36,7 +36,8 @@ class ProfileImageUploader @Inject constructor(
 
     sealed class Result {
         data class Success(val url: String) : Result()
-        data class Failure(val message: String) : Result()
+        /** [authFailed]: signing the upload authorisation failed or was declined (no server was tried). */
+        data class Failure(val message: String, val authFailed: Boolean = false) : Result()
     }
 
     /**
@@ -45,12 +46,15 @@ class ProfileImageUploader @Inject constructor(
      * idempotency: if the user re-uploads the identical image, every
      * Blossom server happily returns the same hash.
      *
-     * Default [servers] are the same two we use for backup blobs;
-     * `image/jpeg` flies on both per BUD-01 conformance.
+     * Default [servers] are the ones backup blobs go to
+     * ([BlossomUploader.DEFAULT_SERVERS]); each of them takes `image/jpeg`
+     * and serves it under the bare hash, which the returned address relies on.
      */
     suspend fun upload(
         blob: ByteArray,
         servers: List<String> = BlossomUploader.DEFAULT_SERVERS,
+        /** What the signed upload authorisation says the blob is. */
+        purpose: String = "CruxCoach profile image upload",
     ): Result {
         require(servers.isNotEmpty()) { "No Blossom servers configured" }
         val sha256 = sha256Hex(blob)
@@ -58,11 +62,11 @@ class ProfileImageUploader @Inject constructor(
             blossomUploader.blossomAuthHeader(
                 action = "upload",
                 sha256 = sha256,
-                content = "CruxCoach profile image upload",
+                content = purpose,
             )
         } catch (e: Exception) {
             Log.w(TAG, "Auth-event signing failed", e)
-            return Result.Failure("auth: ${e.message ?: e.javaClass.simpleName}")
+            return Result.Failure("auth: ${e.message ?: e.javaClass.simpleName}", authFailed = true)
         }
 
         // Try servers in order until one accepts. Early-return on first

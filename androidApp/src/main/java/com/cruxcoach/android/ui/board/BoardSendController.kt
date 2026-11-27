@@ -21,6 +21,7 @@ import com.cruxcoach.android.ble.hasCompleteQuantumLedMapping
 import com.cruxcoach.android.ble.hasConfirmableQuantumDiodeCount
 import com.cruxcoach.android.ble.matchesQuantumPlayers
 import com.cruxcoach.android.ble.planKey
+import com.cruxcoach.android.ble.removePaintBoxLayers
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.android.data.SessionQueueManager
@@ -34,11 +35,13 @@ import com.cruxcoach.android.ui.settings.boardSizeMismatch
 import com.cruxcoach.android.ui.settings.resolveBoardConfigurationMismatch
 import com.cruxcoach.util.DateTimeUtil
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.ShinyWallVariant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -260,6 +263,10 @@ internal class BoardSendController(
             sendMoonBoardToBoard(privatePlaylistOverride)
             return
         }
+        if (state.value.climb?.brand == BoardBrand.SHINYWALL) {
+            sendShinyWallToBoard(privatePlaylistOverride)
+            return
+        }
         if (state.value.climb?.brand == BoardBrand.QUANTUM) {
             // Quantum never follows page selection automatically. The detail
             // lamp is an explicit request: assign the current climb to the
@@ -367,6 +374,7 @@ internal class BoardSendController(
                     s.holds,
                     placementToLed,
                     roleColorMap,
+                    climbUuid = s.climb?.uuid,
                     expectedBrand = brand,
                 )
                 Log.i(TAG, "sendToBoard: writes done success=$success unmapped=$unmappedHolds")
@@ -698,6 +706,18 @@ internal class BoardSendController(
             ) }
             return
         }
+        // Only a climb that will be sent takes the picture down: the preflight
+        // above never counts this phone's PaintBox layers. A climb that cannot
+        // map to LEDs leaves it on and fails in sendQuantumLayer as before.
+        if (quantumLayersMappable(requestedPlans, expectedBoard) && !replacePaintBoxPicture(expectedBoard)) {
+            updateForVariant(variant) { it.copy(
+                ble = it.ble.copy(
+                    isSending = false,
+                    error = R.string.board_layer_error_state_unavailable,
+                ),
+            ) }
+            return
+        }
         updateForVariant(variant) {
             it.copy(
                 ble = it.ble.copy(isSending = true, success = false, error = null, warning = null),
@@ -865,8 +885,14 @@ internal class BoardSendController(
             expectedQuantumBoard = expectedBoard,
             expectedBrand = BoardBrand.QUANTUM,
         )
-        if (written) boardLayerManager.confirmProjection(expectedPlan)
-        else boardLayerManager.failProjection(expectedPlan)
+        if (written) {
+            boardLayerManager.confirmProjection(
+                expectedPlan,
+                bleConnection.quantumUnlistedUntil(layer.routeUuid, layer.userUuid, layer.color),
+            )
+        } else {
+            boardLayerManager.failProjection(expectedPlan)
+        }
         val onScreen = state.value
         if (written &&
             onScreen.climb?.uuid == layer.climbUuid &&
@@ -885,6 +911,27 @@ internal class BoardSendController(
     private fun quantumLayerPreflight(slots: List<Int>): Int? =
         QuantumLayerUiPolicy.planBlock(boardLayerManager.state.value, slots)
             ?.let(::quantumLayerSuggestionBlockResource)
+
+    /** Whether every requested layer can light on [board] (diode count and LED map). */
+    private suspend fun quantumLayersMappable(
+        plans: List<BoardLayerPlanKey>,
+        board: BoardLayerBoardIdentity,
+    ): Boolean {
+        val ledMap = withContext(ioDispatcher) {
+            boardRepository.getPlacementLedMap(board.productSizeId.toInt(), BoardBrand.QUANTUM.wireValue)
+        }
+        return plans.all { plan ->
+            val layer = boardLayerManager.state.value.layers.firstOrNull { it.planKey() == plan }
+            layer != null && hasConfirmableQuantumDiodeCount(layer.holds) &&
+                hasCompleteQuantumLedMapping(layer.holds, ledMap)
+        }
+    }
+
+    /** A climb replaces this phone's PaintBox picture, as on every other board. */
+    private suspend fun replacePaintBoxPicture(board: BoardLayerBoardIdentity): Boolean {
+        val removed = bleConnection.removePaintBoxLayers(boardLayerManager, board) ?: return false
+        return removed == 0 || refreshAndHydrateQuantumState()
+    }
 
     /** Pull controller truth and resolve every reported vendor route against
      * the active model's local catalogue. No lookup result ever changes board
@@ -968,7 +1015,56 @@ internal class BoardSendController(
      * Drives the same [BoardSendState] connect/send UI state machine so the
      * detail screen's send-status row behaves identically across brands.
      */
-    private fun sendMoonBoardToBoard(privatePlaylistOverride: Boolean = false) {
+    private fun sendMoonBoardToBoard(privatePlaylistOverride: Boolean = false) =
+        sendFramesToBoard("moonboard", privatePlaylistOverride, refusal = { climb, frames ->
+            // The box takes a frame of so many LEDs; a bigger climb is refused, with this reason.
+            val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
+                ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
+            if (com.cruxcoach.domain.board.MoonBoardFrameEncoder.fits(frames, variant, userPreferences.moonBoardLedMode.first())) null
+            else R.string.board_send_error_moonboard_too_big
+        }) { climb, frames ->
+            // Resolve the MoonBoard variant from the CLIMB being sent,
+            // not the active-board pref — the encoder's per-column-height
+            // serpentine differs (18 for standard 11×18 boards, 12 for
+            // Mini 2020), and a list / deep-link can surface a climb of a
+            // different variant than the one currently configured. Using
+            // the climb's own layout_id guarantees the wire frame matches
+            // the holds we're rendering. A stale/corrupt layout id falls
+            // back to MOONBOARD_2016 in the variant lookup below.
+            val variant = com.cruxcoach.domain.board.MoonBoardVariant
+                .fromLayoutId(climb.layoutId)
+                ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
+            val ledMode = userPreferences.moonBoardLedMode.first()
+            bleConnection.sendMoonBoardClimb(frames, variant, ledMode).also {
+                Log.i(TAG, "sendMoonBoardToBoard: variant=$variant")
+            }
+        }
+
+    /**
+     * Shiny Wall branch of [sendToBoard]: the climb's own layout names its
+     * variant (never the active-board pref, which a list or deep link can
+     * contradict), and the holds go out as one state vector for that variant.
+     * An unknown layout fails the send instead of guessing a variant.
+     */
+    private fun sendShinyWallToBoard(privatePlaylistOverride: Boolean = false) =
+        sendFramesToBoard("shinywall", privatePlaylistOverride) { climb, frames ->
+            val variant = ShinyWallVariant.fromLayoutId(climb.layoutId) ?: return@sendFramesToBoard false
+            bleConnection.sendShinyWallClimb(BoardClimbParser.parseFrames(frames), variant)
+        }
+
+    /**
+     * Shared send flow for boards whose climbs go out as their `frames`
+     * string (MoonBoard, Shiny Wall): gates on non-blank frames instead of an
+     * Aurora `holds` list, skips the LED-map load, and drives the same
+     * [BoardSendState] UI state machine as the Aurora path.
+     */
+    private fun sendFramesToBoard(
+        kind: String,
+        privatePlaylistOverride: Boolean,
+        /** Why the board can't show this climb at all, before anything is written; null to send. */
+        refusal: suspend (climb: ClimbWithStats, frames: String) -> Int? = { _, _ -> null },
+        transmit: suspend (climb: ClimbWithStats, frames: String) -> Boolean,
+    ) {
         val s = state.value
         val climb = s.climb ?: return
         val frames = climb.frames
@@ -991,45 +1087,33 @@ internal class BoardSendController(
                 warning = null,
                 mismatch = null,
             ),
-            nearby = it.nearby.copy(debugInfo = "sending (moonboard)...")
+            nearby = it.nearby.copy(debugInfo = "sending ($kind)...")
         ) }
-        Log.i(TAG, "sendMoonBoardToBoard: start frames=${frames.length}")
+        Log.i(TAG, "send $kind: start frames=${frames.length}")
         val sendVariant = beginSendFence(s)
         sendJob = scope.launch {
             try {
-                // Board-match guard, part 1: the CONNECTED board must be a
-                // MoonBoard. Switching the active board in Settings never
-                // disconnects, so the pref check below alone would let a
-                // MoonBoard ASCII frame go to a still-connected Aurora board.
+                // Board-match guard, part 1: the CONNECTED board must be of
+                // the climb's brand. Switching the active board in Settings
+                // never disconnects, so the pref check below alone would let an
+                // ASCII frame go to a still-connected Aurora board.
                 val identity = sendIdentity(s) ?: return@launch
+                // Board-match guard, part 2: the climb can only go to a
+                // connected board of the same variant. A cross-board list
+                // / deep link can surface it while another board (or variant)
+                // is configured; sending it would light wrong/garbled holds.
+                // Refuse with a clear message.
                 resolveBoardConfigurationMismatch(identity)?.let {
                     updateMismatch(sendVariant, it)
                     return@launch
                 }
-                // Board-match guard, part 2: a MoonBoard climb can only go to a
-                // connected MoonBoard of the same variant. A cross-board list
-                // / deep link can surface a MoonBoard climb while a Kilter (or
-                // a different MoonBoard variant) is configured; sending it
-                // would light wrong/garbled holds. Refuse with a clear message.
-                // Resolve the MoonBoard variant from the CLIMB being sent,
-                // not the active-board pref — the encoder's per-column-height
-                // serpentine differs (18 for standard 11×18 boards, 12 for
-                // Mini 2020), and a list / deep-link can surface a climb of a
-                // different variant than the one currently configured. Using
-                // the climb's own layout_id guarantees the wire frame matches
-                // the holds we're rendering. A stale/corrupt layout id falls
-                // back to MOONBOARD_2016 in the variant lookup below.
-                val layoutId = climb.layoutId
-                val variant = com.cruxcoach.domain.board.MoonBoardVariant
-                    .fromLayoutId(layoutId)
-                    ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                val ledMode = userPreferences.moonBoardLedMode.first()
-                val success = bleConnection.sendMoonBoardClimb(
-                    frames,
-                    variant,
-                    ledMode,
-                )
-                Log.i(TAG, "sendMoonBoardToBoard: writes done success=$success variant=$variant")
+                refusal(climb, frames)?.let { reason ->
+                    Log.i(TAG, "send $kind: refused before writing")
+                    updateForVariant(sendVariant) { it.copy(ble = it.ble.copy(isSending = false, success = false, error = reason)) }
+                    return@launch
+                }
+                val success = transmit(climb, frames)
+                Log.i(TAG, "send $kind: writes done success=$success")
                 updateForVariant(sendVariant) { it.copy(
                     ble = it.ble.copy(
                         isSending = false,
@@ -1057,7 +1141,7 @@ internal class BoardSendController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "sendMoonBoardToBoard failed", e)
+                Log.e(TAG, "send $kind failed", e)
                 updateForVariant(sendVariant) { it.copy(
                     ble = it.ble.copy(isSending = false, error = R.string.board_send_error_generic),
                     nearby = it.nearby.copy(debugInfo = "exception: ${e.message?.take(50)}")
@@ -1132,7 +1216,6 @@ internal class BoardSendController(
                 return@launch
             }
             val refreshed = currentSlotLayer
-            val expectedRoute = layer.confirmedRouteUuid
             if (refreshed?.confirmedRouteUuid == null) {
                 boardLayerManager.removeOwned(expectedPlan)
                 updateForVariant(variant) { current -> current.copy(
@@ -1140,9 +1223,9 @@ internal class BoardSendController(
                 ) }
                 return@launch
             }
-            if (refreshed.userUuid != layer.userUuid ||
-                !refreshed.confirmedRouteUuid.equals(expectedRoute, ignoreCase = true)
-            ) {
+            // The identity is ours alone, so TURN_OFF_USER turns off what it
+            // lights now, whichever route the controller names for it.
+            if (refreshed.userUuid != layer.userUuid) {
                 updateForVariant(variant) { current -> current.copy(
                     ble = current.ble.copy(
                         isSending = false,
@@ -1154,7 +1237,6 @@ internal class BoardSendController(
             val success = runCatching {
                 bleConnection.removeQuantumLayer(
                     refreshed.userUuid,
-                    expectedRouteId = expectedRoute,
                     expectedQuantumBoard = expectedBoard,
                 )
             }.getOrDefault(false)

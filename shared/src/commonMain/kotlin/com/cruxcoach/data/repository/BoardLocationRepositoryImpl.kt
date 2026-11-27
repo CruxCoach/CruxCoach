@@ -56,6 +56,10 @@ class BoardLocationRepositoryImpl(
             .mapNotNull { row -> row.product_size_id?.let { it.toInt() to row.cnt } }
             .toMap()
 
+    override fun boardCountByBrandAndLayout(): Map<Pair<String, Int?>, Long> =
+        q.countByBrandAndLayout().executeAsList()
+            .associate { row -> (row.board_brand to row.layout_id?.toInt()) to row.cnt }
+
     private fun Kilter_board_location.toDomain() = BoardLocation(
         id = gym_uuid,
         name = name,

@@ -33,6 +33,29 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28])
 class BoardCleaningConnectionTest {
+    @Test fun `manual projection pauses auto send independently of keep alive`() {
+        val link = Link()
+        val connection = link.connection
+        connection.pauseAutomaticProjection("paintbox")
+        connection.pauseAutomaticProjection("paintbox")
+        assertTrue(connection.automaticProjectionPaused)
+        assertFalse(connection.keepAliveActive.value)
+        connection.pauseAutomaticProjection("another-editor")
+        connection.resumeAutomaticProjection("paintbox")
+        assertTrue(connection.automaticProjectionPaused)
+        connection.resumeAutomaticProjection("another-editor")
+        assertFalse(connection.automaticProjectionPaused)
+    }
+
+    @Test fun `raw image transmission returns to connected on success and write failure`() = runTest {
+        val link = Link()
+        assertTrue(link.connection.sendRawLeds(listOf(1 to 28), BoardBrand.KILTER))
+        assertEquals(ConnectionState.CONNECTED, link.connection.connectionState.value)
+        link.status = BluetoothGatt.GATT_FAILURE
+        assertFalse(link.connection.sendRawLeds(listOf(2 to 224), BoardBrand.KILTER))
+        assertEquals(ConnectionState.CONNECTED, link.connection.connectionState.value)
+    }
+
     private class Link(brand: BoardBrand = BoardBrand.KILTER, apiLevel: Int = 3, pacingMs: Long = 0L) {
         val connection = BoardBleConnection(RuntimeEnvironment.getApplication())
         val board = DiscoveredBoard("Test board", "123", apiLevel, "00:11:22:33:44:55", -40, brand)
@@ -51,13 +74,8 @@ class BoardCleaningConnectionTest {
             get<MutableStateFlow<BoardBrand?>>("_connectedBoardBrand").value = brand
             set("writePacingMs", pacingMs)
             set("encoder", BoardPacketEncoder(apiLevel, BoardPacketEncoder.ledsPerHoldFor(brand)))
-            // As connect() does: older controllers light their sections.
-            get<BoardCleaningSession>("cleaning").attach(
-                BoardCleaningStorage.key(board),
-                if (brand.usesAuroraProtocol) {
-                    BoardPacketEncoder.cleaningHoldLimit(apiLevel, BoardPacketEncoder.ledsPerHoldFor(brand))
-                } else Int.MAX_VALUE,
-            )
+            // As connect() does: older controllers and the MoonBoard light their sections.
+            connection.attachCleaning(board)
             val callback = get<BluetoothGattCallback>("gattCallback")
             every { gatt.writeCharacteristic(any()) } answers {
                 writes += characteristic.value.copyOf()
@@ -200,5 +218,51 @@ class BoardCleaningConnectionTest {
         assertTrue(link.writes.size > 1)
         assertEquals((link.writes.size - 1) * 100L, testScheduler.currentTime - started)
         assertEquals(MoonBoardFrameEncoder.encodeCleaning((40 until 60).toSet()).decodeToString(), link.bytes().decodeToString())
+    }
+
+    @Test fun `MoonBoard cleaning comes in sections the box takes whole, each one stretch of the wall`() = runTest {
+        val link = Link(BoardBrand.MOONBOARD)
+        val connection = link.connection
+        // Every hold of a 2016 MoonBoard was used today.
+        link.log((0 until 198).toSet())
+        assertTrue(connection.cleaningState.value.sectioned)
+        assertTrue(connection.cleaningState.value.frameLimited)
+        val sections = mutableListOf<List<Int>>()
+        link.writes.clear()
+        assertTrue(connection.startCleaning(link.board.address))
+        while (true) {
+            val frame = link.bytes()
+            assertTrue(MoonBoardFrameEncoder.fitsController(frame))
+            val positions = frame.decodeToString().removePrefix("l#").removeSuffix("#").split(',').map { it.drop(1).toInt() }
+            sections += positions
+            assertEquals(positions.size, connection.cleaningState.value.displayedHoldCount)
+            link.writes.clear()
+            assertTrue(connection.finishCleaning(link.board.address, markCleaned = true))
+            if (!connection.cleaningState.value.active) break
+        }
+        assertEquals((0 until 198).toList(), sections.flatten())
+        // Each section is a run along the LED strip: neighbouring columns of 18, filled up to the limit.
+        sections.forEach { section ->
+            assertEquals((section.first()..section.last()).toList(), section)
+            assertTrue(section.last() / 18 - section.first() / 18 <= 3)
+        }
+        assertEquals(52, sections.first().size)
+        assertTrue(sections.dropLast(1).all { it.size >= 39 })
+        assertFalse(connection.cleaningState.value.sectioned)
+    }
+
+    @Test fun `a MoonBoard frame the box cannot take is not sent`() = runTest {
+        val link = Link(BoardBrand.MOONBOARD)
+        // 53 hand holds: one LED more than the box shows.
+        val frames = (1..53).joinToString("") { "p${it}r43" }
+        assertFalse(link.connection.sendMoonBoardClimb(frames, MoonBoardVariant.MOONBOARD_2016))
+        assertTrue(link.writes.isEmpty())
+        assertEquals(ConnectionState.CONNECTED, link.connection.connectionState.value)
+        // 27 holds of rows 2 to 4 are 27 LEDs below them, 54 with LEDs above and below.
+        val rows = (12..38).joinToString("") { "p${it}r43" }
+        assertFalse(link.connection.sendMoonBoardClimb(rows, MoonBoardVariant.MOONBOARD_2016, MoonBoardLedMode.BOTH))
+        assertTrue(link.writes.isEmpty())
+        assertTrue(link.connection.sendMoonBoardClimb(rows, MoonBoardVariant.MOONBOARD_2016, MoonBoardLedMode.BELOW))
+        assertEquals(27, MoonBoardFrameEncoder.ledCount(link.bytes()))
     }
 }

@@ -1,0 +1,105 @@
+-- Fueling (FEAT-068). Opt-in. Every nutrient column is nullable: a quick
+-- entry may carry only protein, only a name, or nothing but a portion.
+
+CREATE TABLE food_item (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    brand TEXT,
+    barcode TEXT,
+    kcal_per_100 REAL,
+    protein_per_100 REAL,
+    carbs_per_100 REAL,
+    fat_per_100 REAL,
+    serving_g REAL,
+    serving_label TEXT,
+    favorite INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'user',
+    use_count INTEGER NOT NULL DEFAULT 0,
+    last_used_at INTEGER,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE food_log (
+    id TEXT NOT NULL PRIMARY KEY,
+    day TEXT NOT NULL,
+    logged_at INTEGER NOT NULL,
+    meal TEXT NOT NULL,
+    food_item_id TEXT,
+    name TEXT NOT NULL,
+    amount_g REAL,
+    portions REAL,
+    kcal REAL,
+    protein_g REAL,
+    carbs_g REAL,
+    fat_g REAL
+);
+
+CREATE INDEX food_log_day ON food_log(day);
+
+CREATE TABLE hydration_log (
+    id TEXT NOT NULL PRIMARY KEY,
+    day TEXT NOT NULL,
+    logged_at INTEGER NOT NULL,
+    ml INTEGER NOT NULL
+);
+
+CREATE INDEX hydration_log_day ON hydration_log(day);
+
+upsertFoodItem:
+INSERT OR REPLACE INTO food_item(
+    id, name, brand, barcode, kcal_per_100, protein_per_100, carbs_per_100, fat_per_100,
+    serving_g, serving_label, favorite, source, use_count, last_used_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getFoodItem:
+SELECT * FROM food_item WHERE id = ?;
+
+getFoodItems:
+SELECT * FROM food_item ORDER BY favorite DESC, use_count DESC, name;
+
+searchFoodItems:
+SELECT * FROM food_item WHERE name LIKE ('%' || ? || '%') OR brand LIKE ('%' || ? || '%')
+ORDER BY favorite DESC, use_count DESC, name LIMIT 50;
+
+markFoodItemUsed:
+UPDATE food_item SET use_count = use_count + 1, last_used_at = ? WHERE id = ?;
+
+setFoodItemFavorite:
+UPDATE food_item SET favorite = ?, updated_at = ? WHERE id = ?;
+
+deleteFoodItem:
+DELETE FROM food_item WHERE id = ?;
+
+upsertFoodLog:
+INSERT OR REPLACE INTO food_log(id, day, logged_at, meal, food_item_id, name, amount_g, portions, kcal, protein_g, carbs_g, fat_g)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getFoodLogForDay:
+SELECT * FROM food_log WHERE day = ? ORDER BY logged_at;
+
+getFoodLogBetween:
+SELECT * FROM food_log WHERE day >= ? AND day <= ? ORDER BY day, logged_at;
+
+getRecentFoodLog:
+SELECT * FROM food_log ORDER BY logged_at DESC LIMIT ?;
+
+deleteFoodLog:
+DELETE FROM food_log WHERE id = ?;
+
+getAllFoodLog:
+SELECT * FROM food_log ORDER BY day, logged_at;
+
+insertHydration:
+INSERT OR REPLACE INTO hydration_log(id, day, logged_at, ml) VALUES (?, ?, ?, ?);
+
+getHydrationForDay:
+SELECT * FROM hydration_log WHERE day = ? ORDER BY logged_at;
+
+getHydrationBetween:
+SELECT * FROM hydration_log WHERE day >= ? AND day <= ? ORDER BY day, logged_at;
+
+deleteHydration:
+DELETE FROM hydration_log WHERE id = ?;
+
+getAllHydration:
+SELECT * FROM hydration_log ORDER BY day, logged_at;

@@ -151,13 +151,28 @@ fun PostWorkoutScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SkinChip("GOOD", stringResource(R.string.skin_good), SuccessGreen, state.skinStatus == "GOOD", testTag = "postworkout_skin_good") {
+                SkinChip(
+                    "GOOD", stringResource(R.string.skin_good), SuccessGreen, state.skinStatus == "GOOD",
+                    selectedContainerColor = CruxCoachDesign.colors.positiveContainer,
+                    selectedContentColor = CruxCoachDesign.colors.onPositiveContainer,
+                    testTag = "postworkout_skin_good"
+                ) {
                     viewModel.updateSkinStatus("GOOD")
                 }
-                SkinChip("THIN", stringResource(R.string.skin_thin), WarningYellow, state.skinStatus == "THIN", testTag = "postworkout_skin_thin") {
+                SkinChip(
+                    "THIN", stringResource(R.string.skin_thin), WarningYellow, state.skinStatus == "THIN",
+                    selectedContainerColor = CruxCoachDesign.colors.cautionContainer,
+                    selectedContentColor = CruxCoachDesign.colors.onCautionContainer,
+                    testTag = "postworkout_skin_thin"
+                ) {
                     viewModel.updateSkinStatus("THIN")
                 }
-                SkinChip("SPLIT", stringResource(R.string.skin_split), ErrorRed, state.skinStatus == "SPLIT", testTag = "postworkout_skin_split") {
+                SkinChip(
+                    "SPLIT", stringResource(R.string.skin_split), ErrorRed, state.skinStatus == "SPLIT",
+                    selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
+                    selectedContentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    testTag = "postworkout_skin_split"
+                ) {
                     viewModel.updateSkinStatus("SPLIT")
                 }
             }
@@ -280,7 +295,7 @@ private fun EmojiSelector(
                     onClick = { onSelect(value) },
                     label = { Text(emojis[index], style = MaterialTheme.typography.titleLarge) },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = OrangeAccent.copy(alpha = 0.2f)
+                        selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
                     )
                 )
                 Text(
@@ -299,6 +314,8 @@ private fun RowScope.SkinChip(
     label: String,
     color: androidx.compose.ui.graphics.Color,
     isSelected: Boolean,
+    selectedContainerColor: androidx.compose.ui.graphics.Color,
+    selectedContentColor: androidx.compose.ui.graphics.Color,
     testTag: String = "",
     onClick: () -> Unit
 ) {
@@ -308,8 +325,8 @@ private fun RowScope.SkinChip(
             if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier
         ),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = if (isSelected) color.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
-            contentColor = if (isSelected) color else MaterialTheme.colorScheme.onSurface
+            containerColor = if (isSelected) selectedContainerColor else MaterialTheme.colorScheme.surface,
+            contentColor = if (isSelected) selectedContentColor else MaterialTheme.colorScheme.onSurface
         ),
         border = BorderStroke(
             width = if (isSelected) 2.dp else 1.dp,
@@ -339,14 +356,16 @@ private fun FlowChips(
                 onClick = { onToggle(key) },
                 label = { Text(label) },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = ErrorRed.copy(alpha = 0.2f),
-                    selectedLabelColor = ErrorRed
+                    selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer
                 )
             )
         }
     }
 }
 
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 private fun rpeColor(rpe: Float): androidx.compose.ui.graphics.Color {
     return when {
         rpe <= 5f -> SuccessGreen

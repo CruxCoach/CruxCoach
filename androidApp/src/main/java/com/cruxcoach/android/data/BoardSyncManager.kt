@@ -27,7 +27,7 @@ import com.cruxcoach.android.util.ShareCompression
 import com.cruxcoach.android.util.withBackgroundThreadPriority
 import com.cruxcoach.android.updater.IntegrityVerifier
 import com.cruxcoach.util.DateTimeUtil
-import com.cruxcoach.data.repository.getClimbByUuidAnySpelling
+import com.cruxcoach.data.repository.getClimbsByUuidAnySpelling
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -89,9 +89,11 @@ class BoardSyncManager(
     private val initialShareRunner: (suspend (LocalShareDiscovery.Found) -> Unit)? = null,
     /** Narrow deterministic test seam; production enqueues [LocalShareKeepAliveWorker]. */
     private val startLocalTransferKeepAlive: (Context) -> Unit = { LocalShareKeepAliveWorker.start(it) },
+    private val shinyWallCatalogueSync: ShinyWallCatalogueSync? = null,
 ) : CatalogueRevisionSource {
     private companion object {
         const val TAG = "BoardSyncManager"
+        const val BUNDLED_GEOMETRY_PREFS = "bundled_geometry"
         /** How long a requested sync may take to actually start before the
          *  user is told the system is holding it back. Long enough for a cold
          *  WorkManager handover, short enough to still read as feedback. */
@@ -281,19 +283,37 @@ class BoardSyncManager(
      * probe per board.
      */
     fun seedBundledGeometry() {
-        scope.safeLaunch(TAG) { seedBundledGeometryNow() }
+        scope.safeLaunch(TAG) {
+            seedBundledGeometryNow()
+            withContext(Dispatchers.IO) { importDevCatalogueSnapshotNow() }
+        }
     }
 
     private suspend fun seedBundledGeometryNow() = withContext(Dispatchers.IO) {
         val bundled = appContext.assets.list(BundledBoardGeometry.ASSET_DIR)?.toSet().orEmpty()
+        val geometryPrefs = appContext.getSharedPreferences(BUNDLED_GEOMETRY_PREFS, Context.MODE_PRIVATE)
         for (brand in BoardBrand.entries) {
             val name = BundledBoardGeometry.assetFileName(brand.wireValue)
             if (name !in bundled) continue
-            if (boardRepository.hasPlacementsForBrand(brand.wireValue)) continue
+            val bundleOwned = brand in BundledBoardGeometry.BUNDLE_OWNED
+            if (!bundleOwned && boardRepository.hasPlacementsForBrand(brand.wireValue)) continue
             val file = File(appContext.cacheDir, "bundled_geometry_$name")
             try {
                 appContext.assets.open("${BundledBoardGeometry.ASSET_DIR}/$name").use { input ->
                     file.outputStream().use { input.copyTo(it) }
+                }
+                if (bundleOwned) {
+                    // The APK is this board's only geometry source: replace the
+                    // stored rows whenever an update ships a different bundle.
+                    val hash = BundledBoardGeometry.sha256(file)
+                    val key = "${brand.wireValue}_sha256"
+                    if (geometryPrefs.getString(key, null) == hash &&
+                        boardRepository.hasPlacementsForBrand(brand.wireValue)
+                    ) continue
+                    val replaced = importer.replaceBundledGeometry(file, brand.wireValue)
+                    geometryPrefs.edit().putString(key, hash).apply()
+                    Log.i(TAG, "Replaced bundled geometry for ${brand.wireValue}: $replaced placements")
+                    continue
                 }
                 val seeded = importer.seedBundledGeometry(file, brand.wireValue)
                 if (seeded > 0) Log.i(TAG, "Seeded bundled geometry for ${brand.wireValue}: $seeded placements")
@@ -306,6 +326,30 @@ class BoardSyncManager(
             } finally {
                 file.delete()
             }
+        }
+    }
+
+    /**
+     * Test builds only: imports a catalogue snapshot dropped into the app's own
+     * storage (`files/dev-import/<chunk>.sqlite3`, reachable only through
+     * `adb shell run-as`) before its signed manifest is published. A release
+     * build is never debuggable, so this path does not exist there; the file
+     * is renamed after a successful import so it runs once.
+     */
+    private suspend fun importDevCatalogueSnapshotNow() {
+        if ((appContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) return
+        val file = File(appContext.filesDir, "dev-import/${ShinyWallCatalogueSync.CHUNK_NAME}.sqlite3")
+        if (!file.isFile) return
+        Log.w(TAG, "Debuggable build: importing the unsigned Shiny Wall snapshot ${file.name}")
+        try {
+            importer.importShinyWallSnapshot(file)
+            runCatching { ShinyWallCatalogueStore.keep(appContext, file) }
+            file.renameTo(File(file.parentFile, "${file.name}.imported"))
+            bumpCatalogueRevision()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Unsigned Shiny Wall snapshot not imported", e)
         }
     }
 
@@ -822,6 +866,8 @@ class BoardSyncManager(
             .filter { it.climbCount > 0 }
             .mapNotNull { BoardBrand.fromWireOrNull(it.boardBrand) }
             .filter { it.isInteractive && (protocolVersion == LocalShareProtocol.VERSION_V2 || it != BoardBrand.QUANTUM) }
+            // Shiny Wall is declared only next to its own artifact (parseManifest).
+            .filter { protocolVersion == LocalShareProtocol.VERSION_V2 || it.wireValue !in LocalShareSchema.NON_SHAREABLE_BRANDS }
             .distinct()
 
     private fun updateLocalShareProgress(step: ImportStep, brands: List<BoardBrand>) {
@@ -1480,6 +1526,7 @@ class BoardSyncManager(
         return when {
             brand == BoardBrand.MOONBOARD -> syncMoonBoardCatalogue()
             brand == BoardBrand.QUANTUM -> syncQuantumBoard()
+            brand == BoardBrand.SHINYWALL -> syncShinyWallBoard()
             brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> syncAuroraBoard(brand)
             else -> false
         }
@@ -1504,6 +1551,30 @@ class BoardSyncManager(
         reportBoardStep(BoardBrand.QUANTUM, null)
         reportBoardError(BoardBrand.QUANTUM, e.message ?: e.javaClass.simpleName)
         false
+    }
+
+    private suspend fun syncShinyWallBoard(): Boolean {
+        val sync = shinyWallCatalogueSync ?: return false
+        return try {
+            when (val result = sync.sync { step -> reportBoardStep(BoardBrand.SHINYWALL, step) }) {
+                ShinyWallCatalogueSync.Result.AlreadyCurrent -> {
+                    reportBoardStep(BoardBrand.SHINYWALL, ImportStep.Done(0, 0, 0)); false
+                }
+                is ShinyWallCatalogueSync.Result.Imported -> {
+                    bumpCatalogueRevision(); true
+                }
+                is ShinyWallCatalogueSync.Result.Failed -> {
+                    reportBoardStep(BoardBrand.SHINYWALL, null)
+                    reportBoardError(BoardBrand.SHINYWALL, result.message)
+                    false
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Shiny Wall catalogue sync threw; other boards unaffected", e)
+            reportBoardStep(BoardBrand.SHINYWALL, null)
+            reportBoardError(BoardBrand.SHINYWALL, e.message ?: e.javaClass.simpleName)
+            false
+        }
     }
 
     /**
@@ -1575,6 +1646,7 @@ class BoardSyncManager(
             imported = when (brand) {
                 BoardBrand.MOONBOARD -> syncMoonBoardCatalogue()
                 BoardBrand.QUANTUM -> syncQuantumBoard()
+                BoardBrand.SHINYWALL -> syncShinyWallBoard()
                 else -> syncAuroraBoard(brand)
             }
         } finally {
@@ -1888,6 +1960,9 @@ class BoardSyncManager(
         var boardDownload: File? = null
         var apkDownload: File? = null
         var boardArtifact: LocalShareProtocol.BoardArtifact? = null
+        var shinyWallDownload: File? = null
+        var shinyWallArtifact: LocalShareProtocol.FamilyArtifact? = null
+        var shinyWallCurrent = false
         val receivedManifest: LocalShareProtocol.Manifest
         try {
             updateLocalShareProgress(ImportStep.FetchingManifest, emptyList())
@@ -1976,6 +2051,36 @@ class BoardSyncManager(
                 throw java.io.IOException("Sender has no board snapshot")
             }
 
+            // The Shiny Wall catalogue travels as its own artifact (never in the board
+            // snapshot, see LocalShareProtocol.V2_SHINYWALL_PATH). Skipped while an APK
+            // update is pending, and when this phone already holds the same snapshot.
+            val shinyWallOffer = receivedManifest.families
+                .firstOrNull { it.boardBrand == BoardBrand.SHINYWALL.wireValue }
+                ?.takeIf { BoardBrand.SHINYWALL in brands && apkDownload == null }
+            shinyWallCurrent = shinyWallOffer != null && shinyWallOffer.uncompressedSha256 == keptShinyWallSha256()
+            if (shinyWallOffer != null && !shinyWallCurrent) {
+                shinyWallArtifact = shinyWallOffer
+                shinyWallDownload = try {
+                    client.downloadResumable(
+                        network = network,
+                        baseUrl = baseUrl,
+                        artifact = shinyWallOffer.artifact,
+                        target = File(appContext.cacheDir, "local_shinywall_${shinyWallOffer.artifact.sha256.take(20)}.gz"),
+                        protocolVersion = receivedManifest.protocolVersion,
+                        expectedSessionId = firstManifest.sessionId,
+                        onVerifying = { updateLocalShareProgress(ImportStep.VerifyingSnapshot, brands) },
+                    ) { downloaded, total ->
+                        updateLocalShareProgress(ImportStep.Download(downloaded, total), brands)
+                    }
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    // The board share stands on its own; Shiny Wall then follows online.
+                    Log.w(TAG, "Shiny Wall catalogue not received from the share", error)
+                    null
+                }
+            }
+
             runCatching {
                 client.notifyDownloadComplete(network, baseUrl, firstManifest.sessionId)
             }
@@ -2031,6 +2136,10 @@ class BoardSyncManager(
             )
             boardImported = true
         }
+        val receivedShinyWall = shinyWallDownload
+        val shinyWallImported = readyUpdate == null && receivedShinyWall != null && shinyWallArtifact != null &&
+            importSharedShinyWallCatalogue(receivedShinyWall, shinyWallArtifact!!)
+        val shinyWallMissing = !shinyWallImported && !shinyWallCurrent
 
         val timestamp = DateTimeUtil.nowIso()
         if (boardImported) userPreferences.setLastSyncTimestamp(timestamp)
@@ -2040,13 +2149,18 @@ class BoardSyncManager(
             // leave non-terminal spinners behind in the old process.
             emptyMap()
         } else {
-            completedLocalShareSteps(resolveShareBrands(sharedBoardBrands(receivedManifest)))
+            completedLocalShareSteps(
+                resolveShareBrands(sharedBoardBrands(receivedManifest))
+                    .filterNot { it == BoardBrand.SHINYWALL && shinyWallMissing },
+            )
         }
         // The families the sender does not have follow the ordinary way, one after the
         // other, as soon as the share has released the sync slot.
         if (chosenShareBrands != null) {
             val savedSelection = userPreferences.boardDownloadBrands.first()
-            val fromShare = sharedBoardBrands(receivedManifest).toSet()
+            // A Shiny Wall catalogue the share did not deliver follows the ordinary way.
+            val fromShare = sharedBoardBrands(receivedManifest).toSet() -
+                setOfNotNull(BoardBrand.SHINYWALL.takeIf { shinyWallMissing })
             // Only what is still missing: a family this install already has is kept current
             // by the regular sync and needs no download of its own here.
             val present = boardRepository.getClimbCountsByBrand()
@@ -2090,6 +2204,48 @@ class BoardSyncManager(
             )
         }
         refreshNetworkAfterLocalShare()
+    }
+
+    /** sha256 of the Shiny Wall snapshot this phone holds, null without one. */
+    private fun keptShinyWallSha256(): String? =
+        ShinyWallCatalogueStore.file(appContext).takeIf { it.isFile }
+            ?.let { runCatching { LocalShareProtocol.sha256(it) }.getOrNull() }
+
+    /**
+     * Verifies and imports a Shiny Wall catalogue received from a share through
+     * the same importer as the Blossom chunk (variants, categories; the
+     * geometry stays this APK's own), then keeps it to pass on. A peer's copy
+     * is not signed: the next online sync replaces it with the published one.
+     * Any failure leaves the current catalogue untouched and returns false.
+     */
+    private suspend fun importSharedShinyWallCatalogue(
+        compressed: File,
+        family: LocalShareProtocol.FamilyArtifact,
+    ): Boolean {
+        val raw = File(appContext.cacheDir, "local_shinywall_${family.uncompressedSha256.take(16)}.sqlite3")
+        return try {
+            if (compressed.length() != family.artifact.sizeBytes ||
+                LocalShareProtocol.sha256(compressed) != family.artifact.sha256
+            ) throw java.io.IOException("Compressed Shiny Wall catalogue failed verification")
+            LocalTransferLimits.requireSpace(appContext.cacheDir, family.uncompressedSizeBytes)
+            ShareCompression.gunzip(compressed, raw, maxOutputBytes = family.uncompressedSizeBytes) {}
+            if (raw.length() != family.uncompressedSizeBytes ||
+                LocalShareProtocol.sha256(raw) != family.uncompressedSha256
+            ) throw java.io.IOException("Shiny Wall catalogue failed verification")
+            withBackgroundThreadPriority { importer.importShinyWallSnapshot(raw) }
+            runCatching { ShinyWallCatalogueStore.keep(appContext, raw) }
+                .onFailure { Log.w(TAG, "Shared Shiny Wall snapshot not kept", it) }
+            bumpCatalogueRevision()
+            true
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.w(TAG, "Shared Shiny Wall catalogue not imported", error)
+            false
+        } finally {
+            raw.delete()
+            compressed.delete()
+        }
     }
 
     private fun refreshNetworkAfterLocalShare() {
@@ -2337,6 +2493,13 @@ class BoardSyncManager(
                 QuantumCatalogueSync.PREFS_NAME, Context.MODE_PRIVATE
             ).edit().clear().apply()
         }
+        if (BoardBrand.SHINYWALL in brands) {
+            appContext.getSharedPreferences(
+                ShinyWallCatalogueSync.PREFS_NAME, Context.MODE_PRIVATE
+            ).edit().clear().apply()
+            // A deleted catalogue is no longer offered to share receivers.
+            ShinyWallCatalogueStore.clear(appContext)
+        }
         brands
             .filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }
             .forEach { board ->
@@ -2363,40 +2526,58 @@ class BoardSyncManager(
             val keys = personalBoardRepo.getAllClimbKeys()
             if (keys.isEmpty()) return
             Log.d(TAG, "Refreshing denormalized data for ${keys.size} climb keys")
-
-            // Chunk into batches so the secure-DB write lock is released
-            // periodically, letting concurrent user writes (log ascent,
-            // favorites toggle, comment edit) interleave instead of
-            // blocking for the whole loop on users with many ascents.
-            keys.chunked(REFRESH_BATCH_SIZE).forEach { batch ->
-                personalBoardRepo.runInTransaction {
-                    for ((climbUuid, angle) in batch) {
-                        // A log keeps the spelling of whatever wrote it — the
-                        // Kilter API, an Aurora export, or a restore that
-                        // lowercased it — while the catalogue stores the climb
-                        // in one of three forms. Try the indexed spellings,
-                        // then fall back to the normalized scan so a row is
-                        // never missed for its hyphens or its case alone.
-                        val climb = boardRepository
-                            .getClimbByUuidAnySpelling(climbUuid, angle.toInt())
-                            ?: continue
-                        // Also back-fills board_brand + layout_id, self-healing
-                        // legacy / restored rows that defaulted to kilter/NULL.
-                        personalBoardRepo.updateAscentDenormalized(
-                            climbUuid, angle, climb.name, climb.difficultyAverage,
-                            climb.frames, climb.framesCount,
-                            climb.boardBrand, climb.layoutId
-                        )
-                        personalBoardRepo.updateBidDenormalized(
-                            climbUuid, angle, climb.name, climb.difficultyAverage,
-                            climb.boardBrand, climb.layoutId
-                        )
-                    }
-                }
-            }
+            refreshLogbookDenormalized(keys, boardRepository, personalBoardRepo, REFRESH_BATCH_SIZE)
             Log.d(TAG, "Denormalized data refresh complete")
         } catch (e: Exception) {
             Log.w(TAG, "Denormalized data refresh failed (non-fatal)", e)
+        }
+    }
+}
+
+/**
+ * Copies the catalogue's name, grade, frames, brand and layout onto the logbook
+ * entries of [keys] (climb uuid, angle) in the per-key SecureDB.
+ *
+ * The catalogue is read before each batch's SecureDB transaction, not inside it:
+ * the SecureDB has one connection, and every logbook read waits while a
+ * transaction holds it. A climb the catalogue lacks (a board whose catalogue is
+ * not downloaded, a deleted climb) costs a scan of the whole catalogue; a batch
+ * shares one scan for all its misses.
+ */
+internal fun refreshLogbookDenormalized(
+    keys: List<Pair<String, Long>>,
+    boardRepository: com.cruxcoach.data.repository.BoardRepository,
+    personalBoardRepo: com.cruxcoach.data.repository.PersonalBoardRepository,
+    batchSize: Int,
+) {
+    // Batches release the secure-DB write lock periodically, letting concurrent
+    // user writes (log ascent, favorites toggle, comment edit) interleave instead
+    // of blocking for the whole loop on users with many ascents.
+    keys.chunked(batchSize).forEach { batch ->
+        // A log keeps the spelling of whatever wrote it — the Kilter API, an
+        // Aurora export, or a restore that lowercased it — while the catalogue
+        // stores the climb in one of three forms. Try the indexed spellings, then
+        // the normalized scan, so a row is never missed for its hyphens or its
+        // case alone.
+        val climbs = boardRepository.getClimbsByUuidAnySpelling(
+            batch.map { (climbUuid, angle) -> climbUuid to angle.toInt() }
+        )
+        if (climbs.isEmpty()) return@forEach
+        personalBoardRepo.runInTransaction {
+            for ((climbUuid, angle) in batch) {
+                val climb = climbs[climbUuid to angle.toInt()] ?: continue
+                // Also back-fills board_brand + layout_id, self-healing
+                // legacy / restored rows that defaulted to kilter/NULL.
+                personalBoardRepo.updateAscentDenormalized(
+                    climbUuid, angle, climb.name, climb.difficultyAverage,
+                    climb.frames, climb.framesCount,
+                    climb.boardBrand, climb.layoutId
+                )
+                personalBoardRepo.updateBidDenormalized(
+                    climbUuid, angle, climb.name, climb.difficultyAverage,
+                    climb.boardBrand, climb.layoutId
+                )
+            }
         }
     }
 }

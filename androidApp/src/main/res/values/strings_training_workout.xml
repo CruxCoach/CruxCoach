@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Training logger, timer, summary, routines and history (FEAT-066). -->
+<resources>
+    <!-- Logger -->
+    <string name="trw_no_open">No training is running right now.</string>
+    <string name="trw_add_exercise">Add exercise</string>
+    <string name="trw_finish">Finish training</string>
+    <string name="trw_add_set">+ Set</string>
+    <string name="trw_add_warmup">Add warm-up sets</string>
+    <string name="trw_remove_exercise">Remove exercise</string>
+    <string name="trw_remove_exercise_confirm">Remove %1$s and all its sets from this training?</string>
+    <string name="trw_target_seconds">Target %1$d\u00A0s</string>
+    <string name="trw_reps_label">Reps</string>
+    <string name="trw_seconds_label">Sec</string>
+    <string name="trw_rounds_label">Rounds</string>
+    <string name="trw_edge_label">Edge</string>
+    <string name="trw_grip_none">Choose grip</string>
+    <string name="trw_typed_title">Type exercises</string>
+    <string name="trw_typed_skipped">Left out because of your injury: %1$s</string>
+    <string name="trw_load_assisted">%1$s assisted</string>
+    <string name="trw_load_per_block">With two blocks: %1$s each</string>
+    <string name="trw_minus">Decrease %1$s</string>
+    <string name="trw_plus">Increase %1$s</string>
+    <string name="trw_rir_3plus">3+</string>
+    <string name="trw_rir_short">%1$d in reserve</string>
+    <string name="trw_interval_format">%1$d\u00A0s on / %2$d\u00A0s off ×\u00A0%3$d</string>
+    <string name="trw_side_short_left">L</string>
+    <string name="trw_side_short_right">R</string>
+    <string name="trw_warmup_short">W</string>
+    <string name="trw_set_cd">Set %1$d</string>
+    <string name="trw_record_total">%1$s total</string>
+    <string name="trw_record_e1rm">est. max %1$s</string>
+    <plurals name="trw_reps">
+        <item quantity="one">%d\u00A0rep</item>
+        <item quantity="other">%d\u00A0reps</item>
+    </plurals>
+
+    <!-- Finish dialog -->
+    <string name="trw_finish_title">Finish training</string>
+    <string name="trw_rpe_label">How hard was it? (1–10)</string>
+    <string name="trw_rpe_info_title">Effort</string>
+    <string name="trw_rpe_info_text">1 = very easy, 10 = maximal. Together with the duration this gives the training load, which CruxCoach uses for example for your carbohydrate target. It is optional.</string>
+    <string name="trw_notes_label">Notes (optional)</string>
+    <string name="trw_finish_confirm">Finish</string>
+    <string name="trw_discard">Discard</string>
+    <string name="trw_discard_title">Discard training?</string>
+    <string name="trw_discard_text">All sets of this training will be deleted.</string>
+    <string name="trw_nothing_done_title">No set done yet</string>
+    <string name="trw_nothing_done_text">Without a completed set nothing is saved.</string>
+    <string name="trw_keep_training">Keep training</string>
+    <string name="trw_unfinished_hint">Sets you did not tick off are not saved.</string>
+
+    <!-- Hang / interval timer -->
+    <string name="trw_phase_prepare">Get ready</string>
+    <string name="trw_phase_work">Work</string>
+    <string name="trw_phase_rest">Rest</string>
+    <string name="trw_phase_set_rest">Rest between sets</string>
+    <string name="trw_phase_done">Done</string>
+    <string name="trw_timer_rep">Rep %1$d/%2$d</string>
+    <string name="trw_timer_set">Set %1$d/%2$d</string>
+    <string name="trw_timer_pause">Pause</string>
+    <string name="trw_timer_resume">Resume</string>
+    <string name="trw_timer_skip">Skip</string>
+    <string name="trw_timer_close">Close timer</string>
+    <string name="trw_voice_go">Go</string>
+    <string name="trw_voice_rest">Rest</string>
+    <string name="trw_voice_done">Set done</string>
+
+    <!-- Summary -->
+    <string name="trw_summary_title">Summary</string>
+    <string name="trw_summary_sets">Sets</string>
+    <string name="trw_summary_exercises">Exercises</string>
+    <string name="trw_summary_duration">Duration</string>
+    <plurals name="trw_minutes">
+        <item quantity="one">%d\u00A0min</item>
+        <item quantity="other">%d\u00A0min</item>
+    </plurals>
+    <string name="trw_records_title">New personal bests</string>
+    <string name="trw_suggestions_title">For next time</string>
+    <string name="trw_too_easy">That went well – time for the next small step.</string>
+    <string name="trw_too_hard">That was very hard – take a little off.</string>
+    <string name="trw_sugg_more_load">Next time: %1$s</string>
+    <string name="trw_sugg_less_load">A bit lighter: %1$s</string>
+    <string name="trw_sugg_try">Try: %1$s</string>
+    <string name="trw_sugg_easier_variant">Easier variant: %1$s</string>
+    <string name="trw_side_title">Left vs. right</string>
+    <string name="trw_side_values">Left %1$d\u00A0%% · Right %2$d\u00A0%%</string>
+    <string name="trw_side_diff">%1$s is %2$d\u00A0%% weaker</string>
+    <string name="trw_sets_title">Sets</string>
+    <string name="trw_no_sets">No sets ticked off.</string>
+    <string name="trw_save_routine">Save as workout</string>
+    <string name="trw_routine_name">Workout name</string>
+    <string name="trw_routine_saved">Workout saved</string>
+    <string name="trw_delete_training">Delete training</string>
+    <string name="trw_delete_training_title">Delete training?</string>
+    <string name="trw_delete_training_text">“%1$s” on %2$s and all its sets will be deleted.</string>
+
+    <!-- Routines -->
+    <string name="trw_routines_title">Workouts</string>
+    <string name="trw_builtin_section">Starter templates</string>
+    <string name="trw_own_section">Your workouts</string>
+    <string name="trw_own_empty">No workouts of your own yet. Save a training as a workout from its summary.</string>
+    <plurals name="trw_exercise_count">
+        <item quantity="one">%d exercise</item>
+        <item quantity="other">%d exercises</item>
+    </plurals>
+    <string name="trw_est_minutes">approx. %1$d\u00A0min</string>
+    <string name="trw_delete_routine_title">Delete workout?</string>
+    <string name="trw_delete_routine_text">“%1$s” will be deleted.</string>
+    <string name="trw_open_running">A training is already running. You go straight back to it.</string>
+    <string name="trw_go_to_workout">Go to training</string>
+    <string name="trw_item_reps">%1$d\u00A0×\u00A0%2$s</string>
+    <string name="trw_item_seconds">%1$d\u00A0×\u00A0%2$d\u00A0s</string>
+    <string name="trw_item_interval">%1$d\u00A0× (%2$d/%3$d\u00A0s ×\u00A0%4$d)</string>
+    <plurals name="trw_sets_count">
+        <item quantity="one">%d\u00A0set</item>
+        <item quantity="other">%d\u00A0sets</item>
+    </plurals>
+
+    <!-- History -->
+    <string name="trw_history_title">Training history</string>
+    <string name="trw_history_empty">No finished training sessions yet.</string>
+    <string name="trw_workout_default">Training</string>
+    <plurals name="trw_sets_done">
+        <item quantity="one">%d\u00A0set</item>
+        <item quantity="other">%d\u00A0sets</item>
+    </plurals>
+    <string name="trw_timer_released">Let go</string>
+    <string name="trw_open_title">“%1$s” is still open</string>
+    <string name="trw_open_untitled">Training</string>
+    <plurals name="trw_open_done">
+        <item quantity="one">%1$d of %2$d\u00A0set done.</item>
+        <item quantity="other">%1$d of %2$d\u00A0sets done.</item>
+    </plurals>
+    <string name="trw_open_dropped">Nothing done yet – ending it drops it.</string>
+    <string name="trw_open_kept">Ending it saves the sets you did.</string>
+    <string name="trw_open_replace">End it, start “%1$s”</string>
+    <string name="trw_open_replace_empty">End it, start a new one</string>
+    <string name="trw_open_continue">Continue “%1$s”</string>
+    <string name="trw_own_loads_title">Next time with your loads</string>
+    <string name="trw_own_loads_info">You trained lighter than planned. The next training plans the load you chose; a set that shows more raises it again. You can change or delete it under strength values.</string>
+</resources>

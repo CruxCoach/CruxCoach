@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -23,6 +24,30 @@ import org.robolectric.annotation.GraphicsMode
 @Config(application = Application::class, sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MoonBoardMarkerContrastTest {
+    @Test fun `paint overlay keeps both the halo and core translucent`() {
+        val backgrounds = listOf(Color.White, Color.Black, Color.Blue)
+        val bitmap = Bitmap.createBitmap(480, 160, Bitmap.Config.ARGB_8888)
+        CanvasDrawScope().draw(
+            Density(1f), LayoutDirection.Ltr, Canvas(bitmap.asImageBitmap()), Size(480f, 160f),
+        ) {
+            backgrounds.forEachIndexed { index, background ->
+                drawRect(background, topLeft = Offset(index * 160f, 0f), size = Size(160f, 160f))
+                drawBoardColorOverlay(Offset(index * 160f + 80f, 80f), 10f, Color.Red)
+            }
+        }
+        backgrounds.indices.forEach { index ->
+            val x = index * 160 + 80
+            assertNotEquals("core must not obscure the photo", Color.Red.toArgb(), bitmap.getPixel(x, 80))
+            assertNotEquals("halo must not obscure the photo", Color.Red.toArgb(), bitmap.getPixel(x + 30, 80))
+            assertNotEquals("paint must remain visible", backgrounds[index].toArgb(), bitmap.getPixel(x + 30, 80))
+            assertEquals(backgrounds[index].toArgb(), bitmap.getPixel(x + 60, 80))
+        }
+        assertNotEquals(bitmap.getPixel(80, 80), bitmap.getPixel(240, 80))
+        val output = File("build/reports/paintbox-transparency.png")
+        output.parentFile?.mkdirs()
+        output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
     @Test fun `blue role ring has visible light and dark edges on matching blue white and black`() {
         val blue = Color(0xFF2F6BE0)
         val backgrounds = listOf(blue, Color.White, Color.Black)

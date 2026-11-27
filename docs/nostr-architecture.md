@@ -116,12 +116,22 @@ Zwei getrennte Listen, beide in `NostrConfig.kt` einkompiliert:
 wss://relay.damus.io
 wss://nos.lol                ← das einzige Relay, das Community-Climbs empirisch langfristig hält
 wss://relay.primal.net
-wss://nostr-pub.wellorder.net
-wss://nostr.oxtr.dev
+wss://nostr.mom
+wss://purplerelay.com
 ```
 
 Wird zur Laufzeit **additiv** mit der NIP-65-Liste des Users gemergt (§9) — die
-Defaults verschwinden also nie.
+Defaults verschwinden also nie. 0.2.5 ersetzt `nostr-pub.wellorder.net` (seit 06.11.2026 down)
+und `nostr.oxtr.dev` (502 seit 19.11.2026) durch `nostr.mom` und `purplerelay.com`: beide
+laufen mit strfry und speicherten am 20.11.2026 einen kurzen NIP-17-Wrap und einen in
+Crash-Report-Größe (27,8 KB), auch zwei Tage zurückdatiert (nostr.mom nimmt nur Wraps, die
+jünger als etwa 26 Tage datiert sind). Nicht `offchain.pub` und nicht `nostr.bitcoiner.social`
+(ab etwa 4 KB): sie lehnen Events von Keys außerhalb ihres Web of Trust ab, und der Einmal-Key
+eines Gift Wraps ist das immer. relay.primal.net nimmt keine Gift Wraps über 32 768 Bytes;
+Crash-Reports werden deshalb auf 12 KB Text gekürzt (`fitCrashReport`). Eine gespeicherte Liste (bis zu einem Tag alt,
+länger, solange die Aktualisierung scheitert) tauscht beim Lesen Defaults, die der Build nicht
+mehr kennt, gegen die aktuellen; Relays aus der NIP-65-Liste des Users bleiben, auch wenn sie
+ein altes Default nennen (`withCurrentDefaults` in `RelayListResolver.kt`).
 
 **`MANIFEST_RELAYS`** — ausschließlich für Katalog-Manifeste:
 
@@ -213,9 +223,9 @@ Content ausgepackt:
   "chunks": [
     { "name": "meta", "type": "meta",
       "sha256": "0a09d0f0…", "size": 64538,
-      "urls": [ "https://cdn.hzrd149.com/0a09d0f0…",
-                "https://blossom.primal.net/0a09d0f0…",
-                "https://blossom.cruxcoach.org/0a09d0f0…" ] },
+      "urls": [ "https://blossom.cruxcoach.org/0a09d0f0…",
+                "https://blossom-01.uid.ovh/0a09d0f0…",
+                "https://blossom.yakihonne.com/0a09d0f0…" ] },
     …
   ]
 }
@@ -228,8 +238,8 @@ sind auch der Grund für die 108 KB Eventgröße.
 ### Warum content-addressed
 
 ```
-https://cdn.hzrd149.com/0a09d0f0d9901837450bd15245e3ec43d9b7d5d7dbdd4baef0be5bb8976e8433
-                        └────────────── SHA-256 der Datei selbst ──────────────────────┘
+https://blossom.cruxcoach.org/0a09d0f0d9901837450bd15245e3ec43d9b7d5d7dbdd4baef0be5bb8976e8433
+                              └────────────── SHA-256 der Datei selbst ──────────────────────┘
 ```
 
 Die URL *ist* der Integritätsbeweis. Wer lädt und nachrechnet, weiß sofort, ob er
@@ -241,9 +251,11 @@ vertrauenswürdig sein muss.
 
 ```
 1. REQ {"kinds":[30078],"authors":["70b2740b…"],"#d":["<board>"],"limit":1}
-   an alle 5 MANIFEST_RELAYS parallel, 3 Durchläufe mit Backoff+Jitter
+   an alle 6 MANIFEST_RELAYS parallel, 3 Durchläufe mit Backoff+Jitter,
+   je Relay höchstens 15 s; sobald 2 Relays ein geprüftes Manifest geliefert
+   haben, bekommen die übrigen noch 2 s, dann werden sie abgebrochen
 
-2. max(created_at) gewinnt   ← NICHT first-success
+2. max(created_at) der eingegangenen Manifeste gewinnt   ← NICHT first-success
 3. pro Antwort prüfen: pubkey, verifySignature(), verifyId(), d-Tag
 4. content parsen → pro Chunk: lokal gemerkter Hash == Manifest-Hash?
                                ja  → überspringen
@@ -262,6 +274,15 @@ entwerten.
 mit eigener Manifest-Abfrage. Ein einzelnes schlechtes Zeitfenster (503 von damus,
 Connect-Timeout von wellorder) ließ vorher genau einen Katalog fehlschlagen, während
 die Geschwister durchliefen — der Bug „manche Boards laden beim ersten Mal nicht".
+
+**Warum nach zwei Manifesten nur noch 2 s gewartet wird (#39):** Ein Relay, das die
+Verbindung annimmt und nie antwortet (relay.damus.io, 29.–31.10.2026), hielt sonst jeden
+Katalog die vollen 15 s auf, und die Kataloge laden nacheinander. Unter zwei Manifesten
+bleibt es bei 15 s, damit langsame Mobilverbindungen weiter funktionieren; eine leere
+Antwort oder ein Fehler zählt nicht mit. Haben die zwei schnellsten Relays beide ein
+älteres Manifest, nimmt dieses Update das ältere (oder behält den vorhandenen Katalog,
+wenn es nicht neuer ist; Rollback-Schutz, kein Fehler) und das nächste holt es nach. Das eigene Relay bekommt jeden Publish direkt und
+antwortet schnell, deshalb ist das selten.
 
 **Warum der d-Tag clientseitig nachgeprüft wird:** Kilter und MoonBoard teilen den
 Signing-Key, nur der d-Tag trennt sie. Ein schlampiges Relay könnte auf die
@@ -601,13 +622,22 @@ Installationen mit gecachtem Kind-0-d-Tag behalten ihn, keine verwaisten Events.
 3. hochladen (Kind-24242-Auth)
 4. HEAD-Verify: liegt der Blob wirklich da?
 5. ── ERST JETZT ── Pointer publishen
-6. vorherigen Blob löschen (BUD-04 DELETE, best effort)
+6. vorherigen Blob löschen (BUD-04 DELETE, best effort; auch auf früheren
+   Standard-Servern, siehe unten)
 7. Key-Event mit-republishen
 8. lastBackupSync merken
 ```
 
 Nimmt **kein** Relay den Pointer an → `BackupException`. Sonst würde Schritt 6 den
 alten Blob löschen, während kein Relay den neuen Pointer kennt: Backup weg.
+
+`DEFAULT_SERVERS` (seit 0.2.5): `nostr.download`, `blossom.data.haus`,
+`blossom.yakihonne.com`. Ein angenommener Upload genügt. `cdn.hzrd149.com` war bis
+0.2.4 Standard und nimmt seit dem 10.11.2026 keine Uploads fremder Schlüssel mehr
+an; es steht deshalb nur noch in `RETIRED_SERVERS`: Dorthin wird nichts mehr
+hochgeladen, aber der Vorgänger-Blob (Schritt 6) und ein Opt-out werden auch dort
+gelöscht. Eine Wiederherstellung liest die Server aus dem Pointer und findet so
+auch ein Backup, das nur dort liegt.
 
 Schritt 7 ist nicht redundant. Relays räumen replaceable Events nach Alter weg. Wird
 nur der Pointer frisch gehalten, entsteht ein Fenster, in dem Pointer und Blob leben,
@@ -854,7 +884,7 @@ angefragt, wenn der Scanner geöffnet wird, und die drei anderen Wege hinein
 
 | Feature | Mechanismus |
 |---|---|
-| **Manifest** | `max(created_at)` über 5 Relays parallel, dann Chunk-Hash-Diff |
+| **Manifest** | `max(created_at)` über 6 Relays parallel, dann Chunk-Hash-Diff |
 | **Community-Climb** | Relay-Replaceable **+** monotone Sende-Stempel **+** lokaler `created_at`-Vergleich |
 | **Climb-Löschung** | monotoner Stempel, damit der Grabstein den letzten Publish sicher überholt |
 | **Backup** | `newestByDTag` **+** Anti-Rollback gegen `lastBackupSync` |

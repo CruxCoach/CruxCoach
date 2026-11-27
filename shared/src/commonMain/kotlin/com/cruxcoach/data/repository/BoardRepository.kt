@@ -446,6 +446,10 @@ interface BoardClimbQueries {
      *  overrides with the SQL scan. The default keeps in-memory test fakes
      *  that only model the exact-uuid path compiling unchanged. */
     fun getClimbByUuidNormalized(uuid: String, angle: Int): ClimbWithStats? = null
+    /** The stored uuids whose normalized form (hyphens stripped, lowercased) is
+     *  in [normKeys], in one full scan for all of them: keep the list to the
+     *  misses of the indexed lookups. Default: none, like [getClimbByUuidNormalized]. */
+    fun findClimbUuidsByNormKeys(normKeys: Collection<String>): List<String> = emptyList()
     fun countFilteredClimbsFast(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): Long
     fun countFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): Long
     fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): Long
@@ -582,6 +586,17 @@ interface BoardClimbQueries {
      *  with stats at ANY angle of (layout, brand). Hold usage doesn't depend
      *  on the angle, so the stats sheet must not pin one. */
     fun getAllFramesForHeatmapAllAngles(layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow>
+    /** The frames of [getAllFramesForHeatmapAllAngles], handed to [onFrames] row by row, so a whole
+     *  catalogue (Kilter: about 250,000 climbs) is never held in memory at once. [onFrames] runs on
+     *  the calling thread; an exception from it ends the read. */
+    fun forEachFramesForHeatmapAllAngles(layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, onFrames: (String) -> Unit) {
+        getAllFramesForHeatmapAllAngles(layoutId, boardBrand, minDifficulty, maxDifficulty, minAscensionists, climbType)
+            .forEach { onFrames(it.frames) }
+    }
+    /** Every listed climb of (layout, brand) with a grade at [angle] and at least [minAscensionists] ascents, as its
+     *  frames and grade (difficulty average), handed to [onClimb] row by row on the calling thread. For Knot's hold
+     *  ratings; none where a store has no catalogue. */
+    fun forEachGradedFrames(layoutId: Int, boardBrand: String, angle: Int, minAscensionists: Int, onClimb: (frames: String, grade: Double) -> Unit) {}
 }
 
 /** Board layout, placement, LED, and product-size queries. */
@@ -1626,3 +1641,29 @@ interface BoardRepository :
 fun BoardRepository.getClimbByUuidAnySpelling(uuid: String, angle: Int): ClimbWithStats? =
     ClimbUuid.spellings(uuid).firstNotNullOfOrNull { getClimbByUuid(it, angle) }
         ?: getClimbByUuidNormalized(uuid, angle)
+
+/**
+ * [getClimbByUuidAnySpelling] for many (uuid, angle) keys: the indexed spellings
+ * per key, then one normalized scan for all the misses together instead of a scan
+ * per miss. A climb the catalogue lacks always misses, and a logbook can hold
+ * hundreds of them (boards whose catalogue is not downloaded, deleted climbs).
+ * Keys that resolve to nothing are absent from the result.
+ */
+fun BoardRepository.getClimbsByUuidAnySpelling(
+    keys: Collection<Pair<String, Int>>,
+): Map<Pair<String, Int>, ClimbWithStats> {
+    val found = HashMap<Pair<String, Int>, ClimbWithStats>(keys.size)
+    val misses = ArrayList<Pair<String, Int>>()
+    for (key in keys) {
+        val hit = ClimbUuid.spellings(key.first).firstNotNullOfOrNull { getClimbByUuid(it, key.second) }
+        if (hit != null) found[key] = hit else misses += key
+    }
+    if (misses.isEmpty()) return found
+    val stored = findClimbUuidsByNormKeys(misses.mapTo(HashSet()) { ClimbUuid.normKey(it.first) })
+        .associateBy { ClimbUuid.normKey(it) }
+    for (key in misses) {
+        val uuid = stored[ClimbUuid.normKey(key.first)] ?: continue
+        getClimbByUuid(uuid, key.second)?.let { found[key] = it }
+    }
+    return found
+}

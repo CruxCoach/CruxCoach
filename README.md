@@ -68,6 +68,8 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 
 **Custom LED Colors** — Choose your own hold colors on the Kilter Board. Different colors for start, hand, foot, and top holds. Visible to everyone around you.
 
+**LED Effects** — Make the lit holds of a Kilter Board climb move: pulse, strobe, or a slow rainbow. Flashing options change color at most three times a second. Contributed by dapeebb.
+
 **Nearby Sharing** — Share the current climb or active playlist state with nearby CruxCoach users over Bluetooth. No internet is required.
 
 **Your Data, Your Device** — Logbook and other personal records use an encrypted local database; local climb drafts also exist in the unencrypted board database. Decentralized identity via [Nostr](https://nostr.com) — no email, no password, no central account server. No user tracking, no ads. Official builds can send an identifier-free aggregate update count only after an APK has been fully downloaded and cryptographically verified; it is disclosed and can be disabled under *Settings → Updates*.
@@ -79,7 +81,7 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 - **680,000+ catalogue climbs** across Kilter, MoonBoard, Tension, Grasshopper, Decoy, So iLL and Touchstone, with filters for grade, angle, quality, moves and setter — plus a combinable status filter (*Neu / Versucht / Geschafft*), an *ungraded-only (projects)* mode, ignored climbs and board-fit filtering
 - **Variable climb angle** *(0.2.0+)* — pick the angle to browse, send, or log a climb at across every angle the board physically supports, not only the angles that already have community stats; the original setter's angle is shown as info
 - **MoonBoard support** *(0.2.0+)* — browse and light MoonBoard 2010, 2016, Masters 2017, Masters 2019, Mini 2020, 2024 and Mini 2025; choose mounted hold sets and LED position, and import the official Moon logbook directly from the installed app or from CSV
-- **Quantum Board support** *(0.2.2+)* — browse and control Quantum walls, inspect controller-reported live layers and filter for climbs with zero or at most one overlap with occupied layers
+- **Quantum Board support** *(0.2.2+, experimental)* — browse and control Quantum walls, inspect controller-reported live layers and filter for climbs with zero or at most one overlap with occupied layers. Not yet tested on a real Quantum board; a lit route may not show as confirmed
 - **More boards** *(0.2.0+)* — Tension, Grasshopper, Decoy, So iLL and Touchstone work like Kilter: browse the catalogue, render climbs, read the hold heatmap, send to the board over Bluetooth, and set your own climbs. Pick one in Settings
 - **Board-Locations Map** *(0.2.0+)* — interactive world map of every known Kilter **and MoonBoard** installation, with filters for board brand, layout, country, public-vs-private, adjustability and size; tap a marker for contact details and a direct link into the climbs that fit that exact board
 - **Find-your-gym board picker** *(0.2.0+)* — set the right board configuration in Settings by searching for your gym, no product-size codes to memorise; always-on board-fit filter then narrows the catalog to climbs your board can actually do
@@ -87,6 +89,7 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 - **Playable playlists** *(0.2.2+)* — turn favourites or custom lists into guided sessions with ordering, repeats, rests, one-tap logging and a final summary, or generate a session from your logbook
 - **CruxRelay** *(0.2.2+)* — keep CruxCoach connected to the physical board while compatible board apps send climbs through it
 - **Log ascents** with grade opinions, attempts, and notes
+- **Training & nutrition** *(0.2.5+)* — a suggestion for today from your week plan, morning check-in and recent climbing; guided workouts with an exercise library, performance values and progression; an injury mode and a comeback plan ([intended purpose](#training-aid-not-a-medical-device)); body values and a food diary with barcode, search and on-device photo logging. The data lives in an encrypted database on the phone; injuries, illness pauses and the comeback diary go into an export or backup only when you switch them on
 - **History (*Verlauf*)** *(0.2.0+)* — the climbs you sent to the board, recorded automatically when you push one over Bluetooth; each entry shows which board it was sent on, mirrored sends are flagged, and you can multi-select and delete entries
 - **Hold Search** — tap holds on the Kilter Board to find climbs that use them
 - **Heatmap** — visualize hold popularity by type, sends, or all climbs, with a per-board selector to read the hold heatmap for each board you have logged on
@@ -98,6 +101,10 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 - **Reliable notifications** — guided setup for Android battery and autostart restrictions to improve delivery of dev-DMs and sync updates
 - **In-app auto-updater** — verifiable APK updates with TOFU certificate pinning (auto-disabled on Zapstore installs)
 - **In-app developer contact** via encrypted Nostr DMs
+
+### Training aid, not a medical device
+
+The plan is a training aid, not a medical device. CruxCoach's comeback plans are training aids for climbers. They help you plan and log a gradual return to climbing load after a break or an injury, using general load stages published in climbing-medicine literature. They do not diagnose, assess, treat or monitor injuries, do not decide when an injury has healed, and are not a medical device. If you have warning signs, or are unsure what the injury is, see a doctor or physiotherapist. If a professional has given you a plan, follow theirs.
 
 ---
 
@@ -170,7 +177,7 @@ Currently supported:
 - **Kilter Board** — all sizes and angles (catalogue, BLE send, logbook, climb authoring).
 - **MoonBoard** — 2010, 2016, Masters 2017, Masters 2019, Mini 2020, 2024 and Mini 2025 (catalogue, BLE send, logbook import and CruxCoach-community climb authoring). The 2024 set carries BoardSesh-community problems only for now — no official catalogue yet.
 - **Tension, Grasshopper, Decoy, So iLL, Touchstone** — catalogue browse, render, hold heatmap, BLE send, and CruxCoach-community climb authoring (these share the Aurora protocol with Kilter).
-- **Quantum Board** — catalogue browse, BLE send, authoritative live-layer readback and overlap-aware filtering. Controller capabilities and the selected model are checked before sending.
+- **Quantum Board** *(experimental)* — catalogue browse, BLE send, live-layer readback and overlap-aware filtering. Controller capabilities and the selected model are checked before sending. Not yet tested on a real Quantum board: a lit route may not show as confirmed.
 
 > Primarily tested on the Kilter 12x12 Original layout and MoonBoard 2016. Other sizes/variants should work but are less tested — feedback welcome!
 

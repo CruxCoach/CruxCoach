@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Die Basics beim ersten Öffnen von Training oder Ernährung (Owner 2026-10-09). -->
+<resources>
+    <string name="trq_title">Dein Start</string>
+    <string name="trq_later">Später</string>
+    <string name="trq_private">Alles, was du hier eingibst, bleibt verschlüsselt auf deinem Handy.</string>
+    <string name="trq_grade">Wie schwer boulderst du?</string>
+    <string name="trq_grade_from_logbook">Vorschlag aus deinem Board-Logbuch.</string>
+    <string name="trq_intro">Vier Antworten, dann steht dein erstes Training da.</string>
+    <string name="trq_age">Wie alt bist du?</string>
+    <string name="trq_age_why">Für Jüngere und ab 40 plant der Coach schonender.</string>
+    <string name="trq_first_training">Mein erstes Training</string>
+</resources>

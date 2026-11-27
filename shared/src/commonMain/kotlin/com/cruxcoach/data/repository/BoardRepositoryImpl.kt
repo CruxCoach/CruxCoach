@@ -1,5 +1,6 @@
 package com.cruxcoach.data.repository
 
+import app.cash.sqldelight.db.QueryResult
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.ClimbUuid
@@ -215,6 +216,9 @@ class BoardRepositoryImpl(
             )
         }
     }
+
+    override fun findClimbUuidsByNormKeys(normKeys: Collection<String>): List<String> =
+        if (normKeys.isEmpty()) emptyList() else q.findClimbUuidsByNormKeys(normKeys).executeAsList()
 
     override fun searchClimbsSorted(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int,
@@ -591,6 +595,44 @@ class BoardRepositoryImpl(
             maxDiff = maxDifficulty,
             minAsc = minAscensionists.toLong()
         ).executeAsList().map { ClimbFrameRow(it.uuid, it.frames) }
+    }
+
+    override fun forEachFramesForHeatmapAllAngles(
+        layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, onFrames: (String) -> Unit
+    ) {
+        val query = q.getAllFramesForHeatmapAllAngles(
+            boardBrand = boardBrand,
+            minFrames = climbType.minFrames(),
+            maxFrames = climbType.maxFrames(),
+            layoutId = layoutId.toLong(),
+            minDiff = minDifficulty,
+            maxDiff = maxDifficulty,
+            minAsc = minAscensionists.toLong()
+        )
+        // The query's own mapper decodes the stored frames; the cursor walks the rows without listing them.
+        query.execute { cursor ->
+            while (cursor.next().value) onFrames(query.mapper(cursor).frames)
+            QueryResult.Unit
+        }
+    }
+
+    override fun forEachGradedFrames(
+        layoutId: Int, boardBrand: String, angle: Int, minAscensionists: Int, onClimb: (frames: String, grade: Double) -> Unit,
+    ) {
+        val query = q.getGradedFramesForAngle(
+            layoutId = layoutId.toLong(),
+            boardBrand = boardBrand,
+            angle = angle.toLong(),
+            minAsc = minAscensionists.toLong(),
+        )
+        query.execute { cursor ->
+            while (cursor.next().value) {
+                val row = query.mapper(cursor)
+                row.difficulty_average?.let { onClimb(row.frames, it) }
+            }
+            QueryResult.Unit
+        }
     }
 
     // ── Board Layout Queries ───────────────────────────────────

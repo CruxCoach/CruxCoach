@@ -243,7 +243,7 @@ private fun DayCard(dayInfo: WeekDayInfo, onClick: () -> Unit, modifier: Modifie
                     text = dayInfo.dayName,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (dayInfo.isToday) FontWeight.Bold else FontWeight.Normal,
-                    color = if (dayInfo.isToday) OrangeAccent else MaterialTheme.colorScheme.onSurface
+                    color = if (dayInfo.isToday) CruxCoachDesign.colors.onBrandAccentContainer else MaterialTheme.colorScheme.onSurface
                 )
             }
 

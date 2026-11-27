@@ -18,6 +18,30 @@ import java.io.File
 object BundledBoardGeometry {
     const val ASSET_DIR = "board_geometry"
 
+    /**
+     * Boards whose geometry ships only in the APK (no catalogue chunk carries
+     * it). Their stored rows are replaced whenever the bundle changes, so a
+     * corrected hold table reaches existing installs with the update.
+     */
+    val BUNDLE_OWNED: Set<com.cruxcoach.domain.board.BoardBrand> =
+        setOf(com.cruxcoach.domain.board.BoardBrand.SHINYWALL)
+
+    fun sha256(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(8192)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /** Geometry tables a bundle replaces for a [BUNDLE_OWNED] board. */
+    val REPLACED_TABLES = listOf("placements", "product_sizes", "board_images", "leds")
+
     fun assetFileName(brand: String): String = "$brand.sqlite3"
 
     /**
@@ -53,6 +77,30 @@ object BundledBoardGeometry {
                 val seeded = placementCount(db, brand)
                 db.setTransactionSuccessful()
                 return seeded
+            } finally {
+                db.endTransaction()
+            }
+        } finally {
+            runCatching { db.execSQL("DETACH DATABASE geo") }
+        }
+    }
+
+    /**
+     * Replaces [brand]'s geometry with the bundle at [source] in one
+     * transaction (bundle-owned boards only, see [BUNDLE_OWNED]).
+     *
+     * @return placements stored afterwards.
+     */
+    fun replace(db: SQLiteDatabase, source: File, brand: String): Int {
+        db.execSQL("ATTACH DATABASE ? AS geo", arrayOf(source.absolutePath))
+        try {
+            db.beginTransaction()
+            try {
+                for (table in REPLACED_TABLES) db.execSQL("DELETE FROM main.$table WHERE board_brand = ?", arrayOf(brand))
+                for (sql in SEED_STATEMENTS) db.execSQL(sql.replace("INSERT OR IGNORE", "INSERT OR REPLACE"), arrayOf(brand))
+                val stored = placementCount(db, brand)
+                db.setTransactionSuccessful()
+                return stored
             } finally {
                 db.endTransaction()
             }

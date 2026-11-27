@@ -140,7 +140,8 @@ class BoardCleaningContentTest {
         compose.setContent {
             MaterialTheme {
                 BoardCleaningContent(
-                    BoardCleaningState(available = true, holdCount = 200, holdLimit = 127, active = true, displayedHoldCount = 127),
+                    BoardCleaningState(available = true, holdCount = 200, holdLimit = 127, active = true, displayedHoldCount = 127,
+                        sectioned = true),
                     "Kilter", true, true, false, null,
                     onConnect = {}, onStart = {}, onFinish = {}, onClose = {},
                 )
@@ -148,5 +149,20 @@ class BoardCleaningContentTest {
         }
         compose.onNodeWithText("127 von 200 verbleibenden Griffen in diesem Abschnitt").assertExists()
         compose.onNodeWithText("Diese Griffe geputzt · weiter").assertExists()
+        compose.onNodeWithText("Dieser ältere Controller", substring = true).assertExists()
+    }
+
+    @Test fun `a MoonBoard announces its sections without calling itself older`() {
+        compose.setContent {
+            MaterialTheme {
+                BoardCleaningContent(
+                    BoardCleaningState(available = true, holdCount = 80, holdLimit = 52, sectioned = true, frameLimited = true),
+                    "MoonBoard", true, true, false, null,
+                    onConnect = {}, onStart = {}, onFinish = {}, onClose = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Das MoonBoard markiert nur einen Teil dieser Griffe auf einmal.", substring = true).assertExists()
+        compose.onNodeWithText("älter", substring = true).assertDoesNotExist()
     }
 }

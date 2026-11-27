@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -126,8 +127,8 @@ internal fun ClimbCard(
                                 climb.nostrEventId.isNullOrBlank()
                             if (showDraftBadge) {
                                 Surface(
-                                    color = OrangeAccent.copy(alpha = 0.18f),
-                                    contentColor = OrangeAccent,
+                                    color = CruxCoachDesign.colors.brandAccentContainer,
+                                    contentColor = CruxCoachDesign.colors.onBrandAccentContainer,
                                     shape = RoundedCornerShape(4.dp),
                                 ) {
                                     Text(
@@ -206,7 +207,7 @@ internal fun ClimbCard(
                                         "$boardPlaylistCount",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = DarkBackground,
+                                        color = CruxCoachDesign.colors.onBrandAccent,
                                         modifier = Modifier.padding(horizontal = 5.dp),
                                     )
                                 }

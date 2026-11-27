@@ -185,7 +185,7 @@ internal fun MessageListCard(
                         fontWeight = FontWeight.Bold,
                         color = badgeColor
                     )
-                    Text(
+                    MessageText(
                         text = subject,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = if (isRead) FontWeight.Normal else FontWeight.Bold,

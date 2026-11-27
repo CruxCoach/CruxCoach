@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Trainings-Statistik (FEAT-066): Statistik-Tab, Statistik pro Übung, Fortschrittskarte. -->
+<resources>
+    <string name="trs_range_4w">4\u00A0Wochen</string>
+    <string name="trs_range_12w">12\u00A0Wochen</string>
+    <string name="trs_range_6m">6\u00A0Monate</string>
+    <string name="trs_range_1y">1\u00A0Jahr</string>
+    <string name="trs_kind_e1rm">Geschätztes Maximum</string>
+    <string name="trs_kind_ten_second">10-s-Max</string>
+    <string name="trs_kind_reps">Max. Wiederholungen</string>
+    <string name="trs_kind_seconds">Längste Haltezeit</string>
+    <string name="trs_kind_volume">Volumen</string>
+    <plurals name="trs_reps">
+        <item quantity="one">%d\u00A0Wdh.</item>
+        <item quantity="other">%d\u00A0Wdh.</item>
+    </plurals>
+    <plurals name="trs_sets">
+        <item quantity="one">%d Satz</item>
+        <item quantity="other">%d\u00A0Sätze</item>
+    </plurals>
+
+    <string name="trs_tile_training_days">Trainingstage / Ziel</string>
+    <string name="trs_empty">Noch keine Daten. Board-Sessions zählen automatisch, Trainings und dein Körpergewicht erscheinen hier, sobald du sie einträgst.</string>
+    <string name="trs_no_training">In diesem Zeitraum noch keine Trainingstage. Board-Sessions und Trainings zählen automatisch.</string>
+    <string name="trs_days_per_week">Trainingstage pro Woche</string>
+    <plurals name="trs_days_chart_cd">
+        <item quantity="one">Trainingstage pro Woche über %1$d\u00A0Wochen, insgesamt %2$d\u00A0Tag.</item>
+        <item quantity="other">Trainingstage pro Woche über %1$d\u00A0Wochen, insgesamt %2$d\u00A0Tage.</item>
+    </plurals>
+    <string name="trs_legend_climbing">Klettern</string>
+    <string name="trs_legend_off_board">Ohne Wand</string>
+    <string name="trs_minutes_per_week">Minuten pro Woche</string>
+    <plurals name="trs_minutes_chart_cd">
+        <item quantity="one">Trainingsminuten pro Woche, insgesamt %1$d\u00A0Minute.</item>
+        <item quantity="other">Trainingsminuten pro Woche, insgesamt %1$d\u00A0Minuten.</item>
+    </plurals>
+    <string name="trs_calendar">Kalender</string>
+    <plurals name="trs_calendar_cd">
+        <item quantity="one">Trainingskalender der letzten 16\u00A0Wochen mit %1$d Trainingstag.</item>
+        <item quantity="other">Trainingskalender der letzten 16\u00A0Wochen mit %1$d Trainingstagen.</item>
+    </plurals>
+    <string name="trs_calendar_hint">Eine Spalte pro Woche, Montag oben. Kräftigere Farbe = härterer Tag.</string>
+    <string name="trs_load_title">Belastung nach Körperbereich</string>
+    <string name="trs_load_cd">%1$s: Belastungstage pro Woche, diese Woche %2$d.</string>
+    <string name="trs_open_body">Körper öffnen</string>
+    <string name="trs_body_empty">Trag dein Körpergewicht ein, dann siehst du hier den Trend.</string>
+    <string name="trs_weight_cd">Trend des Körpergewichts im gewählten Zeitraum.</string>
+    <string name="trs_strength_title">Kraft zu Gewicht</string>
+    <string name="trs_strength_cd">Kraft in Prozent des Körpergewichts über die Zeit.</string>
+    <string name="trs_strength_hint">Fortschritt über Kraft, nicht über die Waage: 10-s-Max oder geschätztes Maximum in % des Körpergewichts.</string>
+    <string name="trs_exercises_empty">Übungen, die du einträgst, erscheinen hier mit ihrem Fortschritt.</string>
+    <string name="trs_change_28">%1$s in 4\u00A0Wochen</string>
+    <string name="trs_no_value">noch kein vergleichbarer Wert</string>
+
+    <string name="trs_capacity_meaning">Gezeigter Wert: %1$s – aus deinen eingetragenen Sätzen, Reserve-Wiederholungen eingerechnet.</string>
+    <string name="trs_exercise_empty">Noch keine eingetragenen Sätze. Mach die Übung in einem Training, dann erscheint hier ihr Fortschritt.</string>
+    <string name="trs_tile_best">Bestwert</string>
+    <string name="trs_tile_last">Zuletzt</string>
+    <string name="trs_tile_change">Änderung 4 Wo.</string>
+    <string name="trs_tile_sessions">Einheiten</string>
+    <string name="trs_tile_percent_bw">% Körpergewicht</string>
+    <string name="trs_capacity_chart">%1$s im Verlauf</string>
+    <plurals name="trs_capacity_cd">
+        <item quantity="one">Fortschritt bei %1$s in %2$d Einheit.</item>
+        <item quantity="other">Fortschritt bei %1$s über %2$d Einheiten.</item>
+    </plurals>
+    <string name="trs_current_value">Aktueller Kraftwert: %1$s</string>
+    <string name="trs_volume_chart">Volumen pro Einheit</string>
+    <plurals name="trs_volume_cd">
+        <item quantity="one">Volumen in %1$d Einheit.</item>
+        <item quantity="other">Volumen über %1$d Einheiten.</item>
+    </plurals>
+    <string name="trs_volume_hint_load">Bewegtes Gewicht × Wiederholungen aller Arbeitssätze: beide Hanteln eines Paars, bei Körpergewichtsübungen samt Körpergewicht.</string>
+    <string name="trs_volume_hint_reps">Wiederholungen (oder Runden) aller Arbeitssätze.</string>
+    <string name="trs_volume_hint_time">Gehaltene Sekunden aller Arbeitssätze.</string>
+    <string name="trs_volume_hint_hang">Sekunden × gehaltenes Gewicht aller Arbeitssätze, beim Hängen samt Körpergewicht.</string>
+    <string name="trs_bests">Bestwerte</string>
+    <string name="trs_best_load">Gesamtgewicht %1$s</string>
+    <string name="trs_best_e1rm">Geschätztes Maximum %1$s (gesamt)</string>
+    <string name="trs_best_e1rm_lifted">Geschätztes Maximum %1$s</string>
+    <string name="trs_sessions">Einheiten</string>
+
+    <string name="trs_progress_title">Fortschritt</string>
+    <string name="trs_progress_empty">Noch keine eingetragenen Sätze – dein Fortschrittsdiagramm erscheint nach dem ersten Training.</string>
+    <string name="trs_open_stats">Statistik öffnen</string>
+    <string name="trs_load_hint">Tage pro Woche, an denen der jeweilige Körperbereich belastet wurde – aus Board-Sessions und Training.</string>
+    <string name="trs_open_exercise">Übung öffnen</string>
+</resources>

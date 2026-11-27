@@ -10,6 +10,7 @@
         <exclude domain="sharedpref" path="nostr_flags.xml"/>
         <exclude domain="sharedpref" path="sqlcipher_prefs.xml"/>
         <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
+        <exclude domain="sharedpref" path="shinywall_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="amber_config.xml"/>
         <exclude domain="sharedpref" path="board_layer_identity.xml"/>
         <!-- Whether this install already asked for notifications at startup. The
@@ -21,14 +22,21 @@
         <exclude domain="file" path="datastore"/>
         <exclude domain="file" path="crash_log.txt"/>
         <exclude domain="file" path="crash_log_prev.txt"/>
+        <exclude domain="file" path="spray_walls"/>
+        <exclude domain="file" path="hold_model"/>
         <!-- All databases, including dynamic identity-scoped SQLCipher DBs. -->
         <exclude domain="database" path="."/>
+        <!-- FEAT-069 photo model (2–4 GB, re-downloadable) and its device-specific state. -->
+        <exclude domain="external" path="foodvision"/>
+        <exclude domain="sharedpref" path="foodvision.xml"/>
+        <exclude domain="sharedpref" path="health_connect_export.xml"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="nostr_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="nostr_flags.xml"/>
         <exclude domain="sharedpref" path="sqlcipher_prefs.xml"/>
         <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
+        <exclude domain="sharedpref" path="shinywall_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="amber_config.xml"/>
         <exclude domain="sharedpref" path="board_layer_identity.xml"/>
         <!-- Whether this install already asked for notifications at startup. The
@@ -40,6 +48,11 @@
         <exclude domain="file" path="datastore"/>
         <exclude domain="file" path="crash_log.txt"/>
         <exclude domain="file" path="crash_log_prev.txt"/>
+        <exclude domain="file" path="spray_walls"/>
+        <exclude domain="file" path="hold_model"/>
         <exclude domain="database" path="."/>
+        <exclude domain="external" path="foodvision"/>
+        <exclude domain="sharedpref" path="foodvision.xml"/>
+        <exclude domain="sharedpref" path="health_connect_export.xml"/>
     </device-transfer>
 </data-extraction-rules>

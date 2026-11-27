@@ -1,0 +1,224 @@
+package com.cruxcoach.android.ui.training.fuel
+
+import android.app.Application
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextReplacement
+import com.cruxcoach.android.foodvision.BlsRepository
+import com.cruxcoach.android.foodvision.DeviceFactsReader
+import com.cruxcoach.android.foodvision.VisionModelStore
+import com.cruxcoach.android.ui.training.AthleteScreenTest
+import com.cruxcoach.android.ui.training.athlete.AthleteSettingsScreen
+import com.cruxcoach.android.ui.training.athlete.AthleteSettingsViewModel
+import com.cruxcoach.android.ui.training.athlete.SettingsSection
+import com.cruxcoach.athlete.model.AgeBand
+import com.cruxcoach.athlete.model.AthleteGoal
+import com.cruxcoach.athlete.model.ClimbIntensity
+import com.cruxcoach.athlete.model.ClimbingDayEntry
+import com.cruxcoach.athlete.model.ClimbingDayKind
+import com.cruxcoach.athlete.model.FoodLogEntry
+import com.cruxcoach.athlete.model.Meal
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.minus
+import com.cruxcoach.athlete.model.BodyMeasurement
+import com.cruxcoach.athlete.model.BodyMetric
+import com.cruxcoach.athlete.model.Sex
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+/**
+ * Energy in the open (owner 2026-10-09): the need with its parts, a calorie
+ * target while losing weight, and warnings with their numbers – but no
+ * function is withheld, not even with a low BMI.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class EnergyTransparencyTest : AthleteScreenTest() {
+
+    private fun body(weightKg: Double, heightCm: Double = 175.0) {
+        val today = service.today().toString()
+        repo.saveMeasurement(BodyMeasurement(today, BodyMetric.WEIGHT.key, weightKg, "kg", 1))
+        repo.saveMeasurement(BodyMeasurement(today, BodyMetric.HEIGHT.key, heightCm, "cm", 1))
+    }
+
+    private fun fuel() {
+        val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context)).tracked()
+        render { FuelScreen({}, {}, viewModel = loaded(FuelViewModel(service)), photoViewModel = photo) }
+        waitForTag("fuel_list")
+    }
+
+    @Test
+    fun `energy ring counts against the calorie target and opens the breakdown`() {
+        val year = service.today().year
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, sex = Sex.MALE, birthYear = year - 30, goal = AthleteGoal.LOSE_WEIGHT, weeklyLossKg = 0.5) }
+        body(70.0)
+        fuel()
+        // Need 1649 + 659/660 everyday (rest day) = 2308/2309, minus 550 for 0.5 kg a week.
+        waitForTag("fuel_energy")
+        compose.waitUntil(WAIT_MS) {
+            // Four rings on a narrow screen: "of 1758", the unit is in the line under the ring.
+            compose.onAllNodes(androidx.compose.ui.test.hasText("of 1758", substring = true).or(androidx.compose.ui.test.hasText("of 1759", substring = true)), useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        click("fuel_energy")
+        waitForTag("energy_sheet")
+        waitForTag("energy_need")
+        waitForTag("energy_deficit")
+        waitForTag("energy_target")
+        compose.onNodeWithText("−550\u00A0kcal", useUnmergedTree = true).assertExists()
+        // Everyday life is chosen right here and changes the need.
+        click("everyday_physical")
+        compose.waitUntil(WAIT_MS) { repo.profile().everydayActivity == com.cruxcoach.athlete.model.EverydayActivity.PHYSICAL }
+    }
+
+    @Test
+    fun `a hard day while losing weight gets a smaller deficit so the rings fit, said with the numbers`() {
+        // Holistic audit 2026-10-17: 60 kg, 165 cm, 25 years, 0.5 kg a week, 90 minutes of hard climbing today.
+        val year = service.today().year
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, sex = Sex.FEMALE, birthYear = year - 25, goal = AthleteGoal.LOSE_WEIGHT, weeklyLossKg = 0.5) }
+        body(60.0, 165.0)
+        service.saveClimbingDay(ClimbingDayEntry("cd1", service.today().toString(), ClimbingDayKind.GYM_BOULDER, 90, ClimbIntensity.HARD))
+        // Need 2333 kcal; the full 550 kcal deficit would leave 1783 for 96 g protein + 360 g carbohydrate + 20 % fat (2283).
+        val activity = service.activities(days = 1)[service.today().toString()]
+        val plan = service.weightPlan(repo.profile(), activity)!!
+        assertEquals(2283, plan.targetKcal)
+        assertEquals(50, plan.dailyDeficitKcal)
+        val targets = service.fuelTargets(activity, repo.profile())!!
+        assertEquals(360, targets.carbsG)
+        assertTrue(4 * targets.proteinG + 4 * targets.carbsG + 9 * targets.fatG <= plan.targetKcal!!)
+        fuel()
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodes(androidx.compose.ui.test.hasText("of 2283", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        // The carbohydrate ring says why the deficit is smaller today …
+        click("fuel_carbs")
+        waitForTag("fuel_explain_carbs")
+        waitForText("Demanding day: deficit 50 instead of 550\u00A0kcal")
+        clickText("Close")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("fuel_explain_carbs").fetchSemanticsNodes().isEmpty() }
+        // … and the energy sheet too, with the pace the last seven days really add up to (6 × 500 + 50 kcal).
+        click("fuel_energy")
+        waitForTag("energy_eased")
+        compose.onNodeWithText("−50\u00A0kcal", useUnmergedTree = true).assertExists()
+        waitForTag("energy_week_pace")
+        waitForText("about 0.4\u00A0kg instead of 0.5\u00A0kg per week")
+    }
+
+    @Test
+    fun `under 18 the energy card and the goal sheet say adult thresholds do not fit, nothing is locked`() {
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, sex = Sex.FEMALE, goal = AthleteGoal.LOSE_WEIGHT, weeklyLossKg = 0.3,
+            coach = it.coach.copy(ageBand = AgeBand.UNDER_16)) }
+        body(50.0, 160.0)
+        fuel()
+        // A gentle plan with no warning of its own: the card speaks because of the age, first.
+        waitForTag("fuel_reds_youth")
+        waitForText("Under 18 the body is still growing")
+        // The running goal can be looked at again from the card – and kept or stopped, as the athlete decides.
+        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_reds_adjust"))
+        click("fuel_reds_adjust")
+        waitForTag("goal_sheet")
+        waitForTag("goal_warning_youth")
+        compose.onNodeWithTag("goal_done").assertIsEnabled()
+        compose.onNodeWithTag("goal_stop").assertIsEnabled()
+    }
+
+    @Test
+    fun `low carbohydrate on earlier training days is named with its numbers`() {
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, sex = Sex.MALE) }
+        body(70.0)
+        val today = service.today()
+        // Three earlier hard days, each with breakfast and dinner logged: 140, 150 and 151 g carbohydrate.
+        listOf(140.0, 150.0, 151.0).forEachIndexed { i, carbs ->
+            val day = today.minus(DatePeriod(days = i + 1)).toString()
+            service.saveClimbingDay(ClimbingDayEntry("cd$i", day, ClimbingDayKind.GYM_BOULDER, 90, ClimbIntensity.HARD))
+            repo.saveFoodLog(FoodLogEntry("b$i", day, 1, Meal.BREAKFAST, name = "Oats", carbsG = carbs / 2))
+            repo.saveFoodLog(FoodLogEntry("d$i", day, 2, Meal.DINNER, name = "Rice", carbsG = carbs / 2))
+        }
+        // Today's breakfast on a training day does not count: the day is still running.
+        service.saveClimbingDay(ClimbingDayEntry("cd-today", today.toString(), ClimbingDayKind.GYM_BOULDER, 90, ClimbIntensity.HARD))
+        repo.saveFoodLog(FoodLogEntry("t", today.toString(), 1, Meal.BREAKFAST, name = "Toast", carbsG = 20.0))
+        fuel()
+        waitForTag("fuel_reds_low_carbs_on_training_days")
+        // 441 g over 3 days at 70 kg: 2.1 g/kg against 6 g/kg on a hard day.
+        waitForText("On 3 training days you logged 2.1\u00A0g/kg of carbohydrate on average instead of 6\u00A0g/kg")
+    }
+
+    @Test
+    fun `missing height is entered in the energy sheet`() {
+        repo.updateProfile { it.copy(fuelIntroAccepted = true) }
+        repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, 70.0, "kg", 1))
+        fuel()
+        click("fuel_energy")
+        waitForTag("energy_height_input")
+        // The keyboard's "Fertig" keeps it; there is no save button.
+        compose.onNodeWithTag("energy_height_input").performTextReplacement("178")
+        compose.onNodeWithTag("energy_height_input").performImeAction()
+        compose.waitUntil(WAIT_MS) { repo.latest(BodyMetric.HEIGHT.key)?.value == 178.0 }
+        // With the height the need appears, with its assumptions named and answerable in place.
+        waitForTag("energy_need")
+        waitForTag("energy_birth_year_input")
+        waitForTag("energy_sex_female")
+    }
+
+    @Test
+    fun `a low BMI does not lock losing weight, it warns with the numbers`() {
+        repo.updateProfile { it.copy(sex = Sex.MALE) }
+        body(55.0) // BMI 18.0 at 175 cm
+        val vm = loaded(AthleteSettingsViewModel(service))
+        render { AthleteSettingsScreen({}, viewModel = vm, section = SettingsSection.PROFILE) }
+        waitForTag("switch_goal_lose_weight")
+        compose.onNodeWithTag("switch_goal_lose_weight").assertIsEnabled()
+        click("switch_goal_lose_weight")
+        waitForTag("goal_sheet")
+        compose.onNodeWithTag("goal_target_input").performTextReplacement("50")
+        repeat(5) { click("goal_pace_plus") } // 0.5 → 1.0 kg a week
+        compose.onNodeWithTag("goal_pace", useUnmergedTree = true).assertTextEquals("1\u00A0kg per week")
+        // 1 kg is 1.8 % of 55 kg; 50 kg at 175 cm is BMI 16.3 – both named, neither refused.
+        waitForTag("goal_warning_fast_pace")
+        waitForTag("goal_warning_low_target_bmi")
+        // The pace line and the warning both say it.
+        assertEquals(2, compose.onAllNodesWithText("1.8\u00A0% of your weight", substring = true, useUnmergedTree = true).fetchSemanticsNodes().size)
+        click("goal_start")
+        compose.waitUntil(WAIT_MS) { repo.profile().goal == AthleteGoal.LOSE_WEIGHT }
+        assertEquals(1.0, repo.profile().weeklyLossKg, 1e-9)
+        assertEquals(50.0, repo.profile().targetWeightKg!!, 1e-9)
+        // The page keeps the goal with its warnings; switching off keeps target and pace for next time.
+        waitForTag("goal_summary")
+        waitForTag("settings_warning_fast_pace")
+        click("switch_goal_lose_weight")
+        compose.waitUntil(WAIT_MS) { repo.profile().goal != AthleteGoal.LOSE_WEIGHT }
+        assertEquals(50.0, repo.profile().targetWeightKg!!, 1e-9)
+    }
+
+    @Test
+    fun `nutrition names a fast plan on the energy card and opens the goal from it`() {
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, sex = Sex.FEMALE, goal = AthleteGoal.LOSE_WEIGHT, weeklyLossKg = 1.2) }
+        body(60.0, 165.0)
+        fuel()
+        waitForTag("fuel_reds")
+        waitForTag("fuel_reds_fast_pace")
+        waitForTag("fuel_reds_large_deficit")
+        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_reds_adjust"))
+        click("fuel_reds_adjust")
+        waitForTag("goal_sheet")
+        waitForTag("goal_stop")
+        // While the goal runs, a change is kept at once; "Fertig" only closes the sheet.
+        repeat(2) { click("goal_pace_minus") }
+        compose.waitUntil(WAIT_MS) { kotlin.math.abs(repo.profile().weeklyLossKg - 1.0) < 1e-9 }
+        click("goal_done")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("goal_sheet").fetchSemanticsNodes().isEmpty() }
+        assertEquals(AthleteGoal.LOSE_WEIGHT, repo.profile().goal)
+    }
+}

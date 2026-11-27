@@ -1,0 +1,15 @@
+{
+  "uniqueId": "org.ggml:llama.cpp",
+  "artifactVersion": "b11396",
+  "name": "llama.cpp / ggml",
+  "description": "Runs the food photo model on the device (FEAT-069). Fetched by CMake at build time and linked into libcruxcoach-vision; includes stb_image (public domain), miniaudio (public domain / MIT-0), xxHash (BSD-2-Clause), SHA-1/SHA-256 (public domain) and subprocess.h (Unlicense).",
+  "website": "https://github.com/ggml-org/llama.cpp",
+  "developers": [
+    {
+      "name": "The ggml authors"
+    }
+  ],
+  "licenses": [
+    "llama-cpp-MIT"
+  ]
+}

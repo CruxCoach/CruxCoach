@@ -59,6 +59,53 @@ class BoardLayerManagerTest {
         assertEquals(4, manager.state.value.layers.size)
     }
 
+    @Test fun `this phone's PaintBox picture neither blocks nor fills the rack`() {
+        val manager = BoardLayerManager(context)
+        manager.reconcile(listOf(
+            QuantumActivePlayer(
+                routeId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                userId = manager.paintIdentity(0),
+                remainingSeconds = 12,
+                color = 0x00ff00,
+            ),
+            QuantumActivePlayer(
+                routeId = "cccccccc-bbbb-cccc-dddd-eeeeeeeeeeee",
+                userId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+                remainingSeconds = 12,
+                color = 0x123456,
+            ),
+        ))
+        assertTrue(manager.state.value.layers.isEmpty())
+        // Only the other climber's layer is foreign; a climb removes the picture first.
+        assertEquals(listOf("bbbbbbbb-cccc-dddd-eeee-ffffffffffff"), manager.state.value.externalLayers.map { it.userUuid })
+        assertEquals(1, manager.state.value.occupiedCount)
+    }
+
+    @Test fun `a climb removes only this phone's PaintBox layers`() = kotlinx.coroutines.test.runTest {
+        val manager = BoardLayerManager(context)
+        val board = BoardLayerBoardIdentity("quantum:serial:ser-1", 9201)
+        val paint = QuantumActivePlayer(
+            routeId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", userId = manager.paintIdentity(1),
+            remainingSeconds = 12, color = 0x00ff00,
+        )
+        val other = QuantumActivePlayer(
+            routeId = "cccccccc-bbbb-cccc-dddd-eeeeeeeeeeee", userId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+            remainingSeconds = 12, color = 0x123456,
+        )
+        val ble = io.mockk.mockk<BoardBleConnection>(relaxed = true)
+        io.mockk.every { ble.quantumControllerState } returns kotlinx.coroutines.flow.MutableStateFlow(
+            QuantumControllerState(players = listOf(paint, other), authoritative = true, authoritativeRevision = 1),
+        )
+        io.mockk.coEvery { ble.removeQuantumLayer(any(), any()) } returns true
+
+        assertEquals(1, ble.removePaintBoxLayers(manager, board))
+        io.mockk.coVerify(exactly = 1) { ble.removeQuantumLayer(paint.userId, board) }
+        io.mockk.coVerify(exactly = 0) { ble.removeQuantumLayer(other.userId, any()) }
+
+        io.mockk.coEvery { ble.removeQuantumLayer(any(), any()) } returns false
+        assertNull(ble.removePaintBoxLayers(manager, board))
+    }
+
     @Test fun `foreign controller player consumes capacity but is never claimed or removed`() {
         val manager = BoardLayerManager(context)
         repeat(3) { manager.beginProjection(layer(manager, it)) }
@@ -79,6 +126,60 @@ class BoardLayerManagerTest {
         manager.assignPreview(layer(manager, 3))
         assertFalse(manager.hasControllerCapacityFor(3))
         assertFalse(manager.canProjectAll())
+    }
+
+    @Test fun `an accepted route the list leaves out stays until its play time is over`() {
+        val manager = BoardLayerManager(context)
+        val sent = layer(manager, 0)
+        manager.beginProjection(sent)
+        manager.confirmProjection(sent.planKey(), unlistedUntilElapsedMs = 10_000)
+
+        manager.reconcile(emptyList(), nowElapsedMs = 9_999)
+        val kept = manager.state.value.layers.single()
+        assertEquals(sent.routeUuid, kept.confirmedRouteUuid)
+        assertEquals(10_000L, kept.unlistedUntilElapsedMs)
+        // It is on the board as far as this phone knows: it takes a place and
+        // its holds, but it is not one of the players the controller reports.
+        assertEquals(1, manager.state.value.occupiedCount)
+        assertTrue(manager.state.value.matchesQuantumPlayers(emptyList()))
+        assertFalse(manager.removePreview(0))
+
+        manager.reconcile(emptyList(), nowElapsedMs = 10_000)
+        assertTrue("its play time is over", manager.state.value.layers.isEmpty())
+    }
+
+    @Test fun `once the list names an accepted route, its absence means it is off`() {
+        val manager = BoardLayerManager(context)
+        val sent = layer(manager, 1)
+        manager.beginProjection(sent)
+        manager.confirmProjection(sent.planKey(), unlistedUntilElapsedMs = 10_000)
+
+        manager.reconcile(listOf(playerFor(sent)), nowElapsedMs = 1)
+        assertNull(manager.state.value.layers.single().unlistedUntilElapsedMs)
+        manager.reconcile(emptyList(), nowElapsedMs = 2)
+        assertTrue(manager.state.value.layers.isEmpty())
+    }
+
+    @Test fun `a replacement keeps the unlisted route it replaces`() {
+        val manager = BoardLayerManager(context)
+        val sent = layer(manager, 0)
+        manager.beginProjection(sent)
+        manager.confirmProjection(sent.planKey(), unlistedUntilElapsedMs = 10_000)
+        manager.assignPreview(layer(manager, 0).copy(routeUuid = "30000000-0000-0000-0000-000000000001"))
+        manager.reconcile(emptyList(), nowElapsedMs = 5_000)
+        val staged = manager.state.value.layers.single()
+        assertEquals(sent.routeUuid, staged.confirmedRouteUuid)
+        assertEquals(10_000L, staged.unlistedUntilElapsedMs)
+    }
+
+    @Test fun `PaintBox colours this phone lit are tracked per board`() {
+        val manager = BoardLayerManager(context)
+        manager.bindBoard(BoardLayerBoardIdentity("quantum:serial:a", 9201))
+        manager.markPaintLit(manager.paintIdentity(2).uppercase())
+        manager.markPaintLit("bbbbbbbb-cccc-4ddd-8eee-ffffffffffff")
+        assertEquals(setOf(manager.paintIdentity(2)), manager.state.value.litPaintUsers)
+        manager.bindBoard(BoardLayerBoardIdentity("quantum:serial:b", 9201))
+        assertTrue(manager.state.value.litPaintUsers.isEmpty())
     }
 
     @Test fun `preview assignment is local only and preserves physical replacement state`() {

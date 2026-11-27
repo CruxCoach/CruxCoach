@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -159,7 +160,9 @@ internal fun UpdaterSettingsSection(
                                 }
                             )
                         }
-                    }) {
+                    }, colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    )) {
                         Text(stringResource(R.string.updater_settings_nudge_enable))
                     }
                 }
@@ -495,7 +498,12 @@ private fun CertMismatchRow(onOpen: () -> Unit) {
                 text = stringResource(R.string.updater_settings_cert_body),
                 style = MaterialTheme.typography.bodySmall,
             )
-            TextButton(onClick = onOpen) {
+            TextButton(
+                onClick = onOpen,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
+            ) {
                 Text(
                     stringResource(R.string.updater_notif_action_open_release),
                     color = Color.Unspecified,

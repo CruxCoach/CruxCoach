@@ -32,9 +32,10 @@ enum class DataExchangeFormat { JSON, CSV_ZIP, EXCEL }
 /** Categories available in the manual JSON/CSV export/import UI.
  *
  * Keep this list aligned with data users can actually create or inspect in the
- * released app. The training surface is still intentionally hidden, so showing
- * profile, assessment, body-stat, workout, generic climb-log, or training-plan
- * rows here promises controls the rest of the app does not offer. Board-session
+ * released app. 0.2.4 opened training (logger, check-ins, injuries), body
+ * measurements and fueling, so those three are listed; the older 0.1.x
+ * profile, assessment, workout, generic climb-log and training-plan rows stay
+ * hidden because nothing in the app shows them. Board-session
  * history is also internal-only for now; playlists themselves are included in
  * [Category.CLIMB_LISTS]. Private climb notes travel with
  * [Category.BOARD_LOGBOOK] instead of occupying a separate UI category.
@@ -48,7 +49,21 @@ val VISIBLE_CATEGORIES: Set<Category> = setOf(
     Category.BOARD_LOGBOOK,
     Category.CLIMB_LISTS,
     Category.OWN_CLIMBS,
+    Category.TRAINING,
+    Category.BODY_STATS,
+    Category.FUEL,
+    Category.HEALTH,
 )
+
+/** Athlete data (training, body, fueling, injuries) is nested; only the JSON backup carries it. */
+val JSON_ONLY_CATEGORIES: Set<Category> = setOf(Category.TRAINING, Category.BODY_STATS, Category.FUEL, Category.HEALTH)
+
+/** Health data is exported only when the athlete ticks it (research/safety-regulation.md §3.6). */
+val OPT_IN_CATEGORIES: Set<Category> = setOf(Category.HEALTH)
+
+/** Categories a manual export in [format] can actually write. */
+fun categoriesFor(format: DataExchangeFormat): Set<Category> =
+    if (format == DataExchangeFormat.JSON) VISIBLE_CATEGORIES else VISIBLE_CATEGORIES - JSON_ONLY_CATEGORIES
 
 /** Translate the compact manual selection into the more granular wire format. */
 internal fun Set<Category>.withBundledClimbNotes(): Set<Category> =
@@ -63,7 +78,7 @@ internal fun Set<Category>.toManualCategories(): Set<Category> = buildSet {
 data class DataExchangeState(
     // Export
     val exportFormat: DataExchangeFormat = DataExchangeFormat.JSON,
-    val exportCategories: Set<Category> = VISIBLE_CATEGORIES,
+    val exportCategories: Set<Category> = VISIBLE_CATEGORIES - OPT_IN_CATEGORIES,
     val isExporting: Boolean = false,
     val pendingShare: ExportShare? = null,
 
@@ -126,6 +141,8 @@ class DataExchangeViewModel @Inject constructor(
     /** Own climbs need the board DB, which a catalogue import holds: they are
      *  written now or staged, the logbook itself never waits. */
     private val pendingImports: com.cruxcoach.android.data.PendingImports,
+    /** Training, body and fueling (athlete database, FEAT-066..068). */
+    private val athleteService: dagger.Lazy<com.cruxcoach.android.athlete.AthleteService>,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -155,7 +172,7 @@ class DataExchangeViewModel @Inject constructor(
     }
 
     fun selectAllExportCategories() {
-        _state.update { it.copy(exportCategories = VISIBLE_CATEGORIES) }
+        _state.update { it.copy(exportCategories = categoriesFor(it.exportFormat) - OPT_IN_CATEGORIES) }
     }
 
     fun deselectAllExportCategories() {
@@ -173,14 +190,16 @@ class DataExchangeViewModel @Inject constructor(
         _state.update { it.copy(isExporting = true, error = null, message = null) }
         viewModelScope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    val content = buildExport(s)
-                    context.contentResolver.openOutputStream(uri, "wt")?.use { stream ->
-                        stream.write(content)
-                    } ?: throw Exception(context.getString(R.string.error_cannot_open_file))
+                val export = withContext(Dispatchers.IO) {
+                    buildExport(s).also { content ->
+                        context.contentResolver.openOutputStream(uri, "wt")?.use { stream ->
+                            stream.write(content.bytes)
+                        } ?: throw Exception(context.getString(R.string.error_cannot_open_file))
+                    }
                 }
                 val count = s.exportCategories.size
-                val label = context.resources.getQuantityString(R.plurals.export_categories_exported, count, count)
+                val label = context.resources.getQuantityString(R.plurals.export_categories_exported, count, count) +
+                    trainingMissingNote(export)
                 _state.update { it.copy(isExporting = false, message = label) }
             } catch (e: Exception) {
                 _state.update { it.copy(isExporting = false, error = context.getString(R.string.error_export_failed, e.message ?: "")) }
@@ -197,9 +216,10 @@ class DataExchangeViewModel @Inject constructor(
         _state.update { it.copy(isExporting = true, error = null, message = null) }
         viewModelScope.launch {
             try {
+                var export: ExportBytes? = null
                 val share = withContext(Dispatchers.IO) {
                     val file = File(context.cacheDir, exportFilename(s.exportFormat))
-                    file.writeBytes(buildExport(s))
+                    file.writeBytes(buildExport(s).also { export = it }.bytes)
                     val uri = androidx.core.content.FileProvider.getUriForFile(
                         context,
                         "${context.packageName}.fileprovider",
@@ -207,7 +227,8 @@ class DataExchangeViewModel @Inject constructor(
                     )
                     ExportShare(uri, exportMimeType(s.exportFormat))
                 }
-                _state.update { it.copy(isExporting = false, pendingShare = share) }
+                val note = export?.let { trainingMissingNote(it).trim() }?.takeIf { it.isNotEmpty() }
+                _state.update { it.copy(isExporting = false, pendingShare = share, message = note) }
             } catch (e: Exception) {
                 _state.update {
                     it.copy(
@@ -223,9 +244,31 @@ class DataExchangeViewModel @Inject constructor(
         _state.update { it.copy(pendingShare = null) }
     }
 
-    private fun buildExport(state: DataExchangeState): ByteArray {
+    /** An export file; [trainingMissing] = its training, body and nutrition part could not be read. */
+    private class ExportBytes(val bytes: ByteArray, val trainingMissing: Boolean)
+
+    private fun trainingMissingNote(export: ExportBytes): String =
+        if (export.trainingMissing) " " + context.getString(R.string.export_training_part_missing) else ""
+
+    private fun buildExport(state: DataExchangeState): ExportBytes {
+        val categories = state.exportCategories.intersect(categoriesFor(state.exportFormat)).withBundledClimbNotes()
+        // The logbook must still export when the athlete database will not open: the file then
+        // carries everything else and the message says what is missing. Without a database
+        // there is nothing to read, and a board-only user does not get one created here.
+        val athlete = athleteService.get()
+        var trainingMissing = false
+        val readAthlete: (() -> com.cruxcoach.athlete.data.AthleteSnapshot)? = if (!athlete.hasDatabase()) null else {
+            {
+                try {
+                    athlete.backupSnapshot()
+                } catch (e: Exception) {
+                    trainingMissing = categories.any { it in Category.ATHLETE }
+                    com.cruxcoach.athlete.data.AthleteSnapshot()
+                }
+            }
+        }
         val json = CruxCoachBackup.export(
-            categories = state.exportCategories.withBundledClimbNotes(),
+            categories = categories,
             userRepository = userRepository,
             bodyStatRepository = bodyStatRepository,
             workoutRepository = workoutRepository,
@@ -235,8 +278,9 @@ class DataExchangeViewModel @Inject constructor(
             boardRepository = boardRepository,
             exportedAt = DateTimeUtil.nowIso(),
             nostrPubkey = nostrSigner.getPublicKeyHex(),
+            athleteSnapshot = readAthlete,
         )
-        return when (state.exportFormat) {
+        val bytes = when (state.exportFormat) {
             DataExchangeFormat.JSON -> json.toByteArray(Charsets.UTF_8)
             DataExchangeFormat.CSV_ZIP -> CruxCoachCsvArchive.fromJson(
                 json,
@@ -247,6 +291,7 @@ class DataExchangeViewModel @Inject constructor(
                 state.exportCategories.withBundledClimbNotes(),
             )
         }
+        return ExportBytes(bytes, trainingMissing)
     }
 
     /** Suggested filename for the selected CruxCoach export format. */
@@ -386,6 +431,8 @@ class DataExchangeViewModel @Inject constructor(
                         expectedNostrPubkey = expectedPubkey,
                         adoptLocalDraftsForPubkey = if (s.importMismatchAccepted) currentPubkey else null,
                         restoreOwnClimbsNow = false,
+                        athleteRestore = { snapshot, withProfile -> athleteService.get().restoreBackup(snapshot, withProfile) },
+                        athleteLegacyBodyStats = { rows -> athleteService.get().importBackupBodyStats(rows) },
                     )
                 }
                 // The logbook is in; own climbs follow now or after the catalogue import.
@@ -411,6 +458,10 @@ class DataExchangeViewModel @Inject constructor(
                 if (result.climbLists > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_lists, result.climbLists.toInt(), result.climbLists))
                 if (own.restored > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_own_climbs, own.restored, own.restored))
                 if (result.climbNotes > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_notes, result.climbNotes.toInt(), result.climbNotes))
+                // Training, body and nutrition rows (athlete database): imported, but missing from the message
+                // (device test 2026-10-09: "Importiert: 160 Board-Sends, …" after 22 body values and 2 workouts).
+                if (result.athleteRows > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_athlete, result.athleteRows, result.athleteRows))
+                val athleteNote = if (result.athleteFailed) " " + context.getString(R.string.import_training_part_failed) else ""
 
                 val summary = if (parts.isNotEmpty()) parts.joinToString(", ") else context.getString(R.string.import_result_no_data)
                 val skipped = result.skippedDuplicates + own.skipped
@@ -426,7 +477,7 @@ class DataExchangeViewModel @Inject constructor(
                     importCategories = emptySet(),
                     importMismatchAccepted = false,
                     importSourcePubkey = null,
-                    message = context.getString(R.string.import_result_summary, "$summary$dupNote$pendingNote")
+                    message = context.getString(R.string.import_result_summary, "$summary$dupNote$pendingNote") + athleteNote
                 ) }
             } catch (e: Exception) {
                 _state.update {

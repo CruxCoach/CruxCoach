@@ -154,6 +154,9 @@ class BoardClimbDetailOwnPublishTest {
             communityClimbDeleter = mockk(relaxed = true),
             ownClimbPublisher = ownClimbPublisher,
             climbNavState = mockk(relaxed = true),
+            ledAnimationEngine = mockk(relaxed = true),
+            ledEffectsController = mockk(relaxed = true),
+            playbackCoordinator = mockk(relaxed = true),
             context = context,
         )
     }

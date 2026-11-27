@@ -31,9 +31,12 @@ class SettingsNavigationTest {
     private val loading = mutableStateOf(false)
     private var exits = 0
     private var shares = 0
+    private var paintBoxOpens = 0
     private lateinit var backDispatcher: OnBackPressedDispatcher
 
-    private fun render(startPage: SettingsPage? = null): StateRestorationTester {
+    private var trainingOpened = 0
+
+    private fun render(startPage: SettingsPage? = null, withTraining: Boolean = false): StateRestorationTester {
         val restoration = StateRestorationTester(compose)
         restoration.setContent {
             backDispatcher = LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
@@ -45,7 +48,9 @@ class SettingsNavigationTest {
                         startPage = startPage,
                         onNavigateBack = { exits++ },
                         onNavigateToAppShare = { shares++ },
+                        onNavigateToPaintBox = { paintBoxOpens++ },
                         banners = { Text("Connection status", Modifier.testTag("banner")) },
+                        externalPages = if (withTraining) mapOf(SettingsPage.TRAINING to { trainingOpened++ }) else emptyMap(),
                     ) { page ->
                         Text(page.name, Modifier.testTag("page_${page.name}"))
                         Spacer(Modifier.height(1000.dp))
@@ -55,6 +60,30 @@ class SettingsNavigationTest {
             }
         }
         return restoration
+    }
+
+    @Test fun `the training row is hidden when the caller gives it no place to go`() {
+        render()
+        compose.onNodeWithTag("settings_open_TRAINING").assertDoesNotExist()
+    }
+
+    @Test fun `the training row leads to the training area's settings, not a page here`() {
+        render(withTraining = true)
+        compose.onNodeWithTag("settings_open_TRAINING").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, trainingOpened) }
+        compose.onNodeWithTag("page_TRAINING").assertDoesNotExist()
+        compose.onNodeWithTag("settings_open_TRAINING").assertIsDisplayed()
+    }
+
+    @Test fun `Extras is a separate group and PaintBox opens directly from overview`() {
+        render()
+        compose.onNodeWithTag("settings_open_EXTRAS").assertDoesNotExist()
+        compose.onNodeWithTag("settings_open_paintbox").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Extras").assertExists()
+        compose.onNodeWithTag("settings_open_paintbox").performClick()
+        compose.runOnIdle { assertEquals(1, paintBoxOpens) }
+        compose.onNodeWithTag("settings_open_paintbox").assertIsDisplayed()
+        compose.onNodeWithTag("page_EXTRAS").assertDoesNotExist()
     }
 
     @Test fun `backup entry opens directly and back exits to its caller`() {
@@ -68,7 +97,7 @@ class SettingsNavigationTest {
 
     @Test fun `every task opens its own page and back returns to its overview row`() {
         render()
-        SettingsPage.entries.forEach { page ->
+        SettingsPage.entries.filterNot { it.external }.forEach { page ->
             compose.onNodeWithTag("settings_open_${page.name}").performScrollTo().performClick()
             compose.onNodeWithTag("page_${page.name}").assertIsDisplayed()
             compose.onNodeWithTag("banner").assertIsDisplayed()

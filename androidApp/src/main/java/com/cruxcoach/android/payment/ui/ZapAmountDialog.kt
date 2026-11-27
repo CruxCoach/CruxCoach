@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 private val PRESET_AMOUNTS = listOf(
@@ -82,8 +83,8 @@ internal fun ZapAmountDialog(
                             label = { Text("$label sats") },
                             enabled = !isSending,
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                                selectedLabelColor = OrangeAccent
+                                selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                                selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
                             )
                         )
                     }

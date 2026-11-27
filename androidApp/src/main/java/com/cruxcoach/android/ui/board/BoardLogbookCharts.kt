@@ -49,11 +49,16 @@ internal fun BoardActivityHeatmap(
     interval: StatsTimeInterval
 ) {
     val today = remember { LocalDate.now() }
+    // A whole logbook starts at its first active day (at most two years back),
+    // so a young logbook does not open on months of empty weeks.
+    val firstActive = activityMap.keys.minOrNull()
     val totalDays = when (interval) {
         StatsTimeInterval.DAYS_30 -> 30
         StatsTimeInterval.DAYS_90 -> 90
         StatsTimeInterval.YEAR_1 -> 365
-        StatsTimeInterval.ALL -> 730 // 2yr cap
+        StatsTimeInterval.ALL -> firstActive
+            ?.let { (ChronoUnit.DAYS.between(it, today) + 1).toInt().coerceIn(30, 730) }
+            ?: 730
     }
     val startDate = today.minusDays(totalDays.toLong() - 1)
 
@@ -63,15 +68,20 @@ internal fun BoardActivityHeatmap(
 
     val cellSize = 12.dp
     val spacing = 3.dp
-    val dayLabelWidth = 24.dp
-    val monthLabelHeight = 16.dp
     val cellWithSpacing = cellSize + spacing
+    val labelStyle = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp)
 
     val accentColor = OrangeAccent
     val emptyColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
 
-    val dayLabels = listOf("Mo", "", "Mi", "", "Fr", "", "So")
+    val dayLabels = listOf(
+        stringResource(R.string.day_mo), "", stringResource(R.string.day_we), "",
+        stringResource(R.string.day_fr), "", stringResource(R.string.day_su),
+    )
+    // The labels' room grows with the font size, so large fonts do not cut them.
+    val dayLabelWidth = maxOf(24.dp, widestText(dayLabels, labelStyle) + 4.dp)
+    val monthLabelHeight = maxOf(16.dp, textLineHeight(labelStyle) + 2.dp)
     val monthNames = arrayOf(
         stringResource(R.string.month_jan), stringResource(R.string.month_feb),
         stringResource(R.string.month_mar), stringResource(R.string.month_apr),
@@ -124,9 +134,10 @@ internal fun BoardActivityHeatmap(
                     if (label.isNotEmpty()) {
                         Text(
                             text = label,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.sp,
-                            color = labelColor
+                            style = labelStyle,
+                            color = labelColor,
+                            softWrap = false,
+                            modifier = Modifier.wrapContentHeight(unbounded = true)
                         )
                     }
                 }
@@ -150,8 +161,7 @@ internal fun BoardActivityHeatmap(
                         if (showMonthLabel) {
                             Text(
                                 text = monthNames[month - 1],
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 9.sp,
+                                style = labelStyle,
                                 color = labelColor,
                                 softWrap = false,
                                 modifier = Modifier.wrapContentWidth(
@@ -313,6 +323,12 @@ internal fun BoardAngleDistChart(
     modifier: Modifier = Modifier
 ) {
     val total = entries.sumOf { it.count }.toFloat().coerceAtLeast(1f)
+    val countStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+    // As wide as the largest count, so it keeps one line at any font size and the bars stay aligned.
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val countWidth = with(androidx.compose.ui.platform.LocalDensity.current) {
+        maxOf(measurer.measure("${entries.maxOfOrNull { it.count } ?: 0}", countStyle).size.width.toDp(), 28.dp)
+    }
 
     Column(modifier = modifier) {
         entries.forEach { entry ->
@@ -358,90 +374,10 @@ internal fun BoardAngleDistChart(
 
                 Text(
                     text = "${entry.count}",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.width(28.dp),
+                    style = countStyle,
+                    maxLines = 1,
+                    modifier = Modifier.width(countWidth),
                     textAlign = TextAlign.End
-                )
-            }
-        }
-    }
-}
-
-@Composable
-internal fun BoardSendsOverTimeChart(
-    entries: List<TimeBucketEntry>,
-    modifier: Modifier = Modifier
-) {
-    val maxCount = entries.maxOfOrNull { it.count } ?: 1
-    val barColor = OrangeAccent
-    val gridColor = MaterialTheme.colorScheme.surfaceVariant
-    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
-
-    Canvas(modifier = modifier) {
-        val leftPad = 28.dp.toPx()
-        val bottomPad = 32.dp.toPx()
-        val chartWidth = size.width - leftPad
-        val chartHeight = size.height - bottomPad
-
-        // Grid lines
-        val gridSteps = 3
-        for (i in 1..gridSteps) {
-            val y = chartHeight - (i.toFloat() / gridSteps) * chartHeight
-            drawLine(
-                color = gridColor,
-                start = Offset(leftPad, y),
-                end = Offset(size.width, y),
-                strokeWidth = 1.dp.toPx()
-            )
-            val gridValue = (maxCount.toFloat() / gridSteps * i).toInt()
-            drawContext.canvas.nativeCanvas.drawText(
-                "$gridValue",
-                2.dp.toPx(),
-                y + 4.dp.toPx(),
-                Paint().apply {
-                    color = textColor.hashCode()
-                    textSize = 9.sp.toPx()
-                    isAntiAlias = true
-                }
-            )
-        }
-
-        if (entries.isEmpty()) return@Canvas
-
-        val barSpacing = 2.dp.toPx()
-        val totalBars = entries.size
-        val availableWidth = chartWidth - barSpacing * (totalBars + 1)
-        val barWidth = (availableWidth / totalBars).coerceAtLeast(4.dp.toPx())
-
-        entries.forEachIndexed { index, entry ->
-            val x = leftPad + barSpacing + index * (barWidth + barSpacing)
-            val barHeight = (entry.count.toFloat() / maxCount) * chartHeight
-
-            drawRoundRect(
-                color = barColor,
-                topLeft = Offset(x, chartHeight - barHeight),
-                size = Size(barWidth, barHeight.coerceAtLeast(2.dp.toPx())),
-                cornerRadius = CornerRadius(2.dp.toPx())
-            )
-
-            // X-axis labels (show every Nth to avoid overlap)
-            val showEvery = when {
-                totalBars <= 8 -> 1
-                totalBars <= 16 -> 2
-                totalBars <= 30 -> 4
-                else -> 6
-            }
-            if (index % showEvery == 0) {
-                drawContext.canvas.nativeCanvas.drawText(
-                    entry.label,
-                    x,
-                    size.height - 4.dp.toPx(),
-                    Paint().apply {
-                        color = textColor.hashCode()
-                        textSize = 8.sp.toPx()
-                        isAntiAlias = true
-                    }
                 )
             }
         }

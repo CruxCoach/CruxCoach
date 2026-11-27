@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-09-01T15:39:30.570Z",
-  "venue_features": 2866,
-  "raw_entries": 3176,
-  "venues_with_multiple_boards": 155,
-  "country_from_coder": 2866,
+  "generated_at": "2026-10-25T16:43:07.276Z",
+  "venue_features": 2933,
+  "raw_entries": 3249,
+  "venues_with_multiple_boards": 161,
+  "country_from_coder": 2933,
   "country_from_fallback": 0,
   "country_missing": 0,
-  "city_from_upstream": 1161,
-  "city_from_nearest": 1582,
-  "city_missing": 123,
+  "city_from_upstream": 1203,
+  "city_from_nearest": 1605,
+  "city_missing": 125,
   "nearest_city_max_km": 25,
   "exclusions": {
     "defined": 101,
@@ -28,8 +28,8 @@
     "unmatched": 0
   },
   "venue_links": {
-    "defined": 1836,
-    "applied": 1836,
+    "defined": 1844,
+    "applied": 1844,
     "matched_by_proximity": 0,
     "unmatched": 0,
     "ambiguous": 0,
@@ -38,8 +38,8 @@
     "countries": 64,
     "by_provenance": {
       "official-chain-page": 121,
-      "official-location-page": 669,
-      "official-site": 1046
+      "official-location-page": 671,
+      "official-site": 1052
     }
   },
   "venue_hours": {
@@ -59,37 +59,39 @@
     }
   },
   "per_board": {
-    "kilter": 1154,
-    "tension": 371,
-    "grasshopper": 42,
+    "kilter": 1181,
+    "tension": 398,
+    "grasshopper": 43,
     "decoy": 24,
     "soill": 12,
     "touchstone": 5,
     "aurora": 3,
     "moonboard": 1546,
     "12climb": 7,
-    "quantum": 12
+    "quantum": 12,
+    "shinywall": 18
   },
   "per_source": {
-    "hangtime": 3050,
+    "hangtime": 3105,
     "curated": 114,
-    "quantum": 12
+    "quantum": 12,
+    "shinywall": 18
   },
   "sources": {
     "hangtime": {
       "package": "@hangtime/climbing-boards",
-      "version": "1.0.93",
+      "version": "1.0.128",
       "counts": {
         "kilter": {
-          "kept": 1126,
+          "kept": 1153,
           "dropped": 0
         },
         "tension": {
-          "kept": 368,
+          "kept": 395,
           "dropped": 0
         },
         "grasshopper": {
-          "kept": 42,
+          "kept": 43,
           "dropped": 0
         },
         "decoy": {
@@ -127,6 +129,11 @@
       "kind": "curated-primary-source-allowlist",
       "checked_at": "2026-09-01",
       "locations": 12
+    },
+    "shinywall": {
+      "kind": "curated-public-venue-allowlist",
+      "checked_at": "2026-10-25",
+      "locations": 18
     }
   }
 }

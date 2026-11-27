@@ -17,6 +17,9 @@ class CruxCoachCrashHandler(
 ) : Thread.UncaughtExceptionHandler {
 
     override fun uncaughtException(thread: Thread, throwable: Throwable) {
+        // First, while the process can still talk to Bluetooth: if board
+        // sharing had the phone renamed, send its own name back.
+        com.cruxcoach.android.data.RelayAdapterNameGuard.giveBackBeforeProcessEnds(context)
         try {
             val report = buildReport(throwable)
             val crashFile = File(context.filesDir, CRASH_FILE_NAME)
@@ -44,7 +47,8 @@ class CruxCoachCrashHandler(
             timeZone = TimeZone.getTimeZone("UTC")
         }.format(Date())
 
-        return buildString {
+        // Cut to one message's size (see CRASH_REPORT_MAX_JSON_BYTES), so the saved report is what gets sent.
+        return fitCrashReport(buildString {
             appendLine("--- CruxCoach Crash Report ---")
             appendLine("Time: $timestamp")
             appendLine("App: ${getVersionName()} (${getVersionCode()})")
@@ -54,7 +58,7 @@ class CruxCoachCrashHandler(
             appendLine()
             appendLine("--- Stack Trace ---")
             append(sanitizedTrace)
-        }
+        })
     }
 
     private fun getVersionName(): String = try {

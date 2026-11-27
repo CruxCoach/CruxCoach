@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- "From now on like this?" after a training (comparison review #3) -->
+    <plurals name="trk_swapped">
+        <item quantity="one">%1$d exercise swapped</item>
+        <item quantity="other">%1$d exercises swapped</item>
+    </plurals>
+    <plurals name="trk_left_out">
+        <item quantity="one">%1$d exercise left out</item>
+        <item quantity="other">%1$d exercises left out</item>
+    </plurals>
+    <plurals name="trk_left_out_more">
+        <item quantity="one">%1$d left out</item>
+        <item quantity="other">%1$d left out</item>
+    </plurals>
+    <string name="trk_question">%1$s – suggest it like this from now on?</string>
+    <string name="trk_today_only">Only today</string>
+    <string name="trk_instead">%1$s instead of %2$s</string>
+    <string name="trk_without">Without %1$s</string>
+    <string name="trk_kept_until">Suggested like this until %1$s</string>
+    <string name="trk_today_only_done">Only today – later suggestions are chosen as before</string>
+    <string name="trlr_kept">Kept after a training</string>
+    <string name="trlr_kept_until">Until %1$s</string>
+    <string name="tre_reason_kept">Exercises you kept after a training come first until the end of the block.</string>
+    <!-- "Easier"/"harder" for good (comparison review #10) -->
+    <string name="trt_level_offer_easier">You chose “lighter” twice for %1$s – one step easier from now on?</string>
+    <string name="trt_level_offer_harder">You chose “harder” twice for %1$s – one step more demanding from now on?</string>
+    <string name="trt_level_kept_easier">From now on one step easier for %1$s</string>
+    <string name="trt_level_kept_harder">From now on one step more demanding for %1$s</string>
+    <string name="trt_level_kept_normal">%1$s back at the coach’s level</string>
+    <string name="tre_reason_level_easier_kept">One step easier for this kind of training, as you chose (What the coach learned).</string>
+    <string name="tre_reason_level_harder_kept">One step more demanding for this kind of training, as you chose (What the coach learned).</string>
+    <string name="trlr_levels">Your level</string>
+    <string name="trlr_level_easier">One step easier</string>
+    <string name="trlr_level_harder">One step more demanding</string>
+    <!-- The logbook shows a higher grade than the saved one -->
+    <string name="trt_grade_offer">Your logbook shows %1$s – take it over as your grade?</string>
+    <string name="trt_grade_taken">Your grade is now %1$s</string>
+</resources>

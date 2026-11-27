@@ -1,0 +1,588 @@
+package com.cruxcoach.android.ui.training.workouts
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.R
+import com.cruxcoach.android.athlete.AthleteService
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
+import com.cruxcoach.android.ui.training.today.climbIntensityLabel
+import com.cruxcoach.android.ui.training.today.climbingDayKindLabel
+import com.cruxcoach.athlete.logic.BuiltinRoutines
+import com.cruxcoach.athlete.logic.DayPlans
+import com.cruxcoach.athlete.logic.LogbookSummary
+import com.cruxcoach.athlete.logic.WeekPlanSuggester
+import com.cruxcoach.athlete.model.AthleteProfile
+import com.cruxcoach.athlete.model.ClimbIntensity
+import com.cruxcoach.athlete.model.ClimbingDayKind
+import com.cruxcoach.athlete.catalog.LoadDomain
+import com.cruxcoach.athlete.model.Injury
+import com.cruxcoach.athlete.model.PLAN_BOARD
+import com.cruxcoach.athlete.model.PLAN_FREE
+import com.cruxcoach.athlete.model.PLAN_REST
+import com.cruxcoach.athlete.model.PausePeriod
+import com.cruxcoach.athlete.model.Routine
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.daysUntil
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
+import java.time.format.TextStyle
+import java.util.Locale
+import javax.inject.Inject
+
+/** How far ahead the planner shows days (owner 2026-10-19: "two days later", also over a weekend). */
+internal const val PLANNER_DAYS = 14
+
+/**
+ * Settings prefix: planner warnings the athlete acknowledged. The key names the kind and the two days, the value how
+ * hard they were planned when the warning was read ([DayPlans.planned]): a plan that got harder since is warned
+ * about again. Keys of days gone by are emptied when the planner opens (settings have no delete).
+ */
+internal const val WARNING_SEEN = "planwarn.seen."
+
+/**
+ * The athlete's level as the coach's recovery rules read it ([DayPlans.recoveryTier]): from the coach setup and what
+ * the last four weeks show. The planner's hints and the coach's week go by it.
+ */
+internal fun AthleteService.recoveryTier(profile: AthleteProfile, today: LocalDate = today()): DayPlans.Tier =
+    DayPlans.recoveryTier(profile.coach, observedTrainingDays(today), profile.sex)
+
+/** Training days a week as the last four weeks show them ([DayPlans.observedDays]). */
+internal fun AthleteService.observedTrainingDays(today: LocalDate = today()): Int =
+    DayPlans.observedDays(activities(days = DayPlans.OBSERVED_WINDOW_DAYS + 1).filterValues { it.trained }.keys
+        .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }, today)
+
+data class DayPlannerState(
+    val loading: Boolean = true,
+    val today: LocalDate? = null,
+    val profile: AthleteProfile = AthleteProfile(),
+    val routines: List<Routine> = emptyList(),
+    /** Today and the next days: the plan in force and how the coach fits the free days around the climbing. */
+    val days: List<DayPlans.Day> = emptyList(),
+    /**
+     * What the coach proposes for the days the athlete left open, as a plan entry ([WeekPlanSuggester.forDays]):
+     * the week the coach would write, planned around the athlete's own days (owner 2026-11-22: fourteen rows of
+     * "the coach decides" said nothing).
+     */
+    val proposals: Map<LocalDate, String> = emptyMap(),
+    val warnings: List<DayPlans.Warning> = emptyList(),
+    /** A training that gave way to the last change, with the free day the coach found for it. */
+    val moveOffer: MoveOffer? = null,
+    /** The last change, for "Rückgängig". */
+    val lastChange: PlanChange? = null,
+)
+
+data class MoveOffer(val entry: String, val from: LocalDate, val to: LocalDate)
+
+/** [entry] as written on [date] (null = back to the standard week); [before] is every date plan before it. */
+data class PlanChange(val date: LocalDate, val entry: String?, val before: Map<String, String>)
+
+/**
+ * Plans single days (owner 2026-10-19): "today no time – rest; a volume boulder day tomorrow, a limit day two days
+ * later". Each change is this date's own entry over the standard week; the coach shapes the free days around it.
+ */
+@HiltViewModel
+class DayPlannerViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
+    private val _state = MutableStateFlow(DayPlannerState())
+    val state: StateFlow<DayPlannerState> = _state.asStateFlow()
+    private val pausesNow = MutableStateFlow<List<PausePeriod>>(emptyList())
+    /** The level the days were previewed with, for the free day of a training that gives way. */
+    private val tierNow = MutableStateFlow(DayPlans.Tier.STANDARD)
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            runCatching { forgetPastWarnings(service.today()) }
+            val from = service.today().minus(DatePeriod(days = 3)).toString()
+            combine(repo.observeProfile(), repo.observeRoutines(), repo.observePauses(), repo.observeActiveInjuries(),
+                service.observeActivityChanges(from)) { p, r, pauses, injuries, _ -> Inputs(p, r, pauses, injuries)
+            }.collect { i ->
+                pausesNow.value = i.pauses
+                runCatching { compute(i.profile, i.routines, i.pauses, i.injuries) }
+            }
+        }
+    }
+
+    private data class Inputs(val profile: AthleteProfile, val routines: List<Routine>, val pauses: List<PausePeriod>, val injuries: List<Injury>)
+
+    private fun compute(profile: AthleteProfile, routines: List<Routine>, pauses: List<PausePeriod>, injuries: List<Injury>) {
+        val today = service.today()
+        val logged = service.activities(days = 3).mapNotNull { (day, a) ->
+            if (a.climbingMinutes <= 0 && a.climbingEfforts <= 0) null
+            else runCatching { LocalDate.parse(day) }.getOrNull()?.let { it to a.climbIntensity }
+        }.toMap()
+        // The athlete's level: the hints, the coach's week and a training's free day read it as the recovery rules do
+        // (from 40 on the usual ones), the warnings as set.
+        val observed = service.observedTrainingDays(today)
+        val recovery = DayPlans.recoveryTier(profile.coach, observed, profile.sex)
+        tierNow.value = recovery
+        val days = DayPlans.preview(profile, today, PLANNER_DAYS, today, pauses, logged, recovery)
+        // The coach's week for the open days, from the same answers and logbook rhythm as the standard week's proposal.
+        val logbook = runCatching { service.logbookSummary() }.getOrDefault(LogbookSummary())
+        val proposals = runCatching {
+            WeekPlanSuggester.forDays(profile, logbook, routines, injuries, days, pauses, recovery) { fingerWork(it, routines) }
+        }.getOrDefault(emptyMap())
+        // Read once ("Verstanden"), a warning about the same two days stays away – as long as neither got harder.
+        val seen = service.repo.settingsWithPrefix(WARNING_SEEN)
+        val warnings = DayPlans.warnings(days, today, DayPlans.tier(profile.coach, observed, profile.sex)) { fingerWork(it, routines) }
+            .filter { !DayPlans.covers(seen[warningKey(it)], DayPlans.planned(it, days)) }
+        _state.update {
+            it.copy(loading = false, today = today, profile = profile, routines = routines, days = days, proposals = proposals, warnings = warnings)
+        }
+    }
+
+    private fun warningKey(w: DayPlans.Warning) = WARNING_SEEN + w.kind.name + "." + w.other + "." + w.date
+
+    /** "Verstanden" on a warning: the advice was read for what is planned now; the athlete decides. */
+    fun dismiss(w: DayPlans.Warning) = io {
+        service.repo.putSetting(warningKey(w), DayPlans.planned(w, _state.value.days))
+        _state.update { s -> s.copy(warnings = s.warnings - w) }
+    }
+
+    /** Acknowledgements of days gone by say nothing any more: their keys are emptied (blank counts as none). */
+    private fun forgetPastWarnings(today: LocalDate) {
+        service.repo.settingsWithPrefix(WARNING_SEEN).keys.forEach { key ->
+            val later = runCatching { LocalDate.parse(key.substringAfterLast('.')) }.getOrNull()
+            if (later == null || later < today) service.repo.putSetting(key, "")
+        }
+    }
+
+    /** A planned training trains the fingers (a hangboard or block exercise beyond the warm-up). */
+    private fun fingerWork(entry: String, routines: List<Routine>): Boolean {
+        val routine = when {
+            entry.startsWith("builtin:") -> BuiltinRoutines.byKey(entry.removePrefix("builtin:"))
+            else -> routines.firstOrNull { it.id == entry }
+        } ?: return false
+        return routine.items.any { !it.warmup && LoadDomain.FINGER in service.catalog.fallbackFor(it.slug).domains }
+    }
+
+    private fun isTraining(entry: String?) =
+        entry != null && entry != PLAN_REST && entry != PLAN_BOARD && entry != PLAN_FREE && !DayPlans.isClimb(entry)
+
+    /** Plans [date] as [entry] ([PLAN_FREE] = nothing, null = as in the standard week). */
+    fun set(date: LocalDate, entry: String?) = io {
+        val today = service.today()
+        var before: Map<String, String> = emptyMap()
+        var displaced: String? = null
+        var after: AthleteProfile? = null
+        service.repo.updateProfile { p ->
+            before = p.datePlan
+            displaced = DayPlans.entry(p, date)
+            DayPlans.withDay(p, date, entry, today).also { after = it }
+        }
+        val now = after ?: return@io
+        val gone = displaced?.takeIf { isTraining(it) && DayPlans.entry(now, date) != it }
+        // The training that had to give way: the coach offers the next free day that fits it; nothing moves unasked.
+        val offer = gone?.let { e ->
+            DayPlans.freeDayFor(now, date, today, fingerWork(e, _state.value.routines), pausesNow.value, tierNow.value)?.let { MoveOffer(e, date, it) }
+        }
+        _state.update { it.copy(lastChange = PlanChange(date, entry, before), moveOffer = offer) }
+    }
+
+    /** Swaps what [a] and [b] plan ("move this day"). */
+    fun swap(a: LocalDate, b: LocalDate) = io {
+        val today = service.today()
+        var before: Map<String, String> = emptyMap()
+        service.repo.updateProfile { p -> before = p.datePlan; DayPlans.swap(p, a, b, today) }
+        _state.update { it.copy(lastChange = PlanChange(b, null, before), moveOffer = null) }
+    }
+
+    fun acceptMove() {
+        val offer = _state.value.moveOffer ?: return
+        io {
+            val today = service.today()
+            var before: Map<String, String> = emptyMap()
+            service.repo.updateProfile { p -> before = p.datePlan; DayPlans.withDay(p, offer.to, offer.entry, today) }
+            _state.update { it.copy(lastChange = PlanChange(offer.to, offer.entry, before), moveOffer = null) }
+        }
+    }
+
+    fun dismissMove() = _state.update { it.copy(moveOffer = null) }
+
+    fun undo() {
+        val change = _state.value.lastChange ?: return
+        io {
+            service.repo.updateProfile { it.copy(datePlan = change.before) }
+            _state.update { it.copy(lastChange = null, moveOffer = null) }
+        }
+    }
+
+    private fun io(block: suspend () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); block() }
+    }
+}
+
+/** "Heute", "Morgen", else the short weekday and date ("Mi., 22. Okt."). */
+@Composable
+internal fun plannerDayLabel(date: LocalDate, today: LocalDate): String = when (date) {
+    today -> stringResource(R.string.trdp_today)
+    today.plus(DatePeriod(days = 1)) -> stringResource(R.string.trdp_tomorrow)
+    else -> {
+        val locale = Locale.getDefault()
+        val pattern = android.text.format.DateFormat.getBestDateTimePattern(locale, "EEEdMMM")
+        java.time.LocalDate.parse(date.toString()).format(java.time.format.DateTimeFormatter.ofPattern(pattern, locale))
+    }
+}
+
+@Composable
+private fun hintText(day: DayPlans.Day, profile: AthleteProfile): String? = when (day.hint) {
+    DayPlans.Hint.AFTER_HARD -> stringResource(R.string.trdp_hint_after_hard)
+    DayPlans.Hint.BEFORE_LIMIT -> stringResource(R.string.trdp_hint_before_limit)
+    DayPlans.Hint.BEFORE_HARD -> stringResource(R.string.trdp_hint_before_hard)
+    // A free day without anything around it needs no second line ("Frei" says it).
+    DayPlans.Hint.OPEN -> null
+    DayPlans.Hint.PAUSED -> stringResource(R.string.trdp_hint_paused)
+    DayPlans.Hint.CLIMB, DayPlans.Hint.BOARD -> stringResource(
+        if (profile.coach.addOnAfterClimbing == false) R.string.trdp_hint_climb_only else R.string.trdp_hint_climb)
+    DayPlans.Hint.REST, DayPlans.Hint.ROUTINE -> null
+}
+
+/**
+ * "Tage planen": today and the next two weeks, one tap per day to plan or swap it. A day the athlete left open shows
+ * what the coach proposes for it in quiet type, the coach's week stands above the days, and the warnings say what
+ * to watch out for (advice, nothing locked).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DayPlannerSheet(onDismiss: () -> Unit, viewModel: DayPlannerViewModel = hiltViewModel()) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    var choosing by remember { mutableStateOf<LocalDate?>(null) }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("day_planner")) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+            Text(stringResource(R.string.trdp_title), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.trdp_intro), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
+            val today = state.today
+            if (state.loading || today == null) {
+                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                return@Column
+            }
+            state.lastChange?.let { change ->
+                Row(Modifier.fillMaxWidth().testTag("day_planner_changed"), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.trdp_changed), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    TextButton(onClick = viewModel::undo, modifier = Modifier.testTag("day_planner_undo")) { Text(stringResource(R.string.trpg_undo)) }
+                }
+            }
+            state.moveOffer?.let { offer ->
+                OutlinedCard(Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("day_planner_move")) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(stringResource(R.string.trdp_move_offer, planEntryLabel(offer.entry, state.routines),
+                            plannerDayLabel(offer.from, today), plannerDayLabel(offer.to, today)), style = MaterialTheme.typography.bodyMedium)
+                        Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilledTonalButton(onClick = viewModel::acceptMove, modifier = Modifier.testTag("day_planner_move_yes")) {
+                                Text(stringResource(R.string.trdp_move_yes))
+                            }
+                            TextButton(onClick = viewModel::dismissMove, modifier = Modifier.testTag("day_planner_move_no")) {
+                                Text(stringResource(R.string.trdp_move_no))
+                            }
+                        }
+                    }
+                }
+            }
+            state.warnings.forEach { w ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("day_planner_warning"), verticalAlignment = Alignment.Top) {
+                    Icon(Icons.Default.WarningAmber, null, Modifier.size(18.dp).padding(top = 2.dp), tint = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.width(8.dp))
+                    Text(when (w.kind) {
+                        DayPlans.WarningKind.HARD_BACK_TO_BACK ->
+                            stringResource(R.string.trdp_warn_back_to_back, plannerDayLabel(w.other, today), plannerDayLabel(w.date, today))
+                        DayPlans.WarningKind.FINGERS_BEFORE_HARD ->
+                            stringResource(R.string.trdp_warn_fingers_before, plannerDayLabel(w.other, today), plannerDayLabel(w.date, today))
+                    }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { viewModel.dismiss(w) }, modifier = Modifier.testTag("day_planner_warning_seen")) {
+                        Text(stringResource(R.string.action_understood))
+                    }
+                }
+            }
+            ProposalSummary(state.days, state.proposals, state.routines)
+            state.days.forEach { day ->
+                HorizontalDivider()
+                val proposal = state.proposals[day.date]
+                // A usual climbing day is what the athlete told the coach – unless the coach plans the day without
+                // climbing (an injury pauses it): then its proposal stands there.
+                val usualClimb = day.entry == null && day.hint == DayPlans.Hint.CLIMB &&
+                    (proposal == null || proposal == PLAN_BOARD || DayPlans.isClimb(proposal))
+                val own = day.entry != null || usualClimb
+                val paused = day.entry == null && day.hint == DayPlans.Hint.PAUSED
+                // At a large font the day above its plan: beside it, the plan shrank to a few words per line
+                // ("Tomorro/w", "Aufwärme/n").
+                DayAbovePlan(
+                    Modifier.fillMaxWidth().clickable { choosing = day.date }.padding(vertical = 10.dp)
+                        .testTag("day_planner_day_${day.date}"),
+                    day = {
+                        Text(plannerDayLabel(day.date, today), style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (day.date == today) FontWeight.Bold else FontWeight.Normal, modifier = it)
+                    },
+                ) { planModifier -> Column(planModifier) {
+                        val label = when {
+                            day.entry != null -> planEntryLabel(day.entry, state.routines)
+                            usualClimb -> stringResource(R.string.trdp_usual_climb)
+                            paused -> stringResource(R.string.trdp_hint_paused)
+                            proposal != null -> planEntryLabel(proposal, state.routines)
+                            else -> stringResource(R.string.trdp_free_short)
+                        }
+                        // The athlete's own plan stands out; the coach's proposal is quiet until the athlete chooses.
+                        Text(label, style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (own) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (own) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = if (!own && !paused && proposal != null) Modifier.testTag("day_planner_proposal_${day.date}") else Modifier)
+                        val hint = when {
+                            own -> hintText(day, state.profile)
+                            paused -> null
+                            // Whose plan this is. A training next to a hard day carries the coach's reason for it
+                            // ("Coach: …"); a rest day needs none ("Rest day" over "legs and core" contradicted itself).
+                            proposal != null -> when (day.hint.takeIf { WeekPlanSuggester.isTraining(proposal) }) {
+                                DayPlans.Hint.AFTER_HARD, DayPlans.Hint.BEFORE_LIMIT, DayPlans.Hint.BEFORE_HARD -> hintText(day, state.profile)
+                                else -> null
+                            } ?: stringResource(R.string.trdp_proposal)
+                            else -> hintText(day, state.profile)
+                        }
+                        val onlyThisDay = if (day.overridden) stringResource(R.string.trdp_only_this_day) else null
+                        listOfNotNull(onlyThisDay, hint).takeIf { it.isNotEmpty() }?.let {
+                            Text(it.joinToString(" · "), style = MaterialTheme.typography.bodySmall,
+                                // Quiet: what the coach does on a day is information, not a warning (the warnings
+                                // have their own card above).
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    choosing?.let { date ->
+        val today = state.today ?: return@let
+        val day = state.days.firstOrNull { it.date == date }
+        val standard = state.profile.weekPlan[date.dayOfWeek.isoDayNumber]
+        PlanChooserDialog(
+            title = plannerDayLabel(date, today),
+            current = day?.entry,
+            routines = state.routines,
+            onDismiss = { choosing = null },
+            onChoose = { entry -> viewModel.set(date, entry ?: PLAN_FREE); choosing = null },
+            // "Free" says what it stands for, the coach's proposal for the day – except on a usual climbing day, where
+            // "free" takes the climbing away and the coach plans the day anew.
+            freeLabel = state.proposals[date]
+                ?.takeIf { day?.hint != DayPlans.Hint.CLIMB || !(it == PLAN_BOARD || DayPlans.isClimb(it)) }
+                ?.let { stringResource(R.string.trdp_free_proposal, planEntryLabel(it, state.routines)) }
+                ?: stringResource(R.string.trdp_free),
+            standardLabel = if (day?.overridden == true) stringResource(R.string.trdp_standard, planEntryLabel(standard, state.routines)) else null,
+            onStandard = { viewModel.set(date, null); choosing = null },
+            // Swaps within a week either way: the chooser stays short.
+            swapTargets = state.days.map { it.date }.filter { it != date && kotlin.math.abs(date.daysUntil(it)) <= 6 },
+            swapLabel = { plannerDayLabel(it, today) },
+            onSwap = { other -> viewModel.swap(date, other); choosing = null },
+        )
+    }
+}
+
+/**
+ * The coach's week at a glance (owner 2026-11-22: which day is finger strength, pulling, climbing, rest): the next
+ * seven days the athlete left open, grouped by what the coach proposes for them. Nothing to show once every day is
+ * the athlete's own.
+ */
+@Composable
+private fun ProposalSummary(days: List<DayPlans.Day>, proposals: Map<LocalDate, String>, routines: List<Routine>) {
+    val week = days.take(7).mapNotNull { day -> proposals[day.date]?.let { day.date to it } }
+    if (week.isEmpty()) return
+    // Climbing first, rest last, the trainings between them in the order of their days.
+    fun rank(entry: String) = when {
+        entry == PLAN_BOARD || DayPlans.isClimb(entry) -> 0
+        entry == PLAN_REST -> 2
+        else -> 1
+    }
+    val groups = week.groupBy({ it.second }, { it.first }).entries.sortedBy { rank(it.key) }
+    OutlinedCard(Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("day_planner_proposal")) {
+        Column(Modifier.padding(12.dp)) {
+            Text(stringResource(R.string.trdp_proposal_title), style = MaterialTheme.typography.titleSmall)
+            groups.forEach { group ->
+                DayAbovePlan(Modifier.fillMaxWidth().padding(top = 4.dp), day = {
+                    Text(group.value.joinToString(", ") { date -> shortWeekday(date).trimEnd('.') },
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = it)
+                }) {
+                    Text(planEntryLabel(group.key, routines), style = MaterialTheme.typography.bodyMedium, modifier = it)
+                }
+            }
+            Text(stringResource(R.string.trdp_proposal_note), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+        }
+    }
+}
+
+/**
+ * What a day can be: free, rest, a climbing day (where, how hard), a board session or a training. Used for the
+ * standard week's weekdays and for single dates (those also go back to the standard week or swap with another day).
+ * A climbing day is one tap: the place is a setting, the tap on how hard plans it (owner 2026-11-22).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun PlanChooserDialog(
+    title: String,
+    /** The entry in force; null = free. */
+    current: String?,
+    routines: List<Routine>,
+    onDismiss: () -> Unit,
+    /** null = free. */
+    onChoose: (String?) -> Unit,
+    freeLabel: String = stringResource(R.string.trwo_plan_free),
+    standardLabel: String? = null,
+    onStandard: () -> Unit = {},
+    swapTargets: List<LocalDate> = emptyList(),
+    swapLabel: @Composable (LocalDate) -> String = { it.toString() },
+    onSwap: (LocalDate) -> Unit = {},
+) {
+    // What a whole day can be planned as (owner 2026-11-22): the warm-up before climbing, the 15-minute add-on, the
+    // injury workout and the strength test are parts of a day or tools, not a day's training – they stay out unless one
+    // of them is what this day already holds.
+    val starters = PLANNABLE_STARTERS.map { "builtin:$it" } + listOfNotNull(current?.takeIf { c ->
+        c.startsWith("builtin:") && c.removePrefix("builtin:") !in PLANNABLE_STARTERS && BuiltinRoutines.byKey(c.removePrefix("builtin:")) != null })
+    val own = routines.map { it.id }
+    val currentClimb = DayPlans.climbOf(current)
+    var kind by rememberSaveable { mutableStateOf(currentClimb?.kind ?: ClimbingDayKind.GYM_BOULDER) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 520.dp).testTag("week_plan_chooser")) {
+                if (standardLabel != null) {
+                    item(key = "standard") { ChooserRow(standardLabel, false, "week_plan_option_standard", onStandard) }
+                }
+                item(key = "free") { ChooserRow(freeLabel, current == null, "week_plan_option_free") { onChoose(null) } }
+                item(key = PLAN_REST) { ChooserRow(planEntryLabel(PLAN_REST, routines), current == PLAN_REST, "week_plan_option_$PLAN_REST") { onChoose(PLAN_REST) } }
+
+                item(key = "h_climb") { ChooserHeader(stringResource(R.string.trdp_group_climbing)) }
+                item(key = PLAN_BOARD) { ChooserRow(planEntryLabel(PLAN_BOARD, routines), current == PLAN_BOARD, "week_plan_option_$PLAN_BOARD") { onChoose(PLAN_BOARD) } }
+                item(key = "climb") {
+                    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("week_plan_climb")) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.trdp_climb), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                            if (currentClimb != null) Icon(Icons.Default.Check, contentDescription = null)
+                        }
+                        Text(stringResource(R.string.trdp_climb_where), style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(ClimbingDayKind.GYM_BOULDER, ClimbingDayKind.GYM_ROPE, ClimbingDayKind.OUTDOOR, ClimbingDayKind.OTHER).forEach { k ->
+                                FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(climbingDayKindLabel(k)) },
+                                    modifier = Modifier.testTag("week_plan_climb_kind_${k.name.lowercase()}"))
+                            }
+                        }
+                        Text(stringResource(R.string.trdp_climb_how), style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                        // How hard plans the day at the place chosen above: no button after it (it was a tap too many).
+                        // Selected is the climbing day in force.
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            ClimbIntensity.entries.forEach { i ->
+                                FilterChip(selected = currentClimb?.kind == kind && currentClimb?.intensity == i,
+                                    onClick = { onChoose(DayPlans.Climb(kind, i).entry) }, label = { Text(climbIntensityLabel(i)) },
+                                    modifier = Modifier.testTag("week_plan_climb_intensity_${i.name.lowercase()}"))
+                            }
+                        }
+                    }
+                }
+
+                item(key = "h_training") { ChooserHeader(stringResource(R.string.trdp_training)) }
+                items(starters, key = { it }) { entry ->
+                    ChooserRow(planEntryLabel(entry, routines), entry == current, "week_plan_option_$entry") { onChoose(entry) }
+                }
+                if (own.isNotEmpty()) {
+                    item(key = "h_own") { ChooserHeader(stringResource(R.string.trdp_group_own)) }
+                    items(own, key = { it }) { entry ->
+                        ChooserRow(planEntryLabel(entry, routines), entry == current, "week_plan_option_$entry") { onChoose(entry) }
+                    }
+                }
+
+                // Swapping is the last thing in the list: an action on the day, not one of its kinds.
+                if (swapTargets.isNotEmpty()) {
+                    item(key = "swap") {
+                        Column(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("week_plan_swap")) {
+                            ChooserHeader(stringResource(R.string.trdp_swap))
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                swapTargets.forEach { d ->
+                                    AssistChip(onClick = { onSwap(d) }, label = { Text(swapLabel(d)) },
+                                        modifier = Modifier.testTag("week_plan_swap_$d"))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.tr_action_cancel)) } },
+    )
+}
+
+/** The starter workouts that are a day's training; the others are parts of a day (a warm-up, an add-on) or tools. */
+internal val PLANNABLE_STARTERS = listOf(BuiltinRoutines.FINGER_BASICS, BuiltinRoutines.PULL_ANTAGONIST, BuiltinRoutines.LEGS_BASICS,
+    BuiltinRoutines.CORE_CLIMBER, BuiltinRoutines.MOBILITY_10)
+
+@Composable
+private fun ChooserHeader(text: String) {
+    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp))
+}
+
+@Composable
+private fun ChooserRow(label: String, selected: Boolean, tag: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp).testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        if (selected) Icon(Icons.Default.Check, contentDescription = null)
+    }
+}
+
+/** A climbing day as the plan shows it: "Halle Bouldern · Limit". */
+@Composable
+internal fun climbPlanLabel(climb: DayPlans.Climb): String =
+    climbingDayKindLabel(climb.kind) + " · " + climbIntensityLabel(climb.intensity)
+
+/** Short weekday name for the plan's labels. */
+internal fun shortWeekday(date: LocalDate): String =
+    java.time.DayOfWeek.of(date.dayOfWeek.isoDayNumber).getDisplayName(TextStyle.SHORT, Locale.getDefault())
+
+/**
+ * A day and its plan: the day in a fixed column beside the plan, or above it at a large font, where the column grew
+ * with the day's name and left the plan a few words per line (UI pass 0.2.5).
+ */
+@Composable
+internal fun DayAbovePlan(
+    modifier: Modifier,
+    dayWidth: androidx.compose.ui.unit.Dp = 112.dp,
+    day: @Composable (Modifier) -> Unit,
+    plan: @Composable (Modifier) -> Unit,
+) {
+    if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) {
+        Column(modifier) { day(Modifier); plan(Modifier.fillMaxWidth()) }
+    } else Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        day(Modifier.width(dayWidth))
+        plan(Modifier.weight(1f))
+    }
+}

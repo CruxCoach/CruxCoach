@@ -222,6 +222,8 @@ object BoardConstants {
      *    unintended upgrade regression.
      *  - Touchstone: its single layout is asymmetric → false.
      *  - MoonBoard: fixed-config board, no mirror concept → false.
+     *  - Shiny Wall: the controller has no mirror command and mirrored hold
+     *    numbers are unknown → false.
      *  - Map-only info-layer brands (Aurora / 12climb): no catalogue → false.
      *
      * Exhaustive over [BoardBrand] on purpose: a newly-added board must make a
@@ -234,6 +236,7 @@ object BoardConstants {
         BoardBrand.TOUCHSTONE,
         BoardBrand.MOONBOARD,
         BoardBrand.QUANTUM,
+        BoardBrand.SHINYWALL,
         BoardBrand.AURORA,
         BoardBrand.TWELVECLIMB -> false
     }
@@ -329,7 +332,7 @@ object BoardConstants {
      * available, overrides this.
      */
     val DEFAULT_SIZE_FREQUENCY: Map<Int, Long> = mapOf(
-        10 to 900L, 28 to 100L, 8 to 80L, 7 to 10L, 14 to 9L, 27 to 2L,
+        10 to 900L, 28 to 100L, 8 to 80L, 7 to 7L, 14 to 9L, 27 to 2L,
         25 to 34L, 17 to 23L, 21 to 17L, 18 to 13L, 23 to 12L,
         24 to 3L, 26 to 3L, 22 to 2L, 19 to 2L, 29 to 1L,
     )
@@ -463,6 +466,18 @@ object BoardConstants {
                     layoutId = loggedLayout ?: KILTER_ORIGINAL_LAYOUT,
                     sizeId = largest?.id?.toInt() ?: 1,
                     displayName = brand.displayName,
+                )
+            }
+        }
+
+        // Shiny Wall variants are distinct walls, like MoonBoard variants.
+        com.cruxcoach.domain.board.ShinyWallVariant.SUPPORTED.forEach { v ->
+            if (Pair(BoardBrand.SHINYWALL.wireValue, v.layoutId.toInt()) in loggedBoards) {
+                options += HeatmapBoardOption(
+                    brandWire = BoardBrand.SHINYWALL.wireValue,
+                    layoutId = v.layoutId.toInt(),
+                    sizeId = v.productSizeId.toInt(),
+                    displayName = "${BoardBrand.SHINYWALL.displayName} ${v.displayName}",
                 )
             }
         }

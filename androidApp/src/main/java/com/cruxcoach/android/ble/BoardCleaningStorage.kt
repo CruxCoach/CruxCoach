@@ -31,7 +31,10 @@ internal class BoardCleaningStorage(context: Context) {
         fun key(board: DiscoveredBoard): String? {
             // A relay address names a phone, which may switch physical boards.
             if (board.isCruxRelay) return null
-            if (!board.boardBrand.usesAuroraProtocol && board.boardBrand != com.cruxcoach.domain.board.BoardBrand.MOONBOARD) return null
+            if (!board.boardBrand.usesAuroraProtocol &&
+                board.boardBrand != com.cruxcoach.domain.board.BoardBrand.MOONBOARD &&
+                board.boardBrand != com.cruxcoach.domain.board.BoardBrand.SHINYWALL
+            ) return null
             val identity = "${board.boardBrand.wireValue}|${board.address.uppercase()}|${board.apiLevel}"
             return MessageDigest.getInstance("SHA-256").digest(identity.toByteArray())
                 .joinToString("") { "%02x".format(it) }

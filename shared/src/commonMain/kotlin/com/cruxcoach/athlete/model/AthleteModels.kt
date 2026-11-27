@@ -1,0 +1,615 @@
+package com.cruxcoach.athlete.model
+
+import com.cruxcoach.athlete.catalog.BodyRegion
+import com.cruxcoach.athlete.catalog.EquipmentV2
+import com.cruxcoach.athlete.catalog.LoadDomain
+import kotlinx.serialization.Serializable
+
+// ── Training ─────────────────────────────────────────────────────────
+
+@Serializable
+enum class SetType { WARMUP, WORK, TEST }
+
+@Serializable
+enum class Side { LEFT, RIGHT;
+    val opposite: Side get() = if (this == LEFT) RIGHT else LEFT
+}
+
+@Serializable
+enum class Grip { HALF_CRIMP, OPEN_HAND, FULL_CRIMP, THREE_FINGER_DRAG, FRONT_TWO, MIDDLE_TWO, PINCH, SLOPER, JUG }
+
+@Serializable
+data class Workout(
+    val id: String,
+    val startedAt: Long,
+    val endedAt: Long? = null,
+    val day: String,
+    val title: String? = null,
+    val routineId: String? = null,
+    val sessionRpe: Int? = null,
+    val notes: String? = null,
+    val updatedAt: Long,
+) {
+    val isOpen: Boolean get() = endedAt == null
+    val durationMinutes: Int? get() = endedAt?.let { ((it - startedAt) / 60_000L).toInt().coerceAtLeast(0) }
+}
+
+@Serializable
+data class ExerciseSet(
+    val id: String,
+    val workoutId: String,
+    val exerciseSlug: String,
+    val blockIndex: Int,
+    val setIndex: Int,
+    val setType: SetType = SetType.WORK,
+    val side: Side? = null,
+    val targetReps: Int? = null,
+    val targetDurationS: Double? = null,
+    /** Planned [loadKg], read the same way. */
+    val targetLoadKg: Double? = null,
+    /**
+     * Reps and seconds of this set: on one-sided work ([side] set) those of that side; on exercises that
+     * alternate sides within a set (walking lunge, dead bug) every side counts as one rep.
+     */
+    val reps: Int? = null,
+    val durationS: Double? = null,
+    /**
+     * The weight as the athlete enters it ([com.cruxcoach.athlete.logic.LoadRules], issue #58): added kg for
+     * body-weight work (negative = assistance), one dumbbell or kettlebell of a pair, a barbell with the bar,
+     * a pick-up block with everything on it, the stack of a cable. Always kg; never rewritten when a rule
+     * changes – totals are derived at read time.
+     */
+    val loadKg: Double? = null,
+    val edgeMm: Double? = null,
+    val grip: Grip? = null,
+    val rir: Int? = null,
+    val workS: Double? = null,
+    val restBetweenS: Double? = null,
+    val repsPerSet: Int? = null,
+    val restS: Int? = null,
+    /** Body weight at the time of the set, so relative load stays right as weight changes. */
+    val bodyweightKg: Double? = null,
+    val completedAt: Long? = null,
+    val note: String? = null,
+    /**
+     * Circuit the set belongs to (owner 2026-10-17: one set of each exercise in turn, N rounds):
+     * sets of consecutive blocks with the same key are played round by round, the round being
+     * [setIndex] (work sets 0..n-1, warm-ups negative). [restS] is then the short rest to the next
+     * exercise of the round; null = a set of its own block, played block by block.
+     */
+    val circuit: Int? = null,
+    /** Rest after each round of [circuit]; null outside a circuit. */
+    val roundRestS: Int? = null,
+) {
+    val isCompleted: Boolean get() = completedAt != null
+}
+
+@Serializable
+enum class SideMode { BOTH, LEFT_ONLY, RIGHT_ONLY }
+
+/** One exercise in a routine template. */
+@Serializable
+data class RoutineItem(
+    val slug: String,
+    val sets: Int = 3,
+    val repsMin: Int? = null,
+    val repsMax: Int? = null,
+    val durationS: Int? = null,
+    /**
+     * A load the athlete chose, read like [ExerciseSet.loadKg] (added kg for body-weight work, one dumbbell of a
+     * pair); wins over the prescription. Null = planned automatically.
+     */
+    val loadKg: Double? = null,
+    val restS: Int? = null,
+    val edgeMm: Int? = null,
+    val grip: Grip? = null,
+    val workS: Int? = null,
+    val restBetweenS: Int? = null,
+    val repsPerSet: Int? = null,
+    val sides: SideMode = SideMode.BOTH,
+    val warmup: Boolean = false,
+    /** Benchmark item: its sets are logged as [SetType.TEST]. */
+    val test: Boolean = false,
+    /**
+     * Consecutive items with the same key form one circuit ([com.cruxcoach.athlete.logic.Circuits]):
+     * one set of each in turn, for as many rounds as the members' largest [sets]. Never on warm-up,
+     * test or climbing items. [restS] stays the item's own rest for when the circuit is dissolved.
+     */
+    val circuit: Int? = null,
+    /** Seconds from one exercise to the next within a round (0 = straight on); the same on all members. */
+    val circuitRestS: Int? = null,
+    /** Seconds after each round; the same on all members. */
+    val roundRestS: Int? = null,
+)
+
+@Serializable
+data class Routine(
+    val id: String,
+    val name: String,
+    val notes: String? = null,
+    val items: List<RoutineItem>,
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0,
+    /** Non-null for packaged starter routines; their texts come from resources. */
+    val builtinKey: String? = null,
+)
+
+@Serializable
+/** ESTIMATE: a quick self-estimate from the coach setup; the first logged set replaces it either way. */
+enum class BenchmarkSource { MANUAL, TEST, AUTO, ESTIMATE }
+
+/**
+ * What the athlete can do in one exercise: "+20 kg × 5", "32 kg for 10 s on
+ * 20 mm, right hand", "12 reps", "45 s". Prescriptions are derived from the
+ * newest value per side, edge and grip.
+ */
+@Serializable
+data class Benchmark(
+    val id: String,
+    val exerciseSlug: String,
+    val side: Side? = null,
+    val edgeMm: Double? = null,
+    val grip: Grip? = null,
+    /** Read like [ExerciseSet.loadKg]: added kg for body-weight work, one dumbbell of a pair. */
+    val loadKg: Double? = null,
+    val reps: Int? = null,
+    val durationS: Double? = null,
+    val bodyweightKg: Double? = null,
+    val source: BenchmarkSource = BenchmarkSource.MANUAL,
+    val measuredAt: Long,
+    val note: String? = null,
+    /**
+     * Several sets the athlete manages with reserve ("5 × 5 at +20 kg"),
+     * for athletes who do not know their maximum; null = one maximal effort.
+     */
+    val sets: Int? = null,
+)
+
+// ── Body ─────────────────────────────────────────────────────────────
+
+@Serializable
+data class BodyMeasurement(
+    val day: String,
+    val metric: String,
+    val value: Double,
+    val unit: String,
+    val measuredAt: Long,
+    val source: String = SOURCE_MANUAL,
+) {
+    companion object {
+        const val SOURCE_MANUAL = "manual"
+        const val SOURCE_LEGACY = "legacy_body_stats"
+        const val SOURCE_IMPORT = "import"
+    }
+}
+
+/** Metrics with first-class UI. Unknown keys (legacy imports) are kept as-is. */
+enum class BodyMetric(val key: String, val unit: String, val group: MetricGroup) {
+    WEIGHT("weight", "kg", MetricGroup.WEIGHT),
+    BODY_FAT("body_fat", "%", MetricGroup.COMPOSITION),
+    HEIGHT("height", "cm", MetricGroup.ANTHROPOMETRY),
+    ARM_SPAN("arm_span", "cm", MetricGroup.ANTHROPOMETRY),
+    FOREARM("forearm", "cm", MetricGroup.CIRCUMFERENCE),
+    UPPER_ARM("upper_arm", "cm", MetricGroup.CIRCUMFERENCE),
+    CHEST("chest", "cm", MetricGroup.CIRCUMFERENCE),
+    WAIST("waist", "cm", MetricGroup.CIRCUMFERENCE),
+    HIPS("hips", "cm", MetricGroup.CIRCUMFERENCE),
+    THIGH("thigh", "cm", MetricGroup.CIRCUMFERENCE),
+    CALF("calf", "cm", MetricGroup.CIRCUMFERENCE),
+    NECK("neck", "cm", MetricGroup.CIRCUMFERENCE);
+
+    companion object {
+        fun fromKey(key: String): BodyMetric? = entries.firstOrNull { it.key == key }
+
+        /** Map a 0.1–0.2.3 `body_stats.stat_name` onto the new metric keys. */
+        fun legacyKey(statName: String): String = when (statName) {
+            "body fat" -> BODY_FAT.key
+            "forearm_circumference" -> FOREARM.key
+            else -> statName
+        }
+    }
+}
+
+enum class MetricGroup { WEIGHT, COMPOSITION, ANTHROPOMETRY, CIRCUMFERENCE }
+
+// ── Fueling ──────────────────────────────────────────────────────────
+
+@Serializable
+enum class Meal { BREAKFAST, LUNCH, DINNER, SNACK, PRE_TRAINING, POST_TRAINING }
+
+@Serializable
+data class FoodItem(
+    val id: String,
+    val name: String,
+    val brand: String? = null,
+    val barcode: String? = null,
+    val kcalPer100: Double? = null,
+    val proteinPer100: Double? = null,
+    val carbsPer100: Double? = null,
+    val fatPer100: Double? = null,
+    val servingG: Double? = null,
+    val servingLabel: String? = null,
+    val favorite: Boolean = false,
+    val source: String = "user",
+    val useCount: Int = 0,
+    val lastUsedAt: Long? = null,
+    val updatedAt: Long = 0,
+)
+
+@Serializable
+data class FoodLogEntry(
+    val id: String,
+    val day: String,
+    val loggedAt: Long,
+    val meal: Meal,
+    val foodItemId: String? = null,
+    val name: String,
+    val amountG: Double? = null,
+    val portions: Double? = null,
+    val kcal: Double? = null,
+    val proteinG: Double? = null,
+    val carbsG: Double? = null,
+    val fatG: Double? = null,
+)
+
+@Serializable
+data class HydrationEntry(val id: String, val day: String, val loggedAt: Long, val ml: Int)
+
+// ── Wellbeing ────────────────────────────────────────────────────────
+
+/** 1 (bad) … 5 (great); null = not answered. Fingers: 5 = fresh, 1 = wrecked. */
+@Serializable
+data class Checkin(
+    val day: String,
+    val createdAt: Long,
+    val sleep: Int? = null,
+    val energy: Int? = null,
+    val skin: Int? = null,
+    val fingers: Int? = null,
+    val motivation: Int? = null,
+    val sick: Boolean = false,
+    val note: String? = null,
+    /** What does not feel good today ("Tut etwas weh?"): spared today, not stored as an injury. */
+    val sore: Set<InjuryRegion> = emptySet(),
+)
+
+@Serializable
+enum class InjuryRegion(val bodyRegions: Set<BodyRegion>, val domains: Set<LoadDomain>, val limb: Boolean) {
+    FINGER(setOf(BodyRegion.FINGER, BodyRegion.PULLEY), setOf(LoadDomain.FINGER), true),
+    WRIST(setOf(BodyRegion.WRIST), setOf(LoadDomain.WRIST), true),
+    ELBOW(setOf(BodyRegion.ELBOW), setOf(LoadDomain.ELBOW), true),
+    SHOULDER(setOf(BodyRegion.SHOULDER), setOf(LoadDomain.SHOULDER), true),
+    BACK(setOf(BodyRegion.BACK), setOf(LoadDomain.BACK), false),
+    HIP(setOf(BodyRegion.HIP), setOf(LoadDomain.LOWER_BODY), true),
+    KNEE(setOf(BodyRegion.KNEE), setOf(LoadDomain.LOWER_BODY), true),
+    ANKLE(setOf(BodyRegion.ANKLE), setOf(LoadDomain.LOWER_BODY), true),
+    SKIN(emptySet(), setOf(LoadDomain.SKIN), true),
+    OTHER(emptySet(), emptySet(), false),
+}
+
+@Serializable
+enum class InjurySide { LEFT, RIGHT, BOTH }
+
+@Serializable
+data class Injury(
+    val id: String,
+    val region: InjuryRegion,
+    val side: InjurySide? = null,
+    val detail: String? = null,
+    /**
+     * Pain 0–[MAX_SEVERITY] as reported by the athlete. Up to 0.2.4 the scale ended at 9; those values are kept as
+     * they are, since 0–9 fits inside 0–10 and the thresholds (4, 5) mean the same on both.
+     */
+    val severity: Int,
+    val climbingPaused: Boolean = true,
+    val startedOn: String,
+    val resolvedOn: String? = null,
+    val note: String? = null,
+    val updatedAt: Long = 0,
+    /** Answers to "Fragen zur Verletzung" ([InjuryCheck]): what the athlete entered, never a diagnosis. */
+    val check: InjuryCheck? = null,
+    /** The comeback plan for this injury, if one was started. */
+    val plan: ComebackPlan? = null,
+) {
+    val isActive: Boolean get() = resolvedOn == null
+
+    companion object {
+        /** Top of the pain scale, the same 0–10 as the comeback diary (0.2.5). */
+        const val MAX_SEVERITY = 10
+    }
+    /** A comeback plan that is running. */
+    val activePlan: ComebackPlan? get() = plan?.takeIf { it.isActive && isActive }
+}
+
+@Serializable
+enum class PauseReason { ILLNESS, INJURY, HOLIDAY }
+
+@Serializable
+data class PausePeriod(
+    val id: String,
+    val reason: PauseReason,
+    val startDay: String,
+    val endDay: String? = null,
+    val note: String? = null,
+)
+
+// ── Profile / settings ───────────────────────────────────────────────
+
+const val PLAN_BOARD = "board"
+const val PLAN_REST = "rest"
+/** A date override meaning "nothing planned" over the standard week's entry: the coach decides. */
+const val PLAN_FREE = "free"
+
+@Serializable
+enum class UnitSystem { METRIC, IMPERIAL }
+
+@Serializable
+enum class Sex { FEMALE, MALE, OTHER }
+
+@Serializable
+enum class AthleteGoal { PERFORM, MAINTAIN, BUILD_STRENGTH, LOSE_WEIGHT }
+
+/**
+ * Everything the athlete can configure. Stored as one JSON value so new
+ * fields only need a default — no schema change, and backups stay readable.
+ */
+@Serializable
+data class AthleteProfile(
+    val units: UnitSystem = UnitSystem.METRIC,
+    val sex: Sex? = null,
+    val birthYear: Int? = null,
+    /**
+     * Equipment where the athlete trains today: the place picked for today,
+     * else the default place ([com.cruxcoach.athlete.logic.TrainingPlaces]).
+     * Suggestions and filters read this; edits go through the places.
+     */
+    val equipment: Set<EquipmentV2> = setOf(EquipmentV2.NONE, EquipmentV2.MAT),
+    val equipmentConfigured: Boolean = false,
+    val smallestIncrementKg: Double = 1.0,
+    val weeklyGoal: Int = 3,
+    val goal: AthleteGoal = AthleteGoal.PERFORM,
+    val bodyEnabled: Boolean = true,
+    /** No longer read: nutrition is always on since 2026-10-05. Kept so older backups still parse. */
+    val fuelEnabled: Boolean = false,
+    val fuelIntroAccepted: Boolean = false,
+    /** No longer read: nutrition has one view again (owner 2026-11-22). Kept so profiles saved with them still parse. */
+    val fuelExact: Boolean? = null,
+    val fuelExactSince: String? = null,
+    val hideBodyNumbers: Boolean = false,
+    /** On by default since 2026-10-05 (owner); the settings switch hides them. */
+    val showCalories: Boolean = true,
+    /** Write logged meals and water to Health Connect (FEAT-069); needs its two write permissions. */
+    val healthConnectExport: Boolean = false,
+    /** Injuries and the comeback diary also go into the automatic encrypted backup (off: this phone only). */
+    val healthInCloudBackup: Boolean = false,
+    val proteinPerKg: Double = 1.6,
+    val timerSound: Boolean = true,
+    val timerVibration: Boolean = true,
+    val timerVoice: Boolean = false,
+    val autoRestTimer: Boolean = true,
+    val checkinEnabled: Boolean = true,
+    val legacyBodyStatsImported: Boolean = false,
+    /**
+     * Standard week: ISO weekday (1 = Monday … 7 = Sunday) → what is planned:
+     * a routine id ("builtin:<key>" for starter routines), [PLAN_BOARD] for a
+     * board session, a climbing day ("climb:<kind>:<intensity>", see
+     * [com.cruxcoach.athlete.logic.DayPlans]) or [PLAN_REST]. Days without an entry are free.
+     */
+    val weekPlan: Map<Int, String> = emptyMap(),
+    /**
+     * ISO date the standard week was last set or changed ([com.cruxcoach.athlete.data.AthleteRepository.updateProfile]
+     * writes it). Days before it were never planned that way, so the week view does not call them "missed" (phone
+     * check 2026-11-21: a plan made on a Saturday marked Monday to Friday as missed). Null in profiles from before.
+     */
+    val weekPlanSince: String? = null,
+    /**
+     * This date's plan instead of the standard week's (ISO date → entry as in [weekPlan], or [PLAN_FREE] for "nothing
+     * planned"): "no time today – rest", a day moved, a climbing day added (owner 2026-10-19).
+     */
+    val datePlan: Map<String, String> = emptyMap(),
+    /** Preferred length of a suggested training in minutes. */
+    val sessionMinutes: Int = 45,
+    /** Optional weigh-in reminder: ISO weekdays (1 = Monday … 7 = Sunday) at a time of day. */
+    val weighReminderEnabled: Boolean = false,
+    val weighReminderDays: Set<Int> = setOf(1),
+    val weighReminderMinutes: Int = 7 * 60 + 30,
+    /** Optional monthly measuring round (circumferences) on a day of the month, same time of day. */
+    val measureReminderEnabled: Boolean = false,
+    val measureReminderDayOfMonth: Int = 1,
+    /** Answers of the optional coach setup (FEAT-071); every field may stay unanswered. */
+    val coach: CoachProfile = CoachProfile(),
+    /** Exercises the athlete never wants suggested ("nie vorschlagen"); the counterpart of favourites. */
+    val excludedExercises: Set<String> = emptySet(),
+    /** Optional training reminder on planned days (week plan) at a time of day. */
+    val trainingReminderEnabled: Boolean = false,
+    val trainingReminderMinutes: Int = 17 * 60,
+    /** Also remind on planned board days, not only on off-wall workouts. */
+    val trainingReminderOnClimbingDays: Boolean = true,
+    /** Optional target weight while [goal] is [AthleteGoal.LOSE_WEIGHT]; kept when the goal is switched off. */
+    val targetWeightKg: Double? = null,
+    /** Planned loss per week while losing weight; sets the daily calorie target. */
+    val weeklyLossKg: Double = 0.5,
+    /** Everyday life besides training, for the energy estimate. */
+    val everydayActivity: EverydayActivity = EverydayActivity.SEATED,
+    /** The basics were asked once (first visit to Training or Nutrition); they are not pushed again. */
+    val basicsAsked: Boolean = false,
+    /** Places with their own equipment (owner 2026-10-10); empty in profiles from before. */
+    val places: List<TrainingPlace> = emptyList(),
+    val defaultPlaceId: String? = null,
+    /** A place picked for one day ([placeDay], ISO date); other days use the default. */
+    val placeToday: String? = null,
+    val placeDay: String? = null,
+    /**
+     * Own nutrition targets (owner 2026-10-10: "define them yourself"); null
+     * follows the recommendation. Energy in kcal, macros in g, water in ml.
+     */
+    val ownKcal: Int? = null,
+    val ownCarbsG: Int? = null,
+    val ownProteinG: Int? = null,
+    val ownFatG: Int? = null,
+    val ownWaterMl: Int? = null,
+    /**
+     * Own weekly targets per training area ([com.cruxcoach.athlete.logic.VolumeArea]
+     * name → hard sets a week; finger: sessions a week). Missing areas follow
+     * the recommendation; 0 switches an area off.
+     */
+    val ownWeeklyTargets: Map<String, Int> = emptyMap(),
+    /**
+     * What the athlete told the coach to forget (owner 2026-10-16: learned preferences stay visible and
+     * resettable): key → time in ms; signals at or before it no longer count. Keys are
+     * [com.cruxcoach.athlete.logic.PreferenceLearning.RESET_ALL], `ex:<slug>` and `day:<ISO weekday>`.
+     */
+    val learningResets: Map<String, Long> = emptyMap(),
+    /**
+     * A level step the athlete kept for a kind of training ("from now on one step easier", comparison review #10):
+     * [com.cruxcoach.athlete.logic.SuggestionFocus] name → −1 easier / +1 more demanding. Today's "easier"/"harder"
+     * still move one step from there; forgetting it on "What the coach learned" removes it.
+     */
+    val keptLevels: Map<String, Int> = emptyMap(),
+)
+
+/** What kind of place: names it until the athlete gives it a name, and fills a new one with typical gear. */
+@Serializable
+enum class PlaceKind { HOME, GYM, TRAVEL, OTHER }
+
+/** Where the athlete trains, with what is there. */
+@Serializable
+data class TrainingPlace(
+    val id: String,
+    val kind: PlaceKind = PlaceKind.OTHER,
+    /** The athlete's own name; null shows the kind's name. */
+    val name: String? = null,
+    val equipment: Set<EquipmentV2> = setOf(EquipmentV2.NONE, EquipmentV2.MAT),
+)
+
+/** Everyday life besides training: a physical activity level on top of resting energy. */
+@Serializable
+enum class EverydayActivity { SEATED, ON_FEET, PHYSICAL }
+
+// ── Coach profile (FEAT-071) ─────────────────────────────────────────
+
+@Serializable
+enum class CoachGoal { CLIMB_HARDER, PROJECT, BUILD_STRENGTH, STAY_HEALTHY, COMEBACK, EVENT }
+
+@Serializable
+enum class FocusArea { FINGER_STRENGTH, PULL_STRENGTH, POWER, POWER_ENDURANCE, CORE, MOBILITY, PREVENTION }
+
+@Serializable
+enum class FingerPreference { HANGBOARD, PICKUP, ONE_ARM, NONE }
+
+@Serializable
+enum class ClimbingContext { HOME_BOARD, GYM_BOARD, GYM_BOULDER, ROPE, OUTDOOR }
+
+@Serializable
+enum class ExperienceBand { UNDER_1, Y1_2, Y3_5, OVER_5 }
+
+@Serializable
+enum class AgeBand { UNDER_16, Y16_17, Y18_39, Y40_54, Y55_PLUS }
+
+@Serializable
+enum class SetupState { NOT_STARTED, IN_PROGRESS, DONE, DISMISSED }
+
+/** "Exercise choice" (issue #68): which exercises are in the coach's pool; how often they change is [CoachProfile.variety]. */
+@Serializable
+enum class ExerciseChoice {
+    /** Well-known classics first for everyone, as for a beginner. */
+    CLASSICS,
+    /** Follows experience: beginners get the classics, experienced athletes more unusual exercises too. */
+    BALANCED,
+    /** All levels for everyone, more new exercises per session, unusual ones a little more often. */
+    OPEN,
+}
+
+/**
+ * What the athlete told the coach. Missing answers stay null/empty — the
+ * engine then falls back to conservative defaults and says so; nothing is
+ * silently filled with an average. Stored locally inside the profile JSON.
+ */
+@Serializable
+data class CoachProfile(
+    val goal: CoachGoal? = null,
+    /** Font boulder grade the athlete aims for, e.g. "7A". */
+    val targetGrade: String? = null,
+    /** A project from the logbook. */
+    val targetClimbUuid: String? = null,
+    val targetClimbName: String? = null,
+    val targetClimbAngle: Int? = null,
+    /** ISO date of a trip or competition (drives taper). */
+    val targetDate: String? = null,
+    /** ISO weekdays the athlete usually climbs on. */
+    val climbingDays: Set<Int> = emptySet(),
+    /** All training days per week, climbing included. */
+    val trainingDaysPerWeek: Int? = null,
+    /** 10–15 min antagonists/core after climbing. */
+    val addOnAfterClimbing: Boolean? = null,
+    val contexts: Set<ClimbingContext> = emptySet(),
+    val experience: ExperienceBand? = null,
+    val ageBand: AgeBand? = null,
+    /** Confirmed boulder grades (Font); prefilled from the logbook. */
+    val currentGrade: String? = null,
+    val currentFlashGrade: String? = null,
+    /** Rope grade, free text in French notation. */
+    val ropeGrade: String? = null,
+    val focus: Set<FocusArea> = emptySet(),
+    val fingerPreference: FingerPreference? = null,
+    /** 0 = short and intense … 100 = longer and calmer; null = no preference. */
+    val intensityStyle: Int? = null,
+    /** 0 = fixed routine … 100 = lots of variety; null = no preference. */
+    val variety: Int? = null,
+    /** Which exercises the coach picks (issue #68); null = [ExerciseChoice.BALANCED]. */
+    val exerciseChoice: ExerciseChoice? = null,
+    val setupState: SetupState = SetupState.NOT_STARTED,
+    val setupUpdatedAt: Long = 0,
+    /** First day of the current training block (periodisation). */
+    val blockStartDay: String? = null,
+    val healthConnectEnabled: Boolean = false,
+    val forceGaugeEnabled: Boolean = false,
+)
+
+/** How hard a climbing day was, relative to the athlete's own level. */
+@Serializable
+enum class ClimbIntensity { LIGHT, VOLUME, HARD, LIMIT }
+
+@Serializable
+enum class ClimbingDayKind { GYM_BOULDER, GYM_ROPE, OUTDOOR, OTHER_BOARD, OTHER }
+
+@Serializable
+enum class ClimbingDaySource { MANUAL, HEALTH_CONNECT }
+
+/** Climbing outside the board app (gym, rock, another board), logged by hand or from Health Connect. */
+@Serializable
+data class ClimbingDayEntry(
+    val id: String,
+    val day: String,
+    val kind: ClimbingDayKind,
+    val minutes: Int,
+    val intensity: ClimbIntensity,
+    val source: ClimbingDaySource = ClimbingDaySource.MANUAL,
+    /** Health Connect record id, so a re-sync never duplicates. */
+    val externalId: String? = null,
+    val note: String? = null,
+    val updatedAt: Long = 0,
+)
+
+/** What happened to a recommendation — the ledger the coach learns from. */
+@Serializable
+enum class SuggestionEventKind { SHOWN, STARTED, EDITED, SAVED, NEXT, COMPLETED, EXCLUDED, SWAPPED, SKIPPED_SET, FEEDBACK }
+
+/** Why the athlete asked for another suggestion (optional chip). */
+@Serializable
+enum class SuggestionFeedback { NO_TIME, DISLIKE_EXERCISE, MISSING_EQUIPMENT, HURTS, TOO_EASY, TOO_HARD, OTHER }
+
+@Serializable
+data class SuggestionEvent(
+    val id: String,
+    val day: String,
+    val createdAt: Long,
+    val kind: SuggestionEventKind,
+    val focus: String? = null,
+    /** Exercise slugs the event is about. */
+    val slugs: List<String> = emptyList(),
+    val feedback: SuggestionFeedback? = null,
+    val workoutId: String? = null,
+    /** Kind-specific number: completion share 0–1, minutes, … */
+    val value: Double? = null,
+)

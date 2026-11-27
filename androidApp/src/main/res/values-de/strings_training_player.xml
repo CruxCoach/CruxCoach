@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Geführter Trainingsmodus (FEAT-066): Satzansicht und Pausen-Screen. -->
+<resources>
+    <string name="trp_title">Geführtes Training</string>
+    <string name="trp_overview">Übersicht</string>
+    <string name="trp_set_of">Satz %1$d von %2$d</string>
+    <string name="trp_start_timer">Start</string>
+    <string name="trp_done_without_timer">Ohne Timer erledigt</string>
+    <string name="trp_done_set">Satz erledigt</string>
+    <string name="trp_next_set">Nächster Satz</string>
+    <string name="trp_reopen">Doch nicht erledigt</string>
+    <string name="trp_set_done_label">Erledigt</string>
+    <plurals name="trp_load_carried">
+        <item quantity="one">Gilt auch für den nächsten Satz</item>
+        <item quantity="other">Gilt auch für die nächsten %1$d\u00A0Sätze</item>
+    </plurals>
+    <string name="trp_next_after">Danach: %1$s</string>
+    <string name="trp_climb_now">Aufgewärmt – jetzt klettern</string>
+    <string name="trp_after_climbing">Nach dem Klettern: %1$s</string>
+    <plurals name="trp_reps_big">
+        <item quantity="one">%d\u00A0Wdh.</item>
+        <item quantity="other">%d\u00A0Wdh.</item>
+    </plurals>
+    <plurals name="trp_rounds">
+        <item quantity="one">%d Runde</item>
+        <item quantity="other">%d Runden</item>
+    </plurals>
+    <string name="trp_complete_title">Alle Sätze erledigt</string>
+    <string name="trp_finish_training">Training beenden</string>
+
+    <string name="trp_rest_title">Pause</string>
+    <string name="trp_rest_go">Los geht\'s!</string>
+    <string name="trp_side_switch">Seitenwechsel</string>
+    <string name="trp_rest_remaining_cd">Noch %1$s Pause</string>
+    <string name="trp_rest_minus">−15\u00A0s</string>
+    <string name="trp_rest_plus">+15\u00A0s</string>
+    <string name="trp_record">Neuer Bestwert: %1$s</string>
+    <string name="trp_benchmark_raised">Kraftwert angehoben: %1$s</string>
+    <string name="trp_benchmark_first">Dein Startwert: %1$s</string>
+    <string name="trp_capacity_e1rm">max. 1\u00A0Wdh. mit %1$s</string>
+    <string name="trp_capacity_ten">10\u00A0s mit %1$s</string>
+    <string name="trp_capacity_ten_pct">10\u00A0s mit %1$s (%2$s)</string>
+    <plurals name="trp_capacity_reps">
+        <item quantity="one">max. %d\u00A0Wdh.</item>
+        <item quantity="other">max. %d\u00A0Wdh.</item>
+    </plurals>
+    <string name="trp_capacity_seconds">max. %1$d\u00A0s</string>
+
+    <!-- Swap or skip the shown exercise (UX review 2026-10-16) -->
+    <string name="trp_exercise_menu">Übung tauschen oder überspringen</string>
+    <string name="trp_swap_exercise">Übung tauschen</string>
+    <string name="trp_skip_exercise">Übung überspringen</string>
+</resources>

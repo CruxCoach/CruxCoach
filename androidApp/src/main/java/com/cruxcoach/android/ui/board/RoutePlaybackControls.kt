@@ -38,7 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
-import com.cruxcoach.android.ui.theme.DarkBackground
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 @Composable
@@ -140,7 +140,7 @@ internal fun RoutePlaybackControls(
                     Icon(
                         if (pb.isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
                         contentDescription = if (pb.isPlaying) stringResource(R.string.cd_stop) else stringResource(R.string.cd_play),
-                        tint = DarkBackground,
+                        tint = CruxCoachDesign.colors.onBrandAccent,
                         modifier = Modifier.size(28.dp)
                     )
                 }

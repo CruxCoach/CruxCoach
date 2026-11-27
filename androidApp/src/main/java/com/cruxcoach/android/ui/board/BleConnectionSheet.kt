@@ -56,6 +56,8 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
 import com.cruxcoach.android.ui.settings.connectedBoardConfigurationMismatch
+import com.cruxcoach.android.ui.settings.isShinyWallVariantSuggestion
+import com.cruxcoach.android.ui.settings.shinyWallVariantHint
 
 private enum class PendingScanStart {
     MANUAL,
@@ -100,6 +102,9 @@ fun BleConnectionSheet(
         activeBrand = state.activeBoardBrand,
         connectedBrand = state.connectedBoardBrand,
         connectedQuantumModel = state.connectedQuantumModel,
+        activeLayoutId = state.activeLayoutId,
+        connectedShinyVariantHint = shinyWallVariantHint(state.connectedBoardBrand, state.connectedBoardName),
+        shinyVariantSuggestionAnswered = state.connectedBoardName in state.shinyVariantHintAnswered,
     )
     val rememberedBoard = if (neutralDiscovery) null else state.rememberedBoardControllers[state.activeBoardBrand]
     var discoveryRequested by remember(state.activeBoardBrand) { mutableStateOf(false) }
@@ -329,10 +334,12 @@ fun BleConnectionSheet(
             prefill = connectionMismatch.prefill,
             mismatch = connectionMismatch,
             onSelected = {
+                if (connectionMismatch.isShinyWallVariantSuggestion) viewModel.answerShinyVariantSuggestion()
                 onDismiss()
                 onBoardMismatchExit()
             },
             onDismiss = {
+                if (connectionMismatch.isShinyWallVariantSuggestion) viewModel.answerShinyVariantSuggestion()
                 viewModel.dismissConnectionMismatchPrompt()
                 onDismiss()
                 onBoardMismatchExit()
@@ -833,6 +840,13 @@ private fun ConnectedContent(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (board?.boardBrand == BoardBrand.QUANTUM) {
+                Text(
+                    stringResource(R.string.board_quantum_experimental_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 
@@ -1008,7 +1022,12 @@ private fun ScanContent(
             .fillMaxWidth()
             .testTag("ble_scan_button"),
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (isScanning) MaterialTheme.colorScheme.secondaryContainer else OrangeAccent
+            containerColor = if (isScanning) MaterialTheme.colorScheme.secondaryContainer else OrangeAccent,
+            contentColor = if (isScanning) {
+                MaterialTheme.colorScheme.onSecondaryContainer
+            } else {
+                MaterialTheme.colorScheme.onPrimary
+            },
         ),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -1290,6 +1309,8 @@ private fun BoardItem(
     }
 }
 
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 private fun rssiColor(rssi: Int) = when {
     rssi >= -60 -> SuccessGreen
     rssi >= -75 -> WarningYellow
@@ -1297,11 +1318,12 @@ private fun rssiColor(rssi: Int) = when {
 }
 
 /** Localized brand label for a discovered / connected board (FEAT-027).
- *  Only the interactive families (Kilter / MoonBoard) ever reach BLE; the
- *  map-only info-layer brands fall back to their raw name defensively. */
+ *  Kilter and MoonBoard keep their resource strings; every other family
+ *  shows its proper-noun display name. */
 @Composable
 private fun brandLabel(brand: BoardBrand): String = when (brand) {
     BoardBrand.KILTER -> stringResource(R.string.board_ble_brand_kilter)
     BoardBrand.MOONBOARD -> stringResource(R.string.board_ble_brand_moonboard)
-    else -> brand.wireValue
+    BoardBrand.QUANTUM -> stringResource(R.string.board_quantum_experimental_label, brand.displayName)
+    else -> brand.displayName
 }

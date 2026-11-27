@@ -60,6 +60,8 @@ data class BleConnectionState(
     val lastUsedBoardAddresses: Map<BoardBrand, String> = emptyMap(),
     val rememberedBoardControllers: Map<BoardBrand, RememberedBoardController> = emptyMap(),
     val activeBoardBrand: BoardBrand = BoardBrand.KILTER,
+    /** The active board's layout; with a Shiny Wall it names the chosen variant. */
+    val activeLayoutId: Long? = null,
     val rememberedBoardControllersLoaded: Boolean = false,
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val connectedBoardName: String? = null,
@@ -69,6 +71,8 @@ data class BleConnectionState(
     /** One correction prompt per physical connection; the send fence remains
      * active even after the user deliberately dismisses it. */
     val connectionMismatchPromptDismissed: Boolean = false,
+    /** Shiny Wall controller names whose variant suggestion was answered. */
+    val shinyVariantHintAnswered: Set<String> = emptySet(),
     val isRequestingDisconnect: Boolean = false,
     val disconnectRequestNoResponse: Boolean = false,
     val climbSharingEnabled: Boolean = false,
@@ -283,17 +287,24 @@ class BleConnectionViewModel @Inject constructor(
                 userPreferences.boardBrand,
                 userPreferences.lastUsedBoardAddresses,
                 userPreferences.rememberedBoardControllers,
-            ) { brandWire, addresses, controllers ->
-                Triple(BoardBrand.fromWire(brandWire), addresses, controllers)
-            }.collect { (activeBrand, addresses, controllers) ->
+                userPreferences.boardLayoutId,
+            ) { brandWire, addresses, controllers, layoutId ->
+                ActiveBoardPrefs(BoardBrand.fromWire(brandWire), addresses, controllers, layoutId.toLong())
+            }.collect { (activeBrand, addresses, controllers, layoutId) ->
                 _state.update {
                     it.copy(
                         activeBoardBrand = activeBrand,
+                        activeLayoutId = layoutId,
                         lastUsedBoardAddresses = addresses,
                         rememberedBoardControllers = controllers,
                         rememberedBoardControllersLoaded = true,
                     )
                 }
+            }
+        }
+        viewModelScope.safeLaunch(TAG) {
+            userPreferences.shinyVariantHintAnswered.collect { answered ->
+                _state.update { it.copy(shinyVariantHintAnswered = it.shinyVariantHintAnswered + answered) }
             }
         }
         // Receive disconnect requests from nearby users (works on any screen)
@@ -366,6 +377,14 @@ class BleConnectionViewModel @Inject constructor(
 
     fun dismissConnectionMismatchPrompt() {
         _state.update { it.copy(connectionMismatchPromptDismissed = true) }
+    }
+
+    /** The user chose a variant or kept theirs after the connected Shiny Wall's
+     *  name suggested another one: do not suggest it again for this controller. */
+    fun answerShinyVariantSuggestion() {
+        val name = _state.value.connectedBoardName ?: return
+        _state.update { it.copy(shinyVariantHintAnswered = it.shinyVariantHintAnswered + name) }
+        viewModelScope.safeLaunch(TAG) { userPreferences.markShinyVariantHintAnswered(name) }
     }
 
     fun checkState() {
@@ -802,3 +821,10 @@ class BleConnectionViewModel @Inject constructor(
     }
 
 }
+
+private data class ActiveBoardPrefs(
+    val brand: BoardBrand,
+    val addresses: Map<BoardBrand, String>,
+    val controllers: Map<BoardBrand, com.cruxcoach.android.data.RememberedBoardController>,
+    val layoutId: Long,
+)

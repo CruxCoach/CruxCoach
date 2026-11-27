@@ -33,6 +33,8 @@ import com.cruxcoach.android.data.ApkDownloader
 import com.cruxcoach.android.data.kilter.KilterApiClient
 import com.cruxcoach.android.data.kilter.KilterSyncEngine
 import com.cruxcoach.android.data.kilter.KilterTokenStore
+import com.cruxcoach.android.data.shinywall.ShinyWallTokenStorage
+import com.cruxcoach.android.data.shinywall.ShinyWallTokenStore
 import com.cruxcoach.android.data.BoardDatabaseImporter
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BoardSessionManager
@@ -50,6 +52,7 @@ import com.cruxcoach.android.data.BoardBetaMediaSync
 import com.cruxcoach.android.data.MoonBoardBetaSync
 import com.cruxcoach.android.moonboard.MoonBoardCsvImporter
 import com.cruxcoach.android.data.QuantumCatalogueSync
+import com.cruxcoach.android.data.ShinyWallCatalogueSync
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.data.NearbyPresenceManager
 import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
@@ -65,6 +68,8 @@ import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.ble.RelayGattServer
 import com.cruxcoach.android.ble.SessionGattClient
 import com.cruxcoach.android.ble.SessionGattServer
+import com.cruxcoach.android.led.BoardBleLedSink
+import com.cruxcoach.android.led.LedFrameSink
 import com.cruxcoach.android.util.PerfLogger
 import com.cruxcoach.data.BoardDriverFactory
 import com.cruxcoach.data.SecureDriverFactory
@@ -338,6 +343,7 @@ object AppModule {
         moonBoardCsvImporter: MoonBoardCsvImporter,
         moonBoardBetaSync: MoonBoardBetaSync,
         boardBetaMediaSync: BoardBetaMediaSync,
+        shinyWallCatalogueSync: ShinyWallCatalogueSync,
     ): BoardSyncManager {
         return BoardSyncManager(
             importer,
@@ -354,6 +360,7 @@ object AppModule {
             moonBoardCsvImporter,
             moonBoardBetaSync = moonBoardBetaSync,
             boardBetaMediaSync = boardBetaMediaSync,
+            shinyWallCatalogueSync = shinyWallCatalogueSync,
         )
     }
 
@@ -420,6 +427,17 @@ object AppModule {
         boardRepository: BoardRepository
     ): ClimbNameResolver {
         return ClimbNameResolver(boardRepository)
+    }
+
+    /**
+     * The LED animations' view of the link. Bound as the interface so the engine
+     * depends on "something that can show frames and says whether it may", which
+     * is what makes it testable without a GATT connection.
+     */
+    @Provides
+    @Singleton
+    fun provideLedFrameSink(bleConnection: BoardBleConnection): LedFrameSink {
+        return BoardBleLedSink(bleConnection)
     }
 
     @Provides
@@ -519,6 +537,14 @@ object AppModule {
         return RelayGattServer(context)
     }
 
+    /** One per process: CruxCoachApp, the recovery receivers and the relay share it. */
+    @Provides
+    @Singleton
+    fun provideRelayAdapterNameGuard(
+        @ApplicationContext context: Context,
+    ): com.cruxcoach.android.data.RelayAdapterNameGuard =
+        com.cruxcoach.android.data.RelayAdapterNameGuard(context)
+
     @Provides
     @Singleton
     fun provideCruxRelayManager(
@@ -528,6 +554,7 @@ object AppModule {
         bleConnection: BoardBleConnection,
         projectionCoordinator: BoardProjectionCoordinator,
         userPreferences: UserPreferences,
+        nameGuard: com.cruxcoach.android.data.RelayAdapterNameGuard,
     ): CruxRelayManager {
         return CruxRelayManager(
             context,
@@ -536,6 +563,7 @@ object AppModule {
             bleConnection,
             projectionCoordinator,
             userPreferences,
+            nameGuard = nameGuard,
         )
     }
 
@@ -739,6 +767,35 @@ object AppModule {
     fun provideNostrEventBuilder(signer: NostrSigner): NostrEventBuilder {
         return PerfLogger.trace("DI: NostrEventBuilder") { NostrEventBuilder(signer) }
     }
+
+    // --- Shiny Wall account (read-only logbook import) ---
+
+    @Provides
+    @Singleton
+    @Named("shinywall")
+    fun provideShinyWallOkHttpClient(): OkHttpClient {
+        // Same honest, identifiable User-Agent as the Kilter account client.
+        val versionName = com.cruxcoach.android.BuildConfig.VERSION_NAME
+        val product = com.cruxcoach.android.BuildConfig.USER_AGENT_PRODUCT
+        val host = com.cruxcoach.android.BuildConfig.APP_LINK_HOST
+        val ua = "$product/$versionName (https://$host)"
+        return OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .callTimeout(60, TimeUnit.SECONDS)
+            .addInterceptor { chain ->
+                chain.proceed(chain.request().newBuilder().header("User-Agent", ua).build())
+            }
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideShinyWallTokenStore(
+        @ApplicationContext context: Context,
+        nostrSigner: NostrSigner,
+    ): ShinyWallTokenStorage = ShinyWallTokenStore(context, nostrSigner.getPublicKeyHex().take(16))
 
     // --- Kilter Account ---
 

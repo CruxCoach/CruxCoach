@@ -1,12 +1,18 @@
 package com.cruxcoach.android.ui.settings
 
+import com.cruxcoach.android.data.MAX_ANSWERED_SHINY_VARIANT_HINTS
+import com.cruxcoach.android.data.rememberAnsweredShinyVariantHint
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.QuantumBoardModel
+import com.cruxcoach.domain.board.ShinyWallVariant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertNotNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class BoardConfigurationMismatchTest {
     @Test
@@ -32,6 +38,101 @@ class BoardConfigurationMismatchTest {
                 connectedBrand = BoardBrand.TENSION,
             ),
         )
+    }
+
+    @Test
+    fun `a Shiny Wall name suggesting another variant offers to switch`() {
+        val mismatch = connectedBoardConfigurationMismatch(
+            activeBrand = BoardBrand.SHINYWALL,
+            connectedBrand = BoardBrand.SHINYWALL,
+            activeLayoutId = ShinyWallVariant.ST1.layoutId,
+            connectedShinyVariantHint = ShinyWallVariant.ST4,
+        )
+        assertNotNull(mismatch)
+        assertEquals(BoardMismatchKind.CONNECTED_MODEL, mismatch.kind)
+        assertEquals(ShinyWallVariant.ST4.layoutId, mismatch.prefill.layoutId)
+        assertEquals(ShinyWallVariant.ST4.productSizeId.toInt(), mismatch.prefill.productSizeId)
+        // Matching variant or no hint: nothing to ask.
+        assertNull(
+            connectedBoardConfigurationMismatch(
+                activeBrand = BoardBrand.SHINYWALL,
+                connectedBrand = BoardBrand.SHINYWALL,
+                activeLayoutId = ShinyWallVariant.ST4.layoutId,
+                connectedShinyVariantHint = ShinyWallVariant.ST4,
+            ),
+        )
+        assertNull(
+            connectedBoardConfigurationMismatch(
+                activeBrand = BoardBrand.SHINYWALL,
+                connectedBrand = BoardBrand.SHINYWALL,
+                activeLayoutId = ShinyWallVariant.ST1.layoutId,
+            ),
+        )
+    }
+
+    @Test
+    fun `a Shiny Wall connected under another board prefills the hinted variant`() {
+        val mismatch = connectedBoardConfigurationMismatch(
+            activeBrand = BoardBrand.KILTER,
+            connectedBrand = BoardBrand.SHINYWALL,
+            connectedShinyVariantHint = ShinyWallVariant.ST5,
+        )
+        assertNotNull(mismatch)
+        assertEquals(BoardMismatchKind.ACTIVE_BRAND, mismatch.kind)
+        assertEquals(ShinyWallVariant.ST5.layoutId, mismatch.prefill.layoutId)
+        val noHint = connectedBoardConfigurationMismatch(BoardBrand.KILTER, BoardBrand.SHINYWALL)
+        assertEquals(ShinyWallVariant.ST1.layoutId, noHint?.prefill?.layoutId)
+    }
+
+    @Test
+    fun `an answered Shiny Wall variant suggestion is not asked again`() {
+        // A Max wall whose gym named its controller STP_ (such walls exist).
+        val hint = shinyWallVariantHint(BoardBrand.SHINYWALL, "ShinyWall_STP_Gym1")
+        assertEquals(ShinyWallVariant.ST1, hint)
+        val first = connectedBoardConfigurationMismatch(
+            activeBrand = BoardBrand.SHINYWALL,
+            connectedBrand = BoardBrand.SHINYWALL,
+            activeLayoutId = ShinyWallVariant.ST2.layoutId,
+            connectedShinyVariantHint = hint,
+        )
+        assertNotNull(first)
+        assertTrue(first.isShinyWallVariantSuggestion)
+        assertNull(
+            connectedBoardConfigurationMismatch(
+                activeBrand = BoardBrand.SHINYWALL,
+                connectedBrand = BoardBrand.SHINYWALL,
+                activeLayoutId = ShinyWallVariant.ST2.layoutId,
+                connectedShinyVariantHint = hint,
+                shinyVariantSuggestionAnswered = true,
+            ),
+        )
+        // A brand switch still lands on the hinted variant and is no suggestion.
+        val brandSwitch = connectedBoardConfigurationMismatch(
+            activeBrand = BoardBrand.KILTER,
+            connectedBrand = BoardBrand.SHINYWALL,
+            connectedShinyVariantHint = hint,
+            shinyVariantSuggestionAnswered = true,
+        )
+        assertNotNull(brandSwitch)
+        assertEquals(ShinyWallVariant.ST1.layoutId, brandSwitch.prefill.layoutId)
+        assertFalse(brandSwitch.isShinyWallVariantSuggestion)
+    }
+
+    @Test
+    fun `the Shiny Wall hint comes only from a Shiny Wall controller name`() {
+        assertEquals(ShinyWallVariant.ST5, shinyWallVariantHint(BoardBrand.SHINYWALL, "ShinyWall_STMF_Gym2"))
+        assertNull(shinyWallVariantHint(BoardBrand.KILTER, "ShinyWall_STP_Gym3"))
+        assertNull(shinyWallVariantHint(BoardBrand.SHINYWALL, null))
+        assertNull(shinyWallVariantHint(BoardBrand.SHINYWALL, "Kilter Board#1234@3"))
+    }
+
+    @Test
+    fun `answered controller names are kept once and bounded`() {
+        val one = rememberAnsweredShinyVariantHint(emptySet(), "ShinyWall_STP_A")
+        assertEquals(setOf("ShinyWall_STP_A"), one)
+        assertSame(one, rememberAnsweredShinyVariantHint(one, "ShinyWall_STP_A"))
+        val full = (1..MAX_ANSWERED_SHINY_VARIANT_HINTS).map { "ShinyWall_STP_$it" }.toSet()
+        assertEquals(setOf("ShinyWall_STP_new"), rememberAnsweredShinyVariantHint(full, "ShinyWall_STP_new"))
     }
 
     @Test

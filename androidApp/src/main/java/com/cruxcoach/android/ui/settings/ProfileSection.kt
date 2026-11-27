@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.settings
 
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -20,6 +21,7 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.util.GradeConverter
+import kotlin.math.roundToInt
 
 @Composable
 internal fun ProfileSection(
@@ -87,7 +89,7 @@ internal fun ProfileSection(
             Text(stringResource(R.string.settings_profile_sessions_per_week, profile.sessionsPerWeek), style = MaterialTheme.typography.bodySmall)
             Slider(
                 value = profile.sessionsPerWeek.toFloat(),
-                onValueChange = { onSessionsPerWeekChange(it.toInt()) },
+                onValueChange = { onSessionsPerWeekChange(it.roundToInt()) },
                 valueRange = 1f..7f,
                 steps = 5,
                 colors = SliderDefaults.colors(thumbColor = OrangeAccent, activeTrackColor = OrangeAccent)
@@ -132,7 +134,7 @@ internal fun ProfileSection(
         if (isSaving) {
             CircularProgressIndicator(
                 modifier = Modifier.size(20.dp),
-                color = DarkBackground,
+                color = CruxCoachDesign.colors.onBrandAccent,
                 strokeWidth = 2.dp
             )
             Spacer(Modifier.width(8.dp))

@@ -25,6 +25,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Already merged in by WorkManager; declared for RelayNameRecoveryReceiver. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Exact alarms for the rest timer. SCHEDULE_EXACT_ALARM (API 31)
          can be revoked on API 33+, silently degrading the timer to an
@@ -61,6 +63,17 @@
         android:usesPermissionFlags="neverForLocation" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- FEAT-069: barcode scan of packaged foods, decoded on the device; nothing is stored. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <!-- Optional Health Connect link, one switch per direction in the training
+         settings. FEAT-071 coach reads: sleep prefills the check-in (never
+         auto-saved), exercise sessions become climbing days. FEAT-069 nutrition
+         writes logged meals and water. The link itself uploads nothing. -->
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.WRITE_NUTRITION" />
+    <uses-permission android:name="android.permission.health.WRITE_HYDRATION" />
 
     <queries>
         <!-- Optional local MoonBoard migration. Used only after the user taps
@@ -82,6 +95,14 @@
         <package android:name="com.samsung.android.lool" />
         <package android:name="com.samsung.android.sm" />
         <package android:name="com.oneplus.security" />
+        <!-- FEAT-071: Health Connect provider (Android 9–13; built into 14+). -->
+        <package android:name="com.google.android.apps.healthdata" />
+        <!-- Text-to-speech engines for the hang timer's voice: Android 11+ hides them
+             from TextToSpeech unless the service is declared here. Whatever engine the
+             phone has; none is required. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <application
@@ -146,6 +167,29 @@
             </intent-filter>
         </activity>
 
+        <!-- Health Connect privacy rationale (what is read, what is written,
+             why). Health Connect links here from its permission screen
+             (Android 9–13) and Android 14+ from the system permission-usage
+             view (activity-alias below). -->
+        <activity
+            android:name=".athlete.health.HealthPermissionsRationaleActivity"
+            android:exported="true"
+            android:theme="@style/Theme.CruxCoach">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".athlete.health.HealthPermissionsRationaleActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- AppCompat per-app language persistence (pre-Android 13) -->
         <service
             android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
@@ -169,6 +213,13 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/moonboard_accessibility_service" />
         </service>
+
+        <!-- FEAT-069: the food photo model runs in its own process so that
+             Android can reclaim its 2–4 GB without killing the app. -->
+        <service
+            android:name=".foodvision.FoodVisionService"
+            android:exported="false"
+            android:process=":vision" />
 
         <!-- FileProvider for APK sharing -->
         <provider
@@ -194,10 +245,46 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
+        <!-- FEAT-044 CruxRelay: gives the phone its Bluetooth name back after the
+             app ended while sharing. Off by default; RelayAdapterNameGuard
+             switches it on only while a name is lent or not back, so other
+             Bluetooth connections never start the app. ACL_DISCONNECTED also
+             fires when a killed app's board link drops, ACL_CONNECTED when the
+             car connects. Exported because these come from the Bluetooth
+             process; all actions are protected system broadcasts. -->
+        <receiver
+            android:name=".data.RelayNameRecoveryReceiver"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Same, once after every app update: a name the previous version left
+             behind should not wait for the user to open the app. -->
+        <receiver
+            android:name=".data.RelayNameUpdateReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Keeps the sender-side Wi-Fi hotspot and local HTTP server alive
              while the share screen is backgrounded. -->
         <service
             android:name=".util.LocalShareService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!-- Keeps a running LED animation writing while the app is
+             backgrounded (filming the climb, say); the effect stops with the
+             service. -->
+        <service
+            android:name=".led.LedAnimationService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
@@ -247,6 +334,17 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
+
+        <!-- FEAT-078: ONNX Runtime's manifest adds this provider. It loads the
+             34 MB runtime on every app start, on the main thread, and sets up
+             its telemetry to Microsoft with a device id. CruxCoach sends no
+             telemetry: the provider is removed, and the runtime is started
+             only for the hold model, with telemetry switched off
+             (OnnxHoldDetector.environment). -->
+        <provider
+            android:name="ai.onnxruntime.TelemetryInitializer"
+            android:authorities="${applicationId}.onnxruntime_telemetry_initializer"
+            tools:node="remove" />
     </application>
 
 </manifest>

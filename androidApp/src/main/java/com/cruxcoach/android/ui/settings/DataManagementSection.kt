@@ -74,7 +74,12 @@ internal fun DataResultMessage(message: String?, onDismiss: () -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(message, style = MaterialTheme.typography.bodyMedium)
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) }
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                ),
+            ) { Text(stringResource(R.string.action_ok)) }
         }
     }
 }
@@ -228,7 +233,7 @@ internal fun AppInfoSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            "Open-Source Bouldering Training App",
+            stringResource(R.string.settings_app_tagline),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

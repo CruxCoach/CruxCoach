@@ -22,7 +22,7 @@ tags:
 - extendedWaitUntil:
     visible:
       id: "hold_search_match_count"
-      text: "0 Climbs gefunden"
+      text: "0 Boulder gefunden"
     timeout: 30000
 - assertVisible:
     id: "hold_search_zone_active"

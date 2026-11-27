@@ -5,6 +5,7 @@
 **Geltungsbereich:** implementierter Code bei `4fc067e87`, Vorbereitung von
 0.2.3. Veröffentlicht ist weiterhin 0.2.2. Die unten beschriebenen Korrekturen
 an Ergebnisstatistik und Trefferzahlen gehören zur Vorbereitungslinie.
+Der Abschnitt „Training und Ernährung“ beschreibt `feat/0.2.5-training-nutrition` (Ziel 0.2.5).
 
 ## Board, Layout, Winkel und Problem
 
@@ -15,6 +16,18 @@ Installation hat außerdem eine Größe, montierte Griffsets und unterstützte
 Winkel. Die Gym-Auswahl hilft bei dieser Konfiguration; der Board-Fit-Filter
 schließt Probleme aus, die darauf nicht passen. Die Bluetooth-Verbindung
 bestimmt, welchen Controller das Handy tatsächlich ansteuern kann.
+
+**Quantum ist experimentell.** Es ist noch nicht an einem echten Quantum-Board
+getestet, und die App sagt das dort, wo du ein Quantum-Board wählst oder
+verbindest. Ein Climb leuchtet als gewöhnliche Spieler-Route: eine Route in einer
+Farbe, so lange wie die Abschaltzeit des Boards (31 Minuten, wenn das Board keine
+nennt). Eine Route gilt als gesendet, wenn das Board sie ohne Fehler annimmt; eine
+Ablehnung zeigt ihren Grund. Nennt die Routenliste des Boards eine angenommene
+Route nicht, zeigt das Layer-Regal den Climb als „gesendet; das Board listet ihn nicht“
+und behält ihn bis zum Ende seiner Zeit, damit du ihn weiter ausschalten kannst.
+Bekannte Grenzen: Ein S Fitness wird wie die anderen Modelle behandelt (vier
+Layer, eine Farbe je Route), und Routen mit mehr als 92 Griffen werden nicht
+gesendet.
 
 Ein **Problem** (im Code `climb`) hat eine Identität und Griff-Frames. Der
 **Winkel** ist die Neigung beim Suchen, Beleuchten oder Loggen. Der Setter-Winkel
@@ -204,6 +217,46 @@ Konto bleibt die bestehende Trennung der Daten erhalten. Ohne lokale Schlüsselk
 wird ein Import angeboten, statt beim Trennen eine neue Identität zu erzeugen.
 Private Schlüssel bleiben beim Import zunächst verdeckt; der Screenshot-Schutz bleibt aktiv.
 
+## LED-Effekte
+
+*Einstellungen → Board & Bluetooth → LED-Effekte* (und das Menü eines Boulders,
+solange ein Board mit Effekten verbunden ist) bringen den leuchtenden Boulder in
+Bewegung. Standard ist **Keine**: Der Boulder behält seine normalen Farben.
+Bei **Puls** wird jeder Griff in seiner Farbe heller und dunkler, **Regenbogen**
+lässt alle Farben langsam durch den Farbkreis wandern, **Wechselblitz**
+wechselt blinkend zwischen den CruxCoach- und den Kilter-Farben, und beim
+**Chaosblitz** springen die Farben, wobei Startgriffe, Zwischengriffe,
+Topgriffe und Tritte unterscheidbar bleiben. Die sanften Effekte stehen vorn, die
+blinkenden hinten mit Blitz-Symbol; was jeder Effekt tut, erklärt das Info-Symbol
+der Karte. Eine Auswahl wirkt sofort an der Wand, die Wand ist also die Vorschau.
+Eine Statuszeile sagt, was der Effekt gerade tut (läuft, wartet auf einen Boulder,
+pausiert, beendet, kein Board – dann mit „Board verbinden“). Die Effekte
+sehen aus und laufen genau wie beigetragen; einen Tempo-Regler gibt es nicht.
+
+Effekte zeigt ein verbundenes Kilter Board, bei Bouldern mit bis zu 120
+leuchtenden LEDs; andere Boards behalten ihre normalen Farben (eine Liste,
+`LedEffectSupport`, legt die Boards fest). Die übrigen Aurora-Boards würden über
+dieselben Pakete funktionieren und warten auf einen Gerätetest.
+
+Blinken: Die beiden Stroboskope beginnen höchstens alle 333 ms einen neuen Frame
+und wechseln die Farbe damit höchstens dreimal pro Sekunde (WCAG 2.3.1 erlaubt
+drei Blitze, also sechs Wechsel, pro Sekunde). Vor dem ersten Einschalten fragen
+sie einmal nach, und solange in Android „Animationen entfernen“ an ist, jedes Mal –
+ein Hinweis, keine Sperre. Puls und Regenbogen ändern sich allmählich.
+
+Andere zuerst: Was du sendest, die Routenwiedergabe, die Oster-Animation,
+Wand-Spiele und Griffe putzen haben immer Vorrang; der Effekt wartet oder
+pausiert. Effekt-Frames zählen nicht als Aktivität: Das automatische Trennen gibt
+ein Board, das nur ein Handy zulässt, weiterhin pünktlich frei, und vorher werden
+die normalen Farben des Boulders zurückgeschrieben. Nach 15 Minuten auf demselben
+Boulder endet ein Effekt (erneut senden startet ihn neu). Beim Verlassen der App
+endet er mit den normalen Farben, außer *Auch in anderen Apps* ist an
+(Standard: aus): Dann hält eine Benachrichtigung mit **Stopp** ihn für diese
+15 Minuten am Laufen, nur solange Benachrichtigungen sichtbar sind. Das Handy
+bleibt so lange mit dem Board verbunden, und es gibt keinen Wake Lock – hält
+Android die App an, endet der Effekt. Idee und erste Fassung stammen von dapeebb
+(PR #21); Spec `docs/specs/0.2.5/FEAT-074-led-animations.md`.
+
 ## Boardkarte
 
 Die Karte zeigt je Standort einen Marker in Farbe und Buchstabe seiner Board-Familie (Kilter rot „K“, MoonBoard gelb „M“, Tension schiefergrau „T“, …); ein Standort mit mehreren Familien bekommt je Familie ein Tortenstück. Nahe Standorte werden zu neutralen Zahlenblasen zusammengefasst, die die Farbe einer Familie annehmen, wenn die Board-Auswahl genau eine übrig lässt. Ab Stadtzoom stehen die Hallennamen unter den Markern. Der Board-Chip oben listet jede Familie mit Marker und Anzahl und ist damit zugleich die Legende; der Filter-Chip nennt die Zahl weiterer aktiver Filter.
@@ -222,11 +275,47 @@ Auf der Karte öffnet ein Board mit bekanntem Layout seine Climbs direkt („Cli
 
 Die Kartenstatistik zählt alle erfassten Boards im geladenen Kartendatensatz, unabhängig von den Kartenfiltern. Ein Standort kann mehrere Boards enthalten. Marken- und Layout-Verteilung berücksichtigen alle Board-Familien; Layouts werden je Marke gruppiert und fehlende Angaben als unbekannt angezeigt. Zugang, Verstellbarkeit, Länder und bekannte Größen verwenden denselben Datensatz.
 
+## Training und Ernährung (0.2.5)
+
+Der Trainingsbereich („Training & Ernährung“ im Hauptmenü) hat vier Tabs:
+Heute, Training (Workouts und Übungsbibliothek), Ernährung und Fortschritt.
+**Heute** schlägt ein Training vor – aus Wochenplan, Klettertagen, Check-in,
+Fingerlast der letzten Tage, Ausrüstung des gewählten Orts und dem, was der
+Coach gelernt hat; jede Übung auf der Karte lässt sich tauschen, weglassen oder
+nie mehr vorschlagen, die Gründe stehen hinter „Warum?“. Vorschläge sind nie ein
+Zwang: Der Nutzer kann immer selbst anpassen, und Sicherheitsregeln
+(Verletzungen, Schutz für junge Kletternde und Einsteiger, Fingerlast) gehen
+vor Vorlieben. Der Coach lernt mit Maß aus Tausch und Änderungen – abgelehnte
+Übungen ruhen Tage bis Wochen und kommen nicht ständig wieder –, und „Was der
+Coach gelernt hat“ zeigt jeden Punkt und vergisst ihn auf Wunsch.
+
+**Ernährung** folgt dem Trainingstag mit offenen Zielen und warnt mit Zahlen,
+statt etwas zu sperren („warnen statt sperren“). Lebensmittel kommen aus den
+mitgelieferten Daten von BLS 4.0, USDA und Open Food Facts, per Barcode,
+Beschreibung oder einem optionalen Fotomodell auf dem Gerät (nur auf Anfrage
+geladen).
+
+**Comeback-Plan** nach einer Verletzung ist eine Trainingshilfe, kein
+Medizinprodukt: Der Nutzer trägt ein, was Ärztin, Arzt oder Physio gesagt haben,
+und wählt die Stufe; die App stellt keine Diagnose, wählt oder wechselt nie
+selbst eine Stufe und sagt auf jeder Comeback-Fläche, dass sie kein Ersatz für
+den Arztbesuch ist. Heil- und Behandlungswörter kommen nicht vor
+(`HealthWordingTest`).
+
+**Daten:** alles in einer eigenen SQLCipher-Datenbank je Konto
+(`cruxcoach_athlete_<Pubkey-Präfix>.db`, Schema in `sqldelight/athlete`), erst
+bei Bedarf geöffnet, nie beim App-Start. Sicherungen tragen sie als zusätzlichen
+Teil `athlete` (Umschlag Version 3, vorwärtskompatibel gelesen); Training, Körper
+und Ernährung sind standardmäßig dabei, Verletzungen und Comeback-Tagebuch
+(`HEALTH`) nur mit Schalter. Health Connect ist optional, ein Schalter je
+Richtung.
+
 ## Orientierung im Quellcode
 
 Die [Quellcode-Tabelle der englischen Fassung](../en/CORE_CONCEPTS.md#source-map)
 verlinkt Board-Fähigkeiten, Repository-Modelle, SQL-Schemata, Filter,
-Statistik samt Tests, Player, Community-Publishing, Backup und Update-Prüfung.
+Statistik samt Tests, Player, Community-Publishing, Backup, Update-Prüfung sowie
+Training, Coach, Comeback-Plan, Ernährung, Health Connect und LED-Effekte.
 Sie ist die gemeinsame Pfadreferenz für beide Fassungen.
 
 Android-UI, BLE, Hintergrundarbeit und Dependency Injection liegen unter

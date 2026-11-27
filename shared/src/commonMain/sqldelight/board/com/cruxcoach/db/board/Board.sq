@@ -1174,6 +1174,13 @@ LEFT JOIN climb_stats cs ON c.uuid = cs.climb_uuid AND cs.angle = ?
 WHERE lower(replace(c.uuid, '-', '')) = lower(replace(?, '-', ''))
 LIMIT 1;
 
+-- The same normalized match for many keys in one scan: the stored uuids whose
+-- normalized form (hyphens stripped, lowercased) is in the list. For callers
+-- that would otherwise scan once per missed uuid.
+findClimbUuidsByNormKeys:
+SELECT uuid FROM climbs
+WHERE lower(replace(uuid, '-', '')) IN ?;
+
 countLeds:
 SELECT COUNT(*) FROM leds;
 
@@ -1445,6 +1452,19 @@ WHERE cs.layout_id = :layoutId
   AND cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff
   AND COALESCE(cs.ascensionist_count, 0) >= :minAsc
   AND (c.hsm & :hsmExcludedMask) = 0
+  AND LENGTH(c.frames) > 0 AND c.is_listed = 1;
+
+-- Knot's hold ratings: every listed climb graded at one angle, frames and grade, so a hold can be rated by how hard
+-- the climbs are that use it. Brand-scoped like getAllFramesForFilter.
+getGradedFramesForAngle:
+SELECT c.frames, cs.difficulty_average
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE cs.layout_id = :layoutId
+  AND c.board_brand = :boardBrand
+  AND cs.angle = :angle
+  AND cs.difficulty_average > 0
+  AND COALESCE(cs.ascensionist_count, 0) >= :minAsc
   AND LENGTH(c.frames) > 0 AND c.is_listed = 1;
 
 -- Any-angle variant of getAllFramesForFilter for the logbook stats heatmap:

@@ -1,0 +1,14 @@
+{
+  "uniqueId": "com.boardsesh:hold-detection-pipeline",
+  "name": "BoardSesh hold detection pipeline",
+  "description": "Tiling, decoding, outline tracing and tile merging for the hold model, ported to Kotlin from BoardSesh (packages/shared/hold-detection) into SegPipeline.kt.",
+  "website": "https://github.com/boardsesh/boardsesh",
+  "developers": [
+    {
+      "name": "BoardSesh contributors"
+    }
+  ],
+  "licenses": [
+    "Apache-2.0"
+  ]
+}

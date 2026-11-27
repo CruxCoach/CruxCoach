@@ -25,7 +25,7 @@ class BoardPickerDownloadPreferenceTest {
         val manager = mockk<BoardSyncManager>(relaxed = true)
         every { manager.state } returns MutableStateFlow(BoardSyncState())
         val vm = BoardPickerViewModel(mockk(relaxed = true), prefs, repo,
-            mockk(relaxed = true), mockk(relaxed = true), manager)
+            mockk(relaxed = true), mockk(relaxed = true), manager, mockk(relaxed = true))
         try {
             assertTrue(vm.needsDownloadConsent(BoardBrand.MOONBOARD))
             assertFalse(vm.needsDownloadConsent(BoardBrand.KILTER))

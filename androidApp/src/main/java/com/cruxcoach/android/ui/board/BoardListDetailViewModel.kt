@@ -234,7 +234,7 @@ class BoardListDetailViewModel @Inject constructor(
      *  MoonBoard variant. Aurora brands (Tension TB1/TB2 etc.) have no simple
      *  per-layout name, so they collapse to one chip per brand. */
     private fun filterLayoutKey(brand: BoardBrand, layoutId: Long): Long = when (brand) {
-        BoardBrand.KILTER, BoardBrand.MOONBOARD -> layoutId
+        BoardBrand.KILTER, BoardBrand.MOONBOARD, BoardBrand.SHINYWALL -> layoutId
         else -> ANY_LAYOUT
     }
 

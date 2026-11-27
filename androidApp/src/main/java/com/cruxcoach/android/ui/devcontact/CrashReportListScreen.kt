@@ -193,7 +193,7 @@ private fun CrashReportItem(
                 }
             }
 
-            Text(
+            MessageText(
                 text = firstLine,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
@@ -208,7 +208,7 @@ private fun CrashReportItem(
             ) {
                 Column {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    Text(
+                    MessageText(
                         text = report.content,
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,

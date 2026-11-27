@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionCapacity
+import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.BoardLayerBoardIdentity
@@ -14,6 +15,7 @@ import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.PhysicalBoardIdentity
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.led.AnimationPauseOwner
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.BoardConstants
@@ -353,8 +355,59 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val communityClimbDeleter: com.cruxcoach.android.community.CommunityClimbDeleter,
     private val ownClimbPublisher: com.cruxcoach.android.community.OwnKilterClimbPublisher,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
+    private val ledAnimationEngine: com.cruxcoach.android.led.LedAnimationEngine,
+    private val ledEffectsController: com.cruxcoach.android.led.LedEffectsController,
+    private val playbackCoordinator: com.cruxcoach.android.data.PlaylistPlaybackCoordinator,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    /** The LED effects quick pick in the climb menu; collected by the screen. */
+    val ledEffects: kotlinx.coroutines.flow.Flow<com.cruxcoach.android.led.LedEffectsState>
+        get() = ledEffectsController.state
+
+    fun selectLedEffect(id: String) {
+        viewModelScope.launch { ledEffectsController.select(id) }
+    }
+
+    fun confirmLedStrobeNotice() {
+        viewModelScope.launch { ledEffectsController.strobeNoticeSeen() }
+    }
+
+    /** What the quick pick's Restart does on this climb, if it is offered at all. */
+    internal val ledEffectRestart: kotlinx.coroutines.flow.Flow<LedEffectRestart> by lazy {
+        combine(ledEffectsController.state, _state, sessionQueueManager.state) { led, _, _ ->
+            ledEffectRestartFor(led)
+        }.distinctUntilChanged()
+    }
+
+    private fun ledEffectRestartFor(led: com.cruxcoach.android.led.LedEffectsState) =
+        LedEffectRestartPolicy.resolve(
+            status = led.status,
+            litClimbUuid = led.litClimbUuid,
+            detailClimbUuid = _state.value.climb?.uuid,
+            deliveryTarget = deliveryDecision()?.target ?: BoardDeliveryTarget.NONE,
+            sessionHost = sessionQueueManager.state.value.role == com.cruxcoach.android.data.SessionRole.HOST,
+            sessionClimbUuid = sessionQueueManager.state.value.currentClimb?.climbUuid,
+        )
+
+    /**
+     * Restart an LED effect that ended on this climb by sending it again: like
+     * the lamp, or, in a shared session, by putting its current climb back on the
+     * wall. Decided again at the tap, so a stale sheet sends nothing else.
+     */
+    fun restartLedEffect() {
+        viewModelScope.launch {
+            when (ledEffectRestartFor(ledEffectsController.state.first())) {
+                // The lamp's direct send, never its shared-queue branch.
+                LedEffectRestart.LIGHT -> sendController.sendToBoard(
+                    automaticLayer = true,
+                    userInitiated = true,
+                )
+                LedEffectRestart.SESSION_RESEND -> playbackCoordinator.resendCurrentClimb()
+                LedEffectRestart.NONE -> Unit
+            }
+        }
+    }
 
     /** Exposed for the pager to compute its initial page synchronously (before async load). */
     val initialClimbUuid: String = savedStateHandle["climbUuid"] ?: ""
@@ -441,6 +494,10 @@ class BoardClimbDetailViewModel @Inject constructor(
             // there at all. Asking isConnected() alone let the animation run
             // through while a session queue swallowed every single frame.
             if (sendController.canSendToBoard()) sendController.sendToBoard(automaticLayer = true)
+        },
+        onBoardOwnershipChanged = { owned ->
+            if (owned) ledAnimationEngine.pause(AnimationPauseOwner.ROUTE_PLAYBACK)
+            else ledAnimationEngine.resume(AnimationPauseOwner.ROUTE_PLAYBACK)
         }
     )
 
@@ -495,6 +552,15 @@ class BoardClimbDetailViewModel @Inject constructor(
             climbNavState.creatorRevision.drop(1).collect {
                 loadClimb(currentClimbUuid, currentAngle)
             }
+        }
+        // A board size saved while this screen is open (the size check in the
+        // ⋯ menu) redraws the wall at once instead of on the next open. Only
+        // the picture changes: no reload, so nothing is sent to the board.
+        viewModelScope.launch {
+            combine(userPreferences.boardLayoutId, userPreferences.boardProductSizeId) { layout, size -> layout to size }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { redrawForSavedBoard() }
         }
         // Each init-coroutine is wrapped in try/catch so a DataStore
         // read failure or a flow-collection throw on one stream doesn't
@@ -643,6 +709,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                     val climbState = _state.value
                     if (connState == ConnectionState.CONNECTED &&
                         wasDisconnectedOrConnecting &&
+                        // The size check connected to light its own holds: the climb would replace them.
+                        !bleConnection.isKeptAliveBy(BoardConnectionOwner.SIZE_CHECK) &&
                         BoardProjectionPolicy.hasSendablePayload(
                             brand = climbState.climb?.brand,
                             holdCount = climbState.holds.size,
@@ -1427,8 +1495,27 @@ class BoardClimbDetailViewModel @Inject constructor(
     fun deliverClimb() {
         val climbState = _state.value
         val climb = climbState.climb ?: return
+        val decision = deliveryDecision() ?: return
+        when (decision.target) {
+            // A tap on the lamp is an explicit projection request. Quantum may
+            // therefore claim the first genuinely free, conflict-free layer
+            // without making the user open the layer rack first.
+            BoardDeliveryTarget.DIRECT_BOARD -> sendController.sendToBoard(
+                automaticLayer = true,
+                userInitiated = true,
+            )
+            BoardDeliveryTarget.SHARED_QUEUE ->
+                sessionQueueManager.addClimb(climb.uuid, climbState.angle)
+            BoardDeliveryTarget.NONE -> Unit
+        }
+    }
+
+    /** Where the lamp's send goes for this climb right now; null before it loaded. */
+    private fun deliveryDecision(): BoardDeliveryDecision? {
+        val climbState = _state.value
+        val climb = climbState.climb ?: return null
         val queueState = sessionQueueManager.state.value
-        val decision = BoardDeliveryPolicy.resolve(
+        return BoardDeliveryPolicy.resolve(
             sendMode = climbState.boardSendMode,
             boardBrand = climb.brand,
             sessionRole = queueState.role,
@@ -1443,18 +1530,6 @@ class BoardClimbDetailViewModel @Inject constructor(
             ),
             connectedViaRelay = climbState.ble.connectedViaRelay,
         )
-        when (decision.target) {
-            // A tap on the lamp is an explicit projection request. Quantum may
-            // therefore claim the first genuinely free, conflict-free layer
-            // without making the user open the layer rack first.
-            BoardDeliveryTarget.DIRECT_BOARD -> sendController.sendToBoard(
-                automaticLayer = true,
-                userInitiated = true,
-            )
-            BoardDeliveryTarget.SHARED_QUEUE ->
-                sessionQueueManager.addClimb(climb.uuid, climbState.angle)
-            BoardDeliveryTarget.NONE -> Unit
-        }
     }
 
     // --- Favorites & lists ---
@@ -1630,6 +1705,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     }
 
     private suspend fun sendAutomaticallyIfEnabled() {
+        if (bleConnection.automaticProjectionPaused) return
         val mode = try {
             combine(
                 userPreferences.singleConnectionBoardSendMode,
@@ -1667,7 +1743,7 @@ class BoardClimbDetailViewModel @Inject constructor(
             ),
             connectedViaRelay = climbState.ble.connectedViaRelay,
         )
-        if (decision.dispatchAutomatically) {
+        if (decision.dispatchAutomatically && !bleConnection.automaticProjectionPaused) {
             sendController.sendToBoard(automaticLayer = true)
         }
     }
@@ -1734,6 +1810,56 @@ class BoardClimbDetailViewModel @Inject constructor(
             preferredSizeId in candidateSizes -> preferredSizeId to climbLayoutId
             candidateSizes.isNotEmpty() -> candidateSizes.first() to climbLayoutId
             else -> preferredSizeId to preferredLayoutId
+        }
+    }
+
+    /** The wall [climb] is drawn on for the saved board; null for MoonBoard (procedural). */
+    private suspend fun savedBoardWall(climb: ClimbWithStats): Pair<BoardSize?, List<BoardImage>>? {
+        if (!climb.brand.usesAuroraPlacements) return null
+        val brand = climb.brand.wireValue
+        val (sizeId, layoutId) = pickEffectiveBoardForClimb(
+            climbUuid = climb.uuid,
+            climbLayoutId = climb.layoutId.toInt(),
+            preferredSizeId = userPreferences.boardProductSizeId.first(),
+            preferredLayoutId = userPreferences.boardLayoutId.first(),
+            boardBrand = brand,
+        )
+        return boardRepository.getProductSize(sizeId, brand) to boardRepository.getBoardImages(sizeId, layoutId, brand)
+    }
+
+    /** Swaps the wall picture of the shown climb and the cached pages for the saved board. */
+    private suspend fun redrawForSavedBoard() {
+        try {
+            withContext(Dispatchers.IO) {
+                val pages = _pageCache.value.mapNotNull { (uuid, page) ->
+                    page.climb?.let { climb -> savedBoardWall(climb)?.let { uuid to it } }
+                }.toMap()
+                _pageCache.update { cache ->
+                    cache.mapValues { (uuid, page) ->
+                        pages[uuid]?.let { (size, images) -> page.copy(boardSize = size, boardImages = images) } ?: page
+                    }
+                }
+                val climb = _state.value.climb ?: return@withContext
+                val (boardSize, boardImages) = savedBoardWall(climb) ?: return@withContext
+                mirrorPlacementMap = computeMirrorMapFromPlacements(placementMapFor(climb.brand.wireValue), boardSize)
+                _state.update { s ->
+                    if (s.climb?.uuid != climb.uuid) return@update s
+                    if (!s.isMirrored) return@update s.copy(boardSize = boardSize, boardImages = boardImages)
+                    // The mirror runs around the board's middle, which moves with the size.
+                    val frames = originalAllFrames.map { frame -> mirrorHolds(frame) }
+                    s.copy(
+                        boardSize = boardSize,
+                        boardImages = boardImages,
+                        holds = if (s.playback.showPreview) frames.flatten()
+                        else frames.getOrElse(s.playback.currentFrameIndex) { emptyList() },
+                        playback = s.playback.copy(allFrames = frames),
+                    )
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "redraw for the saved board failed", e)
         }
     }
 

@@ -134,6 +134,8 @@ fun MapScreenLayout(
     onLocateMe: () -> Unit = {},
     /** "Choose this board" on a place whose board the map cannot open directly. */
     onChooseBoardAt: (MapVenue) -> Unit = {},
+    /** More about the selected place below its boards (the spray walls there). */
+    venueExtra: @Composable (MapVenue) -> Unit = {},
     map: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -200,6 +202,7 @@ fun MapScreenLayout(
                             VenueDetails(
                                 selectedVenue, state.boardInfo, onBrowseClimbs,
                                 onChooseBoard = { onChooseBoardAt(selectedVenue) },
+                                extra = { venueExtra(selectedVenue) },
                             )
                         }
                     }

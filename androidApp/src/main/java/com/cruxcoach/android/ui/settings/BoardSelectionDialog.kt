@@ -1,14 +1,18 @@
 package com.cruxcoach.android.ui.settings
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,13 +23,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.data.BoardGymShares
 import com.cruxcoach.android.ui.board.ZoomableBoardPreview
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.data.BoardSizeCheckPoints
+import com.cruxcoach.android.ui.board.BoardSizeCheckLink
+import com.cruxcoach.android.ui.board.BoardSizeCheckRequest
+import com.cruxcoach.android.ui.board.BoardSizeCheckSheet
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.MoonBoardHoldSets
 import com.cruxcoach.domain.board.QuantumBoardModel
+import com.cruxcoach.domain.board.ShinyWallVariant
 
 /**
  * Tier-0 board category of the unified picker (FEAT-027 follow-up).
@@ -35,7 +45,7 @@ import com.cruxcoach.domain.board.QuantumBoardModel
  * brand but physically distinct boards (own layout, own hold geometry),
  * so they are first-class categories rather than a buried sub-segment.
  */
-private enum class BoardCategory { KILTER_ORIGINAL, KILTER_HOMEWALL, MOONBOARD, QUANTUM }
+private enum class BoardCategory { KILTER_ORIGINAL, KILTER_HOMEWALL, MOONBOARD, QUANTUM, SHINYWALL }
 
 /** The interactive Aurora-family boards offered as tier-0 picks alongside
  *  Kilter + MoonBoard (FEAT-031). Data-driven over [BoardBrand] so a board
@@ -87,6 +97,7 @@ internal fun BoardSelectionDialog(
     initialMoonBoardHoldSets: Map<MoonBoardVariant, List<Long>> = emptyMap(),
     moonBoardHasHoldSetData: Boolean? = null,
     onConfirmQuantum: (QuantumBoardModel) -> Unit = {},
+    onConfirmShinyWall: (ShinyWallVariant) -> Unit = {},
     /** FEAT-031: confirm an Aurora-family board (Tension etc.) + the chosen
      *  variant (null for single-layout boards) + the chosen product size (null
      *  when no size tier is shown, i.e. pre-sync — the selector then uses the
@@ -105,6 +116,9 @@ internal fun BoardSelectionDialog(
     prefill: BoardPickerPrefill? = null,
     mismatch: BoardConfigurationMismatch? = null,
     frequency: Map<Int, Long> = emptyMap(),
+    /** How common each board, Kilter size and MoonBoard version is in gyms. A rare pick
+     *  asks for a second look; null shows no shares. */
+    gymShares: BoardGymShares? = null,
     /** "Don't know your board? find it via your gym" — FEAT-007 gym
      *  search. Shown in the Kilter categories only; null hides it. */
     onFindViaGym: (() -> Unit)? = null,
@@ -139,6 +153,7 @@ internal fun BoardSelectionDialog(
             }
             prefill?.brand == BoardBrand.MOONBOARD || activeBrand == BoardBrand.MOONBOARD -> BoardCategory.MOONBOARD
             prefill?.brand == BoardBrand.QUANTUM || activeBrand == BoardBrand.QUANTUM -> BoardCategory.QUANTUM
+            prefill?.brand == BoardBrand.SHINYWALL || activeBrand == BoardBrand.SHINYWALL -> BoardCategory.SHINYWALL
             productSizes.firstOrNull { it.id.toInt() == seedKilterSizeId }
                 ?.productId?.toInt() == BoardConstants.KILTER_HOMEWALL_PRODUCT_ID ->
                 BoardCategory.KILTER_HOMEWALL
@@ -169,6 +184,16 @@ internal fun BoardSelectionDialog(
                 QuantumBoardModel.fromLayoutId(selectedAuroraLayoutId.toLong())
                     ?: QuantumBoardModel.XL
             }
+        )
+    }
+    var shinyVariant by remember(prefill) {
+        mutableStateOf(
+            if (prefill?.brand == BoardBrand.SHINYWALL) {
+                prefill.layoutId?.let(ShinyWallVariant::fromLayoutId)?.takeIf { it.supported }
+            } else {
+                ShinyWallVariant.fromBoardSelection(selectedAuroraLayoutId.toLong(), activeBrand)
+                    ?.takeIf { it.supported }
+            } ?: ShinyWallVariant.ST1
         )
     }
     // FEAT-031: an Aurora-family board (Tension etc.) as the active pick. When
@@ -205,6 +230,9 @@ internal fun BoardSelectionDialog(
     // the active size when it belongs to this variant's product, else the
     // variant default; null when no size tier is shown (pre-sync / single-size).
     var auroraSizeId by remember { mutableStateOf<Int?>(null) }
+    // Optional board-size check opened from above a size list. A size confirmed there
+    // only selects it here; Confirm still saves, as for a tapped size.
+    var sizeCheck by remember { mutableStateOf<BoardSizeCheckRequest?>(null) }
     LaunchedEffect(auroraVariant, auroraBrand, auroraBrandSizes) {
         val brand = auroraBrand
         val variant = auroraVariant
@@ -239,6 +267,7 @@ internal fun BoardSelectionDialog(
 
     val isAurora = auroraBrand != null
     val isQuantum = !isAurora && category == BoardCategory.QUANTUM
+    val isShinyWall = !isAurora && category == BoardCategory.SHINYWALL
     val isKilter = !isAurora && category in setOf(
         BoardCategory.KILTER_ORIGINAL,
         BoardCategory.KILTER_HOMEWALL,
@@ -248,10 +277,13 @@ internal fun BoardSelectionDialog(
     } else {
         BoardConstants.KILTER_PRODUCT_ID
     }
-    val shownSizes = remember(category, productSizes, frequency) {
+    // Most common first, ranked once per product: counts that arrive later (the gym list after
+    // the bundled numbers) update the shares but must not move a size under the finger.
+    val sizeRank = remember(kilterProductId, isKilter) { frequency }
+    val shownSizes = remember(category, productSizes, sizeRank) {
         productSizes
             .filter { it.productId.toInt() == kilterProductId }
-            .sortedByDescending { frequency[it.id.toInt()] ?: 0L }
+            .sortedByDescending { sizeRank[it.id.toInt()] ?: 0L }
     }
     val kilterEmpty = isKilter && shownSizes.isEmpty()
 
@@ -268,30 +300,7 @@ internal fun BoardSelectionDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.board_selection_dialog_title),
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
-                // FEAT-007 gym search — "Don't know your board?". Shown for every
-                // board (moved out of the Kilter sub-block) so the escape hatch is
-                // always one tap away regardless of the active category.
-                if (onFindViaGym != null) {
-                    TextButton(
-                        onClick = onFindViaGym,
-                        contentPadding = PaddingValues(horizontal = 0.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.settings_board_find_via_gym),
-                            color = OrangeAccent,
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    }
-                }
-            }
-        },
+        title = { BoardSelectionDialogTitle(onFindViaGym) },
         text = {
             Column(
                 modifier = Modifier
@@ -304,28 +313,31 @@ internal fun BoardSelectionDialog(
                 }
                 // The gyms around the user, each with the boards it has: the
                 // quickest way to the right board when you stand in your gym.
-                onFindNearbyGym?.let { find ->
-                    TextButton(
-                        onClick = find,
-                        modifier = Modifier.fillMaxWidth().testTag("board_find_nearby_gym"),
-                        contentPadding = PaddingValues(horizontal = 0.dp),
+                // The two ways to let the app find the board, as one tidy block: same icon column, same text
+                // column, one line each (they used to be two loose links, one flush left, one centred).
+                if (onFindNearbyGym != null || onFindViaBluetooth != null) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Icon(Icons.Default.MyLocation, null, Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.board_find_nearby_gym), modifier = Modifier.weight(1f))
+                        Column {
+                            onFindNearbyGym?.let { find ->
+                                BoardFinderRow(Icons.Default.MyLocation, stringResource(R.string.board_find_nearby_gym), "board_find_nearby_gym", find)
+                            }
+                            if (onFindNearbyGym != null && onFindViaBluetooth != null) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            }
+                            onFindViaBluetooth?.let { find ->
+                                BoardFinderRow(Icons.Default.Bluetooth, stringResource(R.string.setup_bluetooth_find), "setup_connect", find) {
+                                    com.cruxcoach.android.ui.common.InfoButton(
+                                        stringResource(R.string.setup_bluetooth_find), stringResource(R.string.setup_bluetooth_info))
+                                }
+                            }
+                        }
                     }
                 }
-                onFindViaBluetooth?.let { find ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = find, modifier = Modifier.weight(1f).testTag("setup_connect"),
-                            contentPadding = PaddingValues(horizontal = 0.dp)) {
-                            Icon(Icons.Default.Bluetooth, null, Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.setup_bluetooth_find))
-                        }
-                        com.cruxcoach.android.ui.common.InfoButton(
-                            stringResource(R.string.setup_bluetooth_find), stringResource(R.string.setup_bluetooth_info))
-                    }
+                if (onFindViaBluetooth != null) {
                     // The search only narrows the family. Say so where the decision happens:
                     // users otherwise assume the board is "found" and confirm the default size.
                     bluetoothResult?.let { result ->
@@ -356,28 +368,34 @@ internal fun BoardSelectionDialog(
                 val kilterOriginalLabel = stringResource(R.string.board_category_kilter_original)
                 val kilterHomewallLabel = stringResource(R.string.board_category_kilter_homewall)
                 val moonBoardLabel = stringResource(R.string.board_category_moonboard)
-                val quantumLabel = BoardBrand.QUANTUM.displayName
+                val quantumLabel = stringResource(R.string.board_quantum_experimental_label, BoardBrand.QUANTUM.displayName)
+                val shinyWallLabel = BoardBrand.SHINYWALL.displayName
                 val chooseBoardLabel = stringResource(R.string.board_mismatch_choose_detail)
                 val boardOptions = buildList {
-                    add(kilterOriginalLabel to {
+                    add(BoardMenuOption(kilterOriginalLabel, gymShares?.board(BoardBrand.KILTER, BoardConstants.KILTER_PRODUCT_ID)) {
                         category = BoardCategory.KILTER_ORIGINAL; auroraBrand = null; kilterSelection = 0
                     })
-                    add(kilterHomewallLabel to {
+                    add(BoardMenuOption(kilterHomewallLabel, gymShares?.board(BoardBrand.KILTER, BoardConstants.KILTER_HOMEWALL_PRODUCT_ID)) {
                         category = BoardCategory.KILTER_HOMEWALL; auroraBrand = null; kilterSelection = 0
                     })
-                    add(moonBoardLabel to {
+                    add(BoardMenuOption(moonBoardLabel, gymShares?.board(BoardBrand.MOONBOARD)) {
                         category = BoardCategory.MOONBOARD
                         auroraBrand = null
                         mbVariant = MoonBoardVariant.MOONBOARD_2016
                     })
-                    add(quantumLabel to {
+                    add(BoardMenuOption(quantumLabel, gymShares?.board(BoardBrand.QUANTUM)) {
                         category = BoardCategory.QUANTUM
                         auroraBrand = null
                         quantumModel = QuantumBoardModel.XL
                     })
+                    add(BoardMenuOption(shinyWallLabel, gymShares?.board(BoardBrand.SHINYWALL)) {
+                        category = BoardCategory.SHINYWALL
+                        auroraBrand = null
+                        shinyVariant = ShinyWallVariant.ST1
+                    })
                     if (showAuroraBoards) {
                         AURORA_PICK_BRANDS.forEach { brand ->
-                            add(brand.displayName to { auroraBrand = brand })
+                            add(BoardMenuOption(brand.displayName, gymShares?.board(brand)) { auroraBrand = brand })
                         }
                     }
                 }
@@ -388,6 +406,7 @@ internal fun BoardSelectionDialog(
                     category == BoardCategory.KILTER_ORIGINAL -> kilterOriginalLabel
                     category == BoardCategory.KILTER_HOMEWALL -> kilterHomewallLabel
                     category == BoardCategory.QUANTUM -> quantumLabel
+                    category == BoardCategory.SHINYWALL -> shinyWallLabel
                     category == BoardCategory.MOONBOARD -> moonBoardLabel
                     else -> chooseBoardLabel
                 }
@@ -416,10 +435,22 @@ internal fun BoardSelectionDialog(
                         // stays on-screen and scrolls instead of overflowing.
                         modifier = Modifier.heightIn(max = 280.dp),
                     ) {
-                        boardOptions.forEach { (label, onSelect) ->
+                        boardOptions.forEach { option ->
                             DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = { onSelect(); boardMenuExpanded = false },
+                                text = {
+                                    Column {
+                                        Text(option.label)
+                                        // Brands only show their share: the name is on the board,
+                                        // so a rare brand is no reason to doubt the pick.
+                                        option.gymShare?.let { GymShareText(it, flagRare = false) }
+                                    }
+                                },
+                                // Choosing the board that is already chosen changes nothing: every
+                                // option also resets the size below it, and "Confirm" went grey.
+                                onClick = {
+                                    if (option.label != selectedBoardLabel) option.onSelect()
+                                    boardMenuExpanded = false
+                                },
                             )
                         }
                     }
@@ -465,6 +496,14 @@ internal fun BoardSelectionDialog(
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
+                        BoardSizeCheckLink {
+                            sizeCheck = BoardSizeCheckRequest(
+                                auroraBrand!!,
+                                auroraSizeId?.takeIf { id -> auroraSizes.any { it.id.toInt() == id } }
+                                    ?: auroraSizes.first().id.toInt(),
+                                auroraVariant?.layoutId,
+                            )
+                        }
                         auroraSizes.forEach { size ->
                             BoardImageChoiceRow(
                                 label = BoardConstants.auroraSizeLabel(auroraBrand!!, size),
@@ -508,6 +547,16 @@ internal fun BoardSelectionDialog(
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
+                        if (BoardSizeCheckPoints.offered(BoardBrand.KILTER, shownSizes.size)) {
+                            BoardSizeCheckLink {
+                                sizeCheck = BoardSizeCheckRequest(
+                                    BoardBrand.KILTER,
+                                    kilterSelection.takeIf { id -> shownSizes.any { it.id.toInt() == id } }
+                                        ?: shownSizes.first().id.toInt(),
+                                    BoardConstants.layoutIdForProduct(kilterProductId),
+                                )
+                            }
+                        }
                         shownSizes.forEach { size ->
                             BoardImageChoiceRow(
                                 label = BoardConstants.sizeLabel(size.id, size.name),
@@ -515,7 +564,16 @@ internal fun BoardSelectionDialog(
                                 onSelect = { kilterSelection = size.id.toInt() },
                                 brand = BoardBrand.KILTER, sizeId = size.id,
                                 layoutId = if (category == BoardCategory.KILTER_HOMEWALL) 8L else 1L,
+                                gymShare = gymShares?.kilterSize(size.id.toInt()),
                             )
+                        }
+                        gymShares?.kilterSize(kilterSelection)?.let { share ->
+                            // The hint asks for a second look: the check on the board is that look.
+                            RareBoardHint(share) {
+                                sizeCheck = BoardSizeCheckRequest(
+                                    BoardBrand.KILTER, kilterSelection, BoardConstants.layoutIdForProduct(kilterProductId),
+                                )
+                            }
                         }
                         Text(
                             stringResource(R.string.board_model_dialog_hint),
@@ -524,6 +582,11 @@ internal fun BoardSelectionDialog(
                         )
                     }
                 } else if (isQuantum) {
+                    Text(
+                        stringResource(R.string.board_quantum_experimental_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Text(
                         stringResource(R.string.board_selection_quantum_model_label),
                         style = MaterialTheme.typography.bodyMedium,
@@ -539,6 +602,25 @@ internal fun BoardSelectionDialog(
                     }
                     Text(
                         stringResource(R.string.board_selection_quantum_schematic_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else if (isShinyWall) {
+                    Text(
+                        stringResource(R.string.board_selection_shinywall_variant_label),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    ShinyWallVariant.SUPPORTED.forEach { variant ->
+                        BoardImageChoiceRow(
+                            label = variant.displayName,
+                            selected = shinyVariant == variant,
+                            onSelect = { shinyVariant = variant },
+                            brand = BoardBrand.SHINYWALL, sizeId = variant.productSizeId, layoutId = variant.layoutId,
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.board_selection_shinywall_variant_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -559,7 +641,18 @@ internal fun BoardSelectionDialog(
                             selected = mbVariant == variant,
                             onSelect = { mbVariant = variant },
                             brand = BoardBrand.MOONBOARD, sizeId = 0L, layoutId = variant.layoutId,
+                            gymShare = gymShares?.moonBoard(variant.layoutId),
+                            flagRareShare = variant !in NEW_MOONBOARD_VARIANTS,
                         )
+                    }
+                    mbVariant?.let { variant ->
+                        gymShares?.moonBoard(variant.layoutId)?.let {
+                            RareBoardHint(
+                                it,
+                                if (variant in NEW_MOONBOARD_VARIANTS) R.string.board_gym_share_rare_version_hint
+                                else R.string.board_gym_share_rare_hint,
+                            )
+                        }
                     }
                 } else {
                     Text(
@@ -577,12 +670,14 @@ internal fun BoardSelectionDialog(
                         isAurora -> onConfirmAurora(auroraBrand!!, auroraVariant, auroraSizeId)
                         isKilter -> onConfirmKilter(kilterSelection)
                         isQuantum -> quantumModel?.let(onConfirmQuantum)
+                        isShinyWall -> onConfirmShinyWall(shinyVariant)
                         category == BoardCategory.MOONBOARD -> mbVariant?.let { onConfirmMoonBoard(it, selectedHolds(it)) }
                     }
                 },
                 enabled = when {
                     isKilter -> !kilterEmpty && shownSizes.any { it.id.toInt() == kilterSelection }
                     isQuantum -> quantumModel != null
+                    isShinyWall -> shinyVariant.supported
                     !isAurora && category == BoardCategory.MOONBOARD -> mbVariant != null
                     isAurora -> {
                         val variants = BoardConstants.auroraVariants(auroraBrand!!)
@@ -608,6 +703,54 @@ internal fun BoardSelectionDialog(
             }
         },
     )
+    sizeCheck?.let { request ->
+        BoardSizeCheckSheet(
+            brand = request.brand,
+            sizeId = request.sizeId,
+            layoutId = request.layoutId,
+            applyOnConfirm = false,
+            onConfirmed = { id ->
+                if (request.brand == BoardBrand.KILTER) kilterSelection = id else auroraSizeId = id
+            },
+            onDismiss = { sizeCheck = null },
+        )
+    }
+}
+
+/**
+ * "Board auswählen" with "Weiß nicht?" (FEAT-007 gym search) beside it, or under it when both do not fit on one line:
+ * at 320 dp and the largest font the button squeezed the title to "Board / auswähl / en" (RC1 walk).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun BoardSelectionDialogTitle(onFindViaGym: (() -> Unit)?) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.board_selection_dialog_title),
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.testTag("board_selection_title"),
+        )
+        // FEAT-007 gym search — "Don't know your board?". Shown for every
+        // board (moved out of the Kilter sub-block) so the escape hatch is
+        // always one tap away regardless of the active category.
+        if (onFindViaGym != null) {
+            TextButton(
+                onClick = onFindViaGym,
+                contentPadding = PaddingValues(horizontal = 0.dp),
+                modifier = Modifier.testTag("board_selection_find_via_gym"),
+            ) {
+                Text(
+                    stringResource(R.string.settings_board_find_via_gym),
+                    color = OrangeAccent,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -623,7 +766,13 @@ private fun BoardMismatchExplanation(mismatch: BoardConfigurationMismatch) {
             mismatch.activeBrand?.displayName ?: mismatch.expectedBrand.displayName,
             mismatch.expectedBrand.displayName,
         )
-        BoardMismatchKind.CONNECTED_MODEL -> stringResource(R.string.board_mismatch_connected_model)
+        BoardMismatchKind.CONNECTED_MODEL -> if (mismatch.expectedBrand == BoardBrand.SHINYWALL) {
+            stringResource(
+                R.string.board_mismatch_shinywall_variant,
+                mismatch.climbLayoutId?.let(ShinyWallVariant::fromLayoutId)?.displayName.orEmpty(),
+                mismatch.activeLayoutId?.let(ShinyWallVariant::fromLayoutId)?.displayName.orEmpty(),
+            )
+        } else stringResource(R.string.board_mismatch_connected_model)
         BoardMismatchKind.ACTIVE_LAYOUT -> stringResource(R.string.board_mismatch_active_layout)
         BoardMismatchKind.ACTIVE_SIZE -> stringResource(R.string.board_mismatch_active_size)
     }
@@ -667,34 +816,126 @@ internal fun BoardImageChoiceRow(
     brand: BoardBrand,
     sizeId: Long,
     layoutId: Long?,
+    gymShare: Double? = null,
+    flagRareShare: Boolean = true,
 ) {
+    // A compact row: picture, name and share, the radio button at the end. The rows were 160 dp high with the radio
+    // button under the text, so two sizes filled the dialog and the choice read as scattered (owner 2026-11-26).
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp,
+        color = if (selected) OrangeAccent.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface,
+        // The tint is no theme colour, so say what stands on it: without this the chosen row took the dialog's
+        // dimmer text colour and read fainter than the rows around it.
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp,
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            val shinyVariant = layoutId?.let { ShinyWallVariant.fromBoardSelection(it, brand) }
+            val picture = Modifier.width(BOARD_CHOICE_PICTURE_WIDTH).height(BOARD_CHOICE_PICTURE_HEIGHT)
             ZoomableBoardPreview(
                 brand = brand, sizeId = sizeId, layoutId = layoutId,
-                modifier = Modifier.width(104.dp).height(144.dp),
+                modifier = picture,
                 imageLabel = label,
                 fallback = {
-                    Box(Modifier.width(104.dp).height(144.dp), contentAlignment = Alignment.Center) {
-                        Text(stringResource(R.string.board_preview_unavailable), style = MaterialTheme.typography.bodySmall)
+                    if (shinyVariant != null) {
+                        ShinyWallSchematic(shinyVariant, picture.padding(4.dp))
+                    } else {
+                        Box(picture, contentAlignment = Alignment.Center) {
+                            Text(stringResource(R.string.board_preview_unavailable), style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 },
             )
-            Column(
-                Modifier.weight(1f).heightIn(min = 144.dp)
+            Row(
+                Modifier.weight(1f).heightIn(min = BOARD_CHOICE_PICTURE_HEIGHT)
                     .selectable(selected = selected, onClick = onSelect, role = Role.RadioButton)
-                    .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
-                verticalArrangement = Arrangement.Center,
+                    .padding(start = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
+                    Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    gymShare?.let { GymShareText(it, flagRare = flagRareShare) }
+                }
                 RadioButton(selected = selected, onClick = null,
-                    colors = RadioButtonDefaults.colors(selectedColor = OrangeAccent))
+                    colors = RadioButtonDefaults.colors(selectedColor = OrangeAccent),
+                    modifier = Modifier.padding(start = 8.dp, end = 4.dp))
             }
+        }
+    }
+}
+
+private val BOARD_CHOICE_PICTURE_WIDTH = 68.dp
+private val BOARD_CHOICE_PICTURE_HEIGHT = 92.dp
+
+/** One way to let the app find the board: icon, label, optional info button; the whole line is the button. */
+@Composable
+private fun BoardFinderRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tag: String,
+    onClick: () -> Unit,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.weight(1f).heightIn(min = 48.dp)
+                .clickable(role = Role.Button, onClick = onClick)
+                .testTag(tag)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f))
+        }
+        trailing?.invoke()
+    }
+}
+
+private class BoardMenuOption(val label: String, val gymShare: Double?, val onSelect: () -> Unit)
+
+/** Versions the gym list lags behind: few gyms may list them only because they are new, not rare. */
+private val NEW_MOONBOARD_VARIANTS = setOf(MoonBoardVariant.MOONBOARD_2024, MoonBoardVariant.MINI_2025)
+
+/** "In gyms: 82 %", or "Rare in gyms: < 1 %" in the accent colour. */
+@Composable
+private fun GymShareText(share: Double, flagRare: Boolean = true) {
+    val rare = flagRare && BoardGymShares.isRare(share)
+    val percent = java.text.NumberFormat.getPercentInstance(LocalConfiguration.current.locales[0])
+    // Under half a percent rounds to "0 %", which reads as "none": say "< 1 %" instead.
+    val value = if (share < 0.005) "< " + percent.format(0.01) else percent.format(share)
+    Text(
+        stringResource(if (rare) R.string.board_gym_share_rare else R.string.board_gym_share, value),
+        style = MaterialTheme.typography.bodySmall,
+        color = if (rare) OrangeAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+        fontWeight = if (rare) FontWeight.SemiBold else null,
+        modifier = Modifier.testTag("board_gym_share"),
+    )
+}
+
+/** Second look for a rare pick: few gyms have it, so a wrong choice is more likely than a rare board. */
+@Composable
+private fun RareBoardHint(
+    share: Double,
+    @StringRes text: Int = R.string.board_gym_share_rare_hint,
+    onCheck: (() -> Unit)? = null,
+) {
+    if (!BoardGymShares.isRare(share)) return
+    Row(
+        Modifier.fillMaxWidth().testTag("board_gym_share_rare_hint"),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Icon(Icons.Outlined.Info, contentDescription = null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(
+                stringResource(text),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            onCheck?.let { BoardSizeCheckLink(it) }
         }
     }
 }
@@ -703,4 +944,38 @@ internal fun BoardImageChoiceRow(
 sealed interface BluetoothFamilyResult {
     data class Detected(val brand: BoardBrand) : BluetoothFamilyResult
     data object None : BluetoothFamilyResult
+}
+
+/**
+ * Schematic Shiny Wall variant for the picker: the big-hold rows (every second
+ * one shifted by half a hold) and, on Full walls, the small holds between
+ * them. Shown only when the variant's wall image (board_images/shinywall) is
+ * missing.
+ */
+@Composable
+private fun ShinyWallSchematic(variant: ShinyWallVariant, modifier: Modifier = Modifier) {
+    val big = MaterialTheme.colorScheme.onSurfaceVariant
+    val small = big.copy(alpha = 0.45f)
+    val bigRows = if (variant == ShinyWallVariant.ST0 || variant == ShinyWallVariant.ST3) 14 else 18
+    val withSmallHolds = variant == ShinyWallVariant.ST4 || variant == ShinyWallVariant.ST5
+    androidx.compose.foundation.Canvas(modifier) {
+        val columns = variant.columns
+        val cell = minOf(size.width / columns, size.height / bigRows)
+        val left = (size.width - cell * columns) / 2f + cell / 2f
+        val bottom = size.height - (size.height - cell * bigRows) / 2f - cell / 2f
+        for (row in 0 until bigRows) {
+            val shifted = row % 2 == 1
+            val y = bottom - row * cell
+            for (column in 0 until if (shifted) columns - 1 else columns) {
+                val x = left + (column + if (shifted) 0.5f else 0f) * cell
+                drawCircle(big, radius = cell * 0.24f, center = androidx.compose.ui.geometry.Offset(x, y))
+            }
+            if (withSmallHolds && row < bigRows - 1) {
+                for (column in 0 until columns - 1) {
+                    val x = left + (column + 0.5f) * cell
+                    drawCircle(small, radius = cell * 0.12f, center = androidx.compose.ui.geometry.Offset(x, y - cell / 2f))
+                }
+            }
+        }
+    }
 }

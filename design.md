@@ -74,9 +74,39 @@ Quellen: [BoardFilterScreen.kt](androidApp/src/main/java/com/cruxcoach/android/u
 
 Quelle: [PlaylistGeneratorScreen.kt](androidApp/src/main/java/com/cruxcoach/android/ui/playlist/PlaylistGeneratorScreen.kt).
 
+## Training und Ernährung: eine Hauptaufgabe, kein Hinweis ohne Handlung
+
+**Bestand (Quellcode, Branch `feat/0.2.4-training-nutrition`, Geräteabnahme ausstehend):** Im Hauptmenü führt ein Eintrag „Training & Ernährung“ in den Bereich (nicht zwei Einträge in denselben Bereich). Der Trainingsbereich hat vier Tabs – Heute, Training (Workouts | Übungen), Ernährung, Fortschritt (Statistik, Körper, Wochenrückblick, Startwerte, Verlauf). Jeder Screen hat eine Hauptaufgabe mit einem großen Button; Seltenes liegt im Menü mit vertikalen drei Punkten, nicht als weitere Chip-Reihe. Hauptaktionen scrollen nie horizontal weg.
+
+- **Mindest-Setup sichtbar:** „In 3 Schritten einrichten“ auf Heute (Ziel und Woche, Ausrüstung, Körpergewicht) mit Fortschritt; jeder Schritt öffnet seine Eingabe direkt, erledigte Schritte bekommen ein Häkchen, die Karte verschwindet danach. Ein abgelehnter Coach zählt als erledigt.
+- **Kein Hinweis ohne Handlung:** Meldungen wie „braucht dein Gewicht“ oder „Ausrüstung fehlt“ öffnen die Eingabe an Ort und Stelle (gemeinsame Sheets für Gewicht und Ausrüstung), nie einen Verweis auf die Einstellungen. Dasselbe gilt im Coach-Setup, bei Startwerten und in der Übungsliste.
+- **Wert neben der Aktion:** „Dein Tag“ zeigt Klettern, Gewicht, Essen und Wasser als Kacheln mit dem heutigen Wert; ein fehlender Wert zeigt seine Aktion („Eintragen“) in Akzentfarbe.
+- **Check-in im Training:** Der Kurz-Check ist eine Zeile in der Trainingskarte und öffnet ein Sheet; die Begründung trägt „Warum?“ direkt im Text.
+- **Ernährung wie gewohnt:** Ringe in der Reihenfolge Energie, Kohlenhydrate, Protein, Fett (Wert von Ziel, nie rot; Fett füllt das Energieziel nach Protein und Kohlenhydraten, 20–35 %), Wasser als antippbare Gläser, die vier Mahlzeiten immer mit „+“, ein Hinzufügen-Sheet mit Suche, Scannen, Beschreiben, Foto und Werten.
+- **Werte offen, warnen statt sperren:** Energiebedarf mit seinen Teilen, Kalorienziel beim Abnehmen und jede Warnung mit ihrer Zahl (BMI, Tempo in % pro Woche, Defizit in % des Bedarfs). Keine Funktion wird wegen eines Warnzeichens ausgeblendet oder gesperrt; die Warnkarte bietet die passende Handlung („Abnehmziel anpassen“) und Hilfe-Hinweise.
+- **Kurzer Start:** Beim ersten Öffnen von Training oder Ernährung fragt eine zweiseitige Abfrage die Basics (Gewicht, Größe, Geburtsjahr, Geschlecht; Kletterniveau, Klettererfahrung, Ausrüstung) – einmal, freiwillig, mit „Später“.
+- **Übungsbilder zeigen die Bewegung:** Piktogramm der Schlüsselposition mit Gerät auf einer Kachel in der Kategoriefarbe; die Körperkarte bleibt der Übungsseite vorbehalten.
+- **Einstellungen als Übersicht:** Zeilen mit aktuellem Wert führen zu je einer Seite; Trainingstage pro Woche sind eine Zahl für Wochenziel und Coach.
+- **Einstellungen speichern sich selbst:** Keine Speichern-Buttons in Training und Ernährung. Ein Tippen gilt sofort, ein getippter Wert nach einer kurzen Pause, mit „Fertig“ auf der Tastatur oder beim Verlassen des Felds (`AutoSaveTextField`); Sheets wie Ausrüstung und Abnehmziel schließen nur mit „Fertig“. Einträge wie Gewicht, Essen oder Check-in bleiben bewusste Handlungen mit Button.
+- **Orte mit eigener Ausrüstung:** Jeder Ort (Zuhause, Halle, Unterwegs, eigener Name) hat seine Ausrüstung, einer ist Standard. Heute schlägt am Standard-Ort vor und bietet die anderen Orte für den Tag an („Ort: Zuhause ▾“); am nächsten Tag gilt wieder der Standard. Mit nur einem Ort gibt es keine Auswahl. Ausrüstungs-Sheets bearbeiten den Ort des heutigen Trainings und nennen ihn im Titel.
+- **Ausrüstung genau genug:** Ein Pick-up-Block heißt einarmig heben; beidarmiges Heben braucht den zweiten Block (oder eine Leiste für beide Hände) und zeigt das Gewicht pro Block.
+- **Jede Empfehlung an Ort und Stelle überschreibbar (UX-Review 2026-10-16, Branch `feat/0.2.4-training-nutrition-ux-review`):** Die Vorschlagskarte zeigt jede Übung mit Sätzen; ein Tipp auf die Übung tauscht sie (leichtere/schwerere Variante zuerst, dann Übungen derselben Art durch dieselben Sicherheitsfilter), lässt sie heute weg oder schließt sie aus. Dauer und Ort stehen als Chips in einer Zeile. „Anderer Vorschlag“ fragt nur noch Art, „leichter/fordernder“ und bietet „Neu mischen“; was weh tut, geht in den heutigen Kurz-Check, nicht in den Verletzungsmodus.
+- **Lernen sichtbar und zurücksetzbar:** Was der Coach aus Abweichungen lernt (Tausch, zweimal gleiche Wahl am selben Wochentag, selbst gesenkte Lasten), steht auf einer Seite „Was der Coach gelernt hat“ mit „Vergessen“ je Punkt und „Alles vergessen“; das Warum-Sheet verlinkt sie, gelernte Gründe nennen ihren Ursprung („Wie meist am Montag: …“). Lieblingsübungen, „Nie vorschlagen“ und Sicherheitsregeln gehen immer vor.
+
+Quellen: [TodayScreen.kt](androidApp/src/main/java/com/cruxcoach/android/ui/training/today/TodayScreen.kt), [FuelScreen.kt](androidApp/src/main/java/com/cruxcoach/android/ui/training/fuel/FuelScreen.kt), [QuickEntry.kt](androidApp/src/main/java/com/cruxcoach/android/ui/training/common/QuickEntry.kt), [AthleteSettingsScreen.kt](androidApp/src/main/java/com/cruxcoach/android/ui/training/athlete/AthleteSettingsScreen.kt). Die Design-Vorschau `TrainingUiReviewTest` rendert die Screens lokal als PNG (`CRUXCOACH_UI_REVIEW_DIR`).
+
 ## Kurze Zustände, zusätzliche Erklärung bei Bedarf
 
 Titel, aktueller Wert und Handlung geben die erste Orientierung. Kurze Statusmeldungen sagen, was gerade geschieht und was als Nächstes möglich ist. Detailerklärungen öffnen sich über Info-Aktionen oder aufklappbare Bereiche. Hilfe zu öffnen verändert keine Einstellung. Fehler, fehlende Voraussetzungen und Warnungen vor Datenverlust bleiben direkt an der betroffenen Handlung sichtbar.
+
+**Wo welche Beschreibung steht (Owner 2026-10-10: „glattziehen, welche Beschreibungen wo und wann stehen“):**
+
+1. **Immer sichtbar** sind nur Titel, Wert, Handlung und Zustand: leerer Zustand, fehlende Voraussetzung mit ihrer Eingabe an Ort und Stelle, Warnungen mit Zahl, Sicherheits- und Medizinhinweise. Kein Absatz, der erklärt, was etwas ist oder wie es berechnet wird.
+2. **Erklärungen auf Abruf, an genau einer Stelle:** Ist der Wert selbst antippbar (Ringe, Kacheln), erklärt er sich beim Antippen. Sonst sitzt ein Info-Symbol rechts neben der Überschrift, zu der es gehört – Seite: App-Leiste; Abschnitt, Karte, Sheet: deren Titel (`SectionTitle { InfoButton(…) }`). Nicht am Ende einer Wertezeile, nicht zusätzlich als Text darunter. Der Dialogtitel ist die sichtbare Überschrift.
+3. **Einführungen einmal:** beim ersten Besuch als Karte mit „Verstanden“; danach bleibt derselbe Text über das Info-Symbol des Bereichs erreichbar.
+4. **Sheets und Formulare:** höchstens ein kurzer Satz unter dem Titel, warum gefragt wird; Hinweise zu einem Feld direkt darunter; am Ende nur Sicherheitshinweise.
+5. **Datenschutz einmal pro Kontext:** dort, wo Daten zuerst eingegeben werden (Kurzer Start oben), und einmal auf der Einstellungsübersicht – nicht auf jeder Seite. Funktionen mit Kamera oder Modell sagen kurz, dass nichts das Gerät verlässt.
+6. **Kein Verweis ins Leere:** ein Hinweis, der irgendwohin schickt, hat seine Handlung dabei; Texte sagen nicht „in den Einstellungen“, wenn der Button die Eingabe direkt öffnet.
 
 Bestehende Muster sind [SettingsLayout.kt](androidApp/src/main/java/com/cruxcoach/android/ui/settings/SettingsLayout.kt) und [InfoButton.kt](androidApp/src/main/java/com/cruxcoach/android/ui/common/InfoButton.kt). Neue Oberflächen sollen diese Muster weiterverwenden. Ein Upload ist erst nach bestätigtem Abschluss erfolgreich; eine gestartete Hintergrundaufgabe rechtfertigt keine Erfolgsmeldung.
 
