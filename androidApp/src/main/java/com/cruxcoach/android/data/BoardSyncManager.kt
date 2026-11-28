@@ -913,12 +913,17 @@ class BoardSyncManager(
      * have changed either. That is bounded (the picker exists only while its
      * settings screen is open) and it buys correctness in the cases above; no
      * regression has been measured from it.
+     *
+     * @param clearShareMemo false only for a family the board snapshot never carries
+     *   (Shiny Wall, [LocalShareSchema.NON_SHAREABLE_BRANDS]): its import changes nothing
+     *   a remembered snapshot holds, and clearing the memo there made every later share
+     *   from the same sender send the whole board database again.
      */
-    private suspend fun bumpCatalogueRevision() {
+    private suspend fun bumpCatalogueRevision(clearShareMemo: Boolean = true) {
         _state.update { it.copy(catalogueRevision = it.catalogueRevision + 1) }
         // The remembered peer snapshot is a valid no-download gate only while
         // the catalogue has not changed through any other path.
-        userPreferences.setLastLocalShareSnapshotSha256(null)
+        if (clearShareMemo) userPreferences.setLastLocalShareSnapshotSha256(null)
     }
 
     private fun isStale(lastSync: String?, interval: SyncInterval): Boolean {
@@ -1561,7 +1566,8 @@ class BoardSyncManager(
                     reportBoardStep(BoardBrand.SHINYWALL, ImportStep.Done(0, 0, 0)); false
                 }
                 is ShinyWallCatalogueSync.Result.Imported -> {
-                    bumpCatalogueRevision(); true
+                    // Not in any board snapshot: a remembered share snapshot stays current.
+                    bumpCatalogueRevision(clearShareMemo = false); true
                 }
                 is ShinyWallCatalogueSync.Result.Failed -> {
                     reportBoardStep(BoardBrand.SHINYWALL, null)
@@ -1886,7 +1892,10 @@ class BoardSyncManager(
             val prunedMs = phaseMillis()
             Log.i(TAG, "Local share cut to ${brands.map { it.wireValue }}: $removed climbs left out")
             // Families left out are what the same sender must still be able to supply later.
-            val cutToSelection = brands.size < offeredBrands.size
+            // Only families this snapshot can carry count: Shiny Wall travels as its own
+            // artifact, so taking it or leaving it out cuts nothing from the snapshot.
+            fun inSnapshot(brand: BoardBrand) = brand.wireValue !in LocalShareSchema.NON_SHAREABLE_BRANDS
+            val cutToSelection = brands.count(::inSnapshot) < offeredBrands.count(::inSnapshot)
             withBackgroundThreadPriority {
                 importer.importFromLocalDb(
                     raw,
@@ -2258,7 +2267,8 @@ class BoardSyncManager(
             withBackgroundThreadPriority { importer.importShinyWallSnapshot(raw) }
             runCatching { ShinyWallCatalogueStore.keep(appContext, raw) }
                 .onFailure { Log.w(TAG, "Shared Shiny Wall snapshot not kept", it) }
-            bumpCatalogueRevision()
+            // Not in the board snapshot: the memo of the received snapshot stays true.
+            bumpCatalogueRevision(clearShareMemo = false)
             true
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error

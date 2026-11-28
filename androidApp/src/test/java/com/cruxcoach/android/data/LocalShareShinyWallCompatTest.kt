@@ -233,6 +233,33 @@ class LocalShareShinyWallCompatTest {
         assertNull(updated.manager.state.value.errorMessage)
     }
 
+    @Test fun `a share taken whole stays remembered after its Shiny Wall import`() {
+        seedSender(withShinyWall = true)
+        val base = startSender(keptSnapshot, apkVersionCode = 1)
+        val receiver = receiver()
+        receiver.take(base, setOf(BoardBrand.KILTER, BoardBrand.SHINYWALL))
+
+        verify(exactly = 1) { receiver.importer.importFromLocalDb(any(), true, any()) }
+        verify(exactly = 1) { receiver.importer.importShinyWallSnapshot(any(), any()) }
+        // The next share from this sender skips the board database it has already sent.
+        assertEquals(senderSnapshotSha(base), receiver.memo.last())
+    }
+
+    @Test fun `leaving Shiny Wall out is no cut of the board snapshot`() {
+        seedSender(withShinyWall = true)
+        val base = startSender(keptSnapshot, apkVersionCode = 1)
+        val receiver = receiver()
+        receiver.take(base, setOf(BoardBrand.KILTER))
+
+        verify(exactly = 0) { receiver.importer.importShinyWallSnapshot(any(), any()) }
+        assertEquals(senderSnapshotSha(base), receiver.memo.last())
+    }
+
+    private fun senderSnapshotSha(base: String): String =
+        checkNotNull(LocalShareProtocol.parseManifest(get(base, LocalShareProtocol.V2_MANIFEST_PATH)).board) {
+            "sender has no ready snapshot"
+        }.uncompressedSha256
+
     private class Receiver(
         val manager: BoardSyncManager,
         val importer: BoardDatabaseImporter,
