@@ -477,6 +477,9 @@ class BoardClimbDetailViewModel @Inject constructor(
         // catalogue resolves it, new ascents belong to the canonical UUID;
         // existing secure rows remain untouched and are read as equivalents.
         currentClimbUuid = { _state.value.climb?.uuid ?: currentClimbUuid },
+        climbHistory = { uuid ->
+            mergedClimbHistory(boardRepository.equivalentClimbUuids(uuid), personalBoardRepo::getUserHistoryForClimb)
+        },
         onAscentSaved = { isSend ->
             if (_state.value.restTimerAutoStart) startRestTimer()
             kilterSyncEngine.uploadNewAscentIfEnabled()
@@ -1184,9 +1187,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         } ?: emptyList()
                         val identityUuids = boardRepository.equivalentClimbUuids(climb.uuid)
                         val userAscents = PerfLogger.trace("loadClimb.userHistory") {
-                            identityUuids.flatMap(personalBoardRepo::getUserHistoryForClimb)
-                                .distinctBy { it.uuid }
-                                .sortedByDescending { it.climbedAt }
+                            mergedClimbHistory(identityUuids, personalBoardRepo::getUserHistoryForClimb)
                         }
                         val isFavorited = identityUuids.any(personalBoardRepo::isClimbFavorited)
                         val isIgnored = identityUuids.any(personalBoardRepo::isClimbIgnored)
@@ -1405,9 +1406,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         boardRepository.getBoardImages(sizeId, layoutId, brand)
                     } ?: emptyList()
                     val identityUuids = boardRepository.equivalentClimbUuids(climb.uuid)
-                    val userAscents = identityUuids.flatMap(personalBoardRepo::getUserHistoryForClimb)
-                        .distinctBy { it.uuid }
-                        .sortedByDescending { it.climbedAt }
+                    val userAscents = mergedClimbHistory(identityUuids, personalBoardRepo::getUserHistoryForClimb)
                     val isFavorited = identityUuids.any(personalBoardRepo::isClimbFavorited)
                     val isIgnored = identityUuids.any(personalBoardRepo::isClimbIgnored)
                     val personalNote = identityUuids.asSequence()
