@@ -54,6 +54,9 @@ object TrainingRoutes {
     const val ROUTINES = "routines"
     const val TRAINING_HISTORY = "training_history"
     const val BODY = "body"
+    /** All body readings by month; group = a HistoryFilter key to start with. */
+    const val BODY_HISTORY = "body_history?group={group}"
+    fun bodyHistory(group: String? = null) = if (group == null) "body_history" else "body_history?group=$group"
     const val FUEL = "fuel"
     const val INJURIES = "injuries"
     const val COMEBACK = "comeback/{injuryId}"

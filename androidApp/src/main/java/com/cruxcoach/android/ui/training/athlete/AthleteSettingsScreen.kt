@@ -284,6 +284,9 @@ fun AthleteSettingsScreen(
     var weightOpen by rememberSaveable { mutableStateOf(false) }
     var goalOpen by rememberSaveable { mutableStateOf(false) }
     val pageTitle = section?.let { sectionTitle(it) } ?: stringResource(R.string.tr_action_settings)
+    val snackbar = remember { SnackbarHostState() }
+    // Food diary and body values from Waistline: on the overview and the nutrition page (owner 2026-11-28).
+    val waistline = com.cruxcoach.android.ui.training.common.rememberWaistlineImport()
     // A page's explanation sits behind the info icon in the app bar, not as a paragraph on the page (design.md).
     val pageInfo = when (section) {
         SettingsSection.ABOUT -> stringResource(R.string.tra_personal_info)
@@ -291,14 +294,17 @@ fun AthleteSettingsScreen(
         SettingsSection.EXCLUDED -> stringResource(R.string.trlr_info)
         else -> null
     }
-    TrainingScaffold(title = pageTitle, onBack = onBack, actions = { pageInfo?.let { InfoButton(pageTitle, it) } }) { padding ->
+    TrainingScaffold(
+        title = pageTitle, onBack = onBack, actions = { pageInfo?.let { InfoButton(pageTitle, it) } },
+        snackbarHost = { TrainingSnackbarHost(snackbar) },
+    ) { padding ->
         if (!state.loaded) return@TrainingScaffold
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
                 .testTag(section?.let { "settings_${it.key}" } ?: "settings_overview"),
         ) {
             when (section) {
-                null -> SettingsOverview(state, onOpenSection, onOpenClimbingDays)
+                null -> SettingsOverview(state, onOpenSection, onOpenClimbingDays, onImportWaistline = waistline::launch)
                 SettingsSection.PROFILE -> {
                     CoachProfileSection(p, state.completeness, onOpenCoachSetup)
                     // One number for the week: the streak's goal and the coach's training days stay the same.
@@ -466,6 +472,14 @@ fun AthleteSettingsScreen(
                             }
                         }
                     }
+                    ListItem(
+                        leadingContent = { Icon(Icons.Default.FileOpen, null, tint = CruxCoachDesign.colors.brandAccent) },
+                        headlineContent = { Text(stringResource(R.string.trb_import_action)) },
+                        supportingContent = { Text(stringResource(R.string.trb_import_summary)) },
+                        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                        modifier = Modifier.padding(top = 16.dp).clickable(onClick = waistline::launch)
+                            .testTag("settings_nutrition_waistline"),
+                    )
                 }
                 SettingsSection.REMINDERS -> {
                     ReminderSection(p) { transform -> viewModel.update(transform) }
@@ -526,6 +540,7 @@ fun AthleteSettingsScreen(
             }
         }
     }
+    com.cruxcoach.android.ui.training.common.WaistlineImportHost(waistline, snackbar)
     if (goalOpen) {
         com.cruxcoach.android.ui.training.common.WeightGoalSheet(
             profile = p, weightKg = state.weightKg, heightCm = state.heightCm, need = state.need, weekNeeds = state.weekNeeds,
@@ -558,7 +573,12 @@ private fun sectionTitle(s: SettingsSection): String = stringResource(when (s) {
 
 /** Every page as one row with its current value; the most important first. */
 @Composable
-private fun SettingsOverview(state: AthleteSettingsState, onOpen: (SettingsSection) -> Unit, onOpenClimbingDays: () -> Unit) {
+private fun SettingsOverview(
+    state: AthleteSettingsState,
+    onOpen: (SettingsSection) -> Unit,
+    onOpenClimbingDays: () -> Unit,
+    onImportWaistline: () -> Unit,
+) {
     val p = state.profile
     val on = stringResource(R.string.tru_set_on)
     val off = stringResource(R.string.tru_set_off)
@@ -614,6 +634,9 @@ private fun SettingsOverview(state: AthleteSettingsState, onOpen: (SettingsSecti
         if (ownNames.isEmpty()) stringResource(R.string.tru_set_nutrition_summary, formatNumber(p.proteinPerKg), if (p.showCalories) on else off)
         else stringResource(R.string.trn_set_summary_own, ownNames.joinToString(", ")),
         "settings_row_nutrition", open(SettingsSection.NUTRITION))
+    // Two taps from the main settings: "Training & nutrition", then this row.
+    row(Icons.Default.FileOpen, stringResource(R.string.trb_import_action), stringResource(R.string.trb_import_summary),
+        "settings_row_waistline", onImportWaistline)
     val reminders = listOf(p.weighReminderEnabled, p.measureReminderEnabled, p.trainingReminderEnabled).count { it }
     row(Icons.Default.Notifications, sectionTitle(SettingsSection.REMINDERS),
         if (reminders == 0) allOff else pluralStringResource(R.plurals.tru_set_reminders, reminders, reminders),
