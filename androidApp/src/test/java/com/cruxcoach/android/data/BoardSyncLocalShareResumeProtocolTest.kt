@@ -296,6 +296,45 @@ class BoardSyncLocalShareResumeProtocolTest {
     }
 
     @Test
+    fun `an import leaves no journal files of its temporary databases behind`() = runTest {
+        val importer = mockk<BoardDatabaseImporter>(relaxed = true)
+        val (compressed, board) = compressedArtifact(
+            name = "journals",
+            artifactPath = LocalShareProtocol.V2_BOARD_PATH,
+        )
+        val (shinyCompressed, shiny) = shinyWallArtifact("journals")
+        LocalShareResumeStore(context).save(
+            LocalShareResumeStore.Pending(
+                requiredVersionCode = 0,
+                protocolVersion = LocalShareProtocol.VERSION_V2,
+                apkPath = null,
+                apkVersionName = "0.2.5.1",
+                boardPath = compressed.absolutePath,
+                board = board,
+                shinyWallPath = shinyCompressed.absolutePath,
+                shinyWall = shiny,
+            ),
+        )
+        // What SQLite leaves next to a copy it opened read-write (Android truncates the
+        // rollback journal instead of deleting it): seen on a device after every import.
+        val temporaries = listOf(
+            "local_board_${board.uncompressedSha256.take(16)}.sqlite3",
+            "local_shinywall_${shiny.uncompressedSha256.take(16)}.sqlite3",
+        )
+        val sidecars = temporaries.flatMap { name ->
+            listOf("-journal", "-wal", "-shm").map { File(context.cacheDir, name + it) }
+        }
+        sidecars.forEach { it.createNewFile() }
+
+        manager(importer)
+        runCurrent()
+
+        verify(exactly = 1) { importer.importShinyWallSnapshot(any(), any()) }
+        temporaries.forEach { assertFalse(it, File(context.cacheDir, it).exists()) }
+        sidecars.forEach { assertFalse(it.name, it.exists()) }
+    }
+
+    @Test
     fun `a handed-over Shiny Wall catalogue that is gone is reported and loaded online`() = runTest {
         val importer = mockk<BoardDatabaseImporter>(relaxed = true)
         val (compressed, board) = compressedArtifact(

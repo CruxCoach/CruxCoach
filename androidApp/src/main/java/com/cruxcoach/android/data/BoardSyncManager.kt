@@ -1860,7 +1860,8 @@ class BoardSyncManager(
         }
         try {
             updateLocalShareProgress(ImportStep.VerifyingSnapshot, brands)
-            raw.delete()
+            // With its journal: SQLite must never see a stale one next to a fresh copy.
+            deleteTemporaryDatabase(raw)
             LocalTransferLimits.requireSpace(appContext.cacheDir, board.uncompressedSizeBytes)
             require(board.compression == "gzip") { "Unsupported share compression" }
             ShareCompression.gunzip(
@@ -1946,7 +1947,8 @@ class BoardSyncManager(
                     .onFailure { Log.w(TAG, "Post-share ANALYZE failed", it) }
             }
         } finally {
-            raw.delete()
+            // The pruner opened the copy read-write: an empty -journal was left each time.
+            deleteTemporaryDatabase(raw)
         }
     }
 
@@ -2301,7 +2303,7 @@ class BoardSyncManager(
             Log.w(TAG, "Shared Shiny Wall catalogue not imported", error)
             false
         } finally {
-            raw.delete()
+            deleteTemporaryDatabase(raw)
             compressed.delete()
         }
     }
@@ -2424,7 +2426,7 @@ class BoardSyncManager(
                     errorMessage = appContext.getString(R.string.board_sync_error_import)
                 ) }
             } finally {
-                tempFile.delete()
+                deleteTemporaryDatabase(tempFile)
             }
         }
     }
@@ -2638,6 +2640,16 @@ internal fun refreshLogbookDenormalized(
             }
         }
     }
+}
+
+/**
+ * Deletes a temporary SQLite copy together with the journal files SQLite keeps next to it.
+ * Android's default rollback journal is truncated, not deleted, so opening a copy read-write
+ * left an empty `-journal` in the cache after every import.
+ */
+internal fun deleteTemporaryDatabase(file: File) {
+    file.delete()
+    for (suffix in listOf("-journal", "-wal", "-shm")) File(file.path + suffix).delete()
 }
 
 /**
