@@ -358,15 +358,92 @@ class WaistlineImportTest {
     }
 
     @Test
-    fun csvHasFoodOnlyAsDayTotalsAndStaysBodyOnly() {
+    fun csvDayTotalsNextToBodyValues() {
         val csv = "Datum;Kalorien (kcal);Proteine (g);Gewicht (kg)\n01.10.2026;2100;120;70,2\n"
         val r = WaistlineImport.parse(csv)
         assertTrue(r.foodTotalsOnly)
-        assertTrue(r.food.entries.isEmpty())
         assertEquals(70.2, r.value("2026-10-01", "weight"))
-        val totalsOnly = WaistlineImport.parse("Datum;Kalorien (kcal)\n01.10.2026;2100\n")
-        assertTrue(totalsOnly.isEmpty)
-        assertTrue(totalsOnly.foodTotalsOnly)
+        val total = r.food.entries.single()
+        assertEquals(2100.0, total.kcal)
+        assertEquals(120.0, total.proteinG)
         assertFalse(WaistlineImport.parse("Date;Weight (kg)\n2026-10-01;70\n").foodTotalsOnly)
+    }
+
+    // ── CSV of Waistline 3.11.1 (settings.js writeDiaryToCsvFile) ──────
+
+    /**
+     * Byte for byte what Waistline writes in German with its default settings: no BOM, "\n" between lines and
+     * none after the last, ";" without quotes; energy plus the visible nutriments (fat, saturated fat, carbs,
+     * sugars, protein, salt) with locale names, then the weight; dates `toLocaleDateString` with 2-digit
+     * day and month, numbers `toLocaleString` without grouping. A weight-only day has "0" kcal and empty
+     * nutriments, a food-only day an empty weight. (3.11.1 itself writes only today's row – issue #980.)
+     */
+    private val csv3111De = "Datum;Kalorien (kcal);Fett (g);Gesättigte Fettsäuren (g);Kohlenhydrate (g);Zucker (g);Eiweiß (g);Salz (g);Gewicht (kg)" +
+        "\n26.11.2026;0;;;;;;;72,4" +
+        "\n27.11.2026;1843,5;61,2;18,04;215,7;80,33;95,1;4,2;"
+
+    private val csv3111En = "Date;Calories (kcal);Fat (g);Sat Fat (g);Carbs (g);Sugars (g);Protein (g);Salt (g);Weight (kg)" +
+        "\n11/26/2026;0;;;;;;;72.4" +
+        "\n11/27/2026;1843.5;61.2;18.04;215.7;80.33;95.1;4.2;"
+
+    @Test
+    fun csvOfWaistline3111InGermanGivesTheWeightAndOneDayTotal() {
+        val r = WaistlineImport.parse(csv3111De, dayTotalName = "Waistline – Tagessumme")
+        assertEquals(Format.CSV, r.format)
+        assertEquals(listOf("weight"), r.measurements.map { it.metric })
+        assertEquals(72.4, r.value("2026-11-26", "weight"))
+        assertEquals(0, r.skipped)
+        assertFalse(r.ambiguousDates)
+        assertEquals(2, r.csvDays)
+        assertTrue(r.foodTotalsOnly)
+        // The weight-only day ("0" kcal, nothing else) is no food day.
+        val total = r.food.entries.single()
+        assertTrue(r.food.dayTotals)
+        assertEquals("waistline-csv:2026-11-27", total.id)
+        assertEquals("2026-11-27", total.day)
+        assertEquals("Waistline – Tagessumme", total.name)
+        assertEquals(Meal.SNACK, total.meal)
+        assertEquals(1843.5, total.kcal)
+        assertEquals(95.1, total.proteinG)
+        assertEquals(215.7, total.carbsG)
+        assertEquals(61.2, total.fatG)   // fat, not saturated fat
+        assertNull(total.foodItemId)
+        assertTrue(r.food.foods.isEmpty())
+    }
+
+    @Test
+    fun csvOfWaistline3111InEnglishReadsTheSame() {
+        val de = WaistlineImport.parse(csv3111De)
+        val en = WaistlineImport.parse(csv3111En)
+        assertEquals(de.measurements, en.measurements)
+        assertEquals(de.food.entries.map { it.copy(name = "") }, en.food.entries.map { it.copy(name = "") })
+        assertEquals(WaistlineImport.DAY_TOTAL_NAME, en.food.entries.single().name)
+    }
+
+    @Test
+    fun aCsvWith3111sTodayOnlyRowSaysSo() {
+        // What 3.11.1 really writes: the header and today's row, here food without a weight.
+        val today = "Datum;Kalorien (kcal);Fett (g);Gesättigte Fettsäuren (g);Kohlenhydrate (g);Zucker (g);Eiweiß (g);Salz (g);Gewicht (kg)" +
+            "\n28.11.2026;640;22;8,1;80;30,5;31;1,2;"
+        val r = WaistlineImport.parse(today)
+        assertTrue(r.measurements.isEmpty())
+        assertFalse(r.isEmpty)
+        assertEquals(1, r.csvDays)
+        assertEquals(640.0, r.food.entries.single().kcal)
+        // Only the header (no food and no weight today): nothing to import.
+        val header = WaistlineImport.parse(today.substringBefore('\n') + "\n")
+        assertTrue(header.isEmpty)
+        assertEquals(Format.CSV, header.format)
+    }
+
+    @Test
+    fun csvDayTotalsInKilojoulesAndOnlyOnce() {
+        val csv = "Date;Kilojoules (kJ);Protein (g)\n2026-10-01;8368;100\n2026-10-01;8368;100\n2026-10-02;0;\n"
+        val r = WaistlineImport.parse(csv)
+        val total = r.food.entries.single()
+        assertEquals("waistline-csv:2026-10-01", total.id)
+        assertEquals(2000.0, total.kcal!!, 0.01)
+        assertEquals(100.0, total.proteinG)
+        assertEquals(listOf(total.id), WaistlineImport.parse(csv).food.entries.map { it.id })
     }
 }

@@ -59,7 +59,10 @@
         <item quantity="one">%d Eintrag übersprungen (Lebensmittel fehlt, keine Menge oder verbrannte Energie)</item>
         <item quantity="other">%d Einträge übersprungen (Lebensmittel fehlt, keine Menge oder verbrannte Energie)</item>
     </plurals>
-    <string name="trb_import_csv_food_hint">Die CSV enthält Essen nur als Tagessummen. Fürs Ernährungstagebuch nimm das Datenbank-Backup (JSON).</string>
+    <string name="trb_import_csv_food_hint">Die CSV hat keine einzelnen Lebensmittel, nur eine Summe pro Tag. Besser ist das Datenbank-Backup (JSON): es bringt jedes Lebensmittel und jede Mahlzeit.</string>
+    <string name="trb_import_day_totals">Tagessummen</string>
+    <string name="trb_import_day_total_name">Waistline – Tagessumme</string>
+    <string name="trb_import_csv_today_only">Waistline 3.11.1 schreibt ins CSV nur den heutigen Tag. Für alle Tage nimm die „Datenbanksicherung“ (JSON).</string>
     <string name="trb_import_quick_add">Schnelleintrag</string>
     <plurals name="trb_import_skipped">
         <item quantity="one">%d Wert übersprungen (unlesbar oder unplausibel)</item>
@@ -93,12 +96,16 @@
         <item quantity="one">%d Essenseintrag importiert</item>
         <item quantity="other">%d Essenseinträge importiert</item>
     </plurals>
+    <plurals name="trb_import_day_totals_done">
+        <item quantity="one">%d Tagessumme importiert</item>
+        <item quantity="other">%d Tagessummen importiert</item>
+    </plurals>
     <plurals name="trb_import_food_days_kept">
         <item quantity="one">%d Tag mit Einträgen behalten</item>
         <item quantity="other">%d Tage mit Einträgen behalten</item>
     </plurals>
-    <string name="trb_import_empty">In dieser Datei steht nichts zum Importieren. In Waistline unter Einstellungen → Importieren/Exportieren: „Datenbanksicherung“ bringt Ernährungstagebuch und Körperwerte (JSON), „Tagebuch als CSV exportieren“ nur Körperwerte.</string>
-    <string name="trb_import_csv_totals_only">Diese CSV hat keine Körperwerte und Essen nur als Tagessummen. Fürs Ernährungstagebuch nimm in Waistline die „Datenbanksicherung“ (JSON).</string>
+    <string name="trb_import_empty">In dieser Datei steht nichts zum Importieren. In Waistline unter Einstellungen → Importieren/Exportieren: „Datenbanksicherung“ bringt Ernährungstagebuch und Körperwerte (JSON), „Tagebuch als CSV exportieren“ nur Tagessummen und Körperwerte.</string>
+    <string name="trb_import_csv_empty">In dieser CSV steht nichts zum Importieren. Waistline 3.11.1 schreibt nur den heutigen Tag hinein. Für alle Tage nimm in Waistline die „Datenbanksicherung“ (JSON).</string>
     <string name="trb_import_failed">Die Datei konnte nicht gelesen werden.</string>
     <string name="trb_import_too_large">Die Datei ist zu groß (max. 20 MB).</string>
     <string name="trb_waistline_badge">Waistline</string>

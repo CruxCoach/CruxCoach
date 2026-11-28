@@ -29,12 +29,21 @@ import kotlin.math.floor
  *   31), `stats` {statName → value} and `items` (see [FoodDiary]). Stats are
  *   stored in the stat's storage unit: kg / cm / % for the defaults,
  *   overridden per stat by `settings.bodyStats.units` (custom stats and units).
- * - CSV (settings.js `writeDiaryToCsvFile`): `;`-separated, a localized header
- *   "Name (unit)" per column, values in the user's display unit, dates from
- *   `toLocaleDateString` (so the format depends on the phone's language) and
- *   the locale decimal separator. Its nutrition columns are each day's sums
- *   (`getTotalNutrition` over the whole day), never single foods or meals, so
- *   the CSV gives body data only ([Result.foodTotalsOnly]).
+ * - CSV (settings.js `writeDiaryToCsvFile`, the same in 3.11.1 and master):
+ *   UTF-8 without BOM, `\n` between lines and none at the end, `;` between
+ *   cells, nothing quoted. Header: the localized "Datum"/"Date", then the
+ *   energy column and the visible nutriments (`nutriments.*` names of the
+ *   locale with their unit: "Kalorien (kcal)", "Fett (g)", "Eiweiß (g)" …),
+ *   then the visible body stats ("Gewicht (kg)"). One row per diary day with
+ *   food or a weight: the date from `toLocaleDateString(…, 2-digit day and
+ *   month, UTC)` in the phone's language ("27.11.2026", "11/27/2026"), then
+ *   `toLocaleString` numbers without grouping ("72,4"); an empty cell where a
+ *   day has no value, and "0" kcal on a day without food. The nutrition
+ *   columns are each day's sums (`getTotalNutrition` over the whole day, burned
+ *   energy subtracted), never single foods: they become one day total per day
+ *   ([FoodDiary.dayTotals]). Waistline 3.11.1 writes only TODAY's row
+ *   (`getDataFromDb(new Date(), …)`; issue #980, fixed after 3.11.1 in
+ *   e6fce6e), which [Result.csvDays] shows.
  */
 object WaistlineImport {
 
@@ -46,6 +55,10 @@ object WaistlineImport {
     const val QUICK_ADD_NAME = "Quick Add"
     /** [FoodItem.source] whose nutrient fields hold ONE portion instead of 100 g (FuelViewModel.SOURCE_PORTION). */
     const val PER_PORTION_SOURCE = "portion"
+    /** Id prefix of a CSV day total ("waistline-csv:<day>"): one entry per day, replaced by that day's real entries. */
+    const val CSV_ID_PREFIX = "waistline-csv:"
+    /** Name of a CSV day total; the app passes its own words. */
+    const val DAY_TOTAL_NAME = "Waistline – day total"
 
     enum class Format { JSON, CSV, UNKNOWN }
 
@@ -63,10 +76,12 @@ object WaistlineImport {
         val dayFirst: Boolean? = null,
         /** Original Waistline name per custom metric key, for display. */
         val customNames: Map<String, String> = emptyMap(),
-        /** The food diary of a JSON backup; always empty for a CSV. */
+        /** The food diary of a JSON backup, or the day totals of a CSV ([FoodDiary.dayTotals]). */
         val food: FoodDiary = FoodDiary.EMPTY,
-        /** A CSV with nutrition columns: they hold only each day's sums, so no food is read from it. */
+        /** A CSV with nutrition columns: they hold only each day's sums, no single foods. */
         val foodTotalsOnly: Boolean = false,
+        /** CSV: the days the file has rows for. Waistline 3.11.1 writes only today (its issue #980). */
+        val csvDays: Int = 0,
     ) {
         val isEmpty: Boolean get() = measurements.isEmpty() && food.entries.isEmpty()
         fun countsByMetric(): Map<String, Int> = measurements.groupingBy { it.metric }.eachCount()
@@ -79,11 +94,17 @@ object WaistlineImport {
      * @param dayFirst forces the order of day and month for CSV dates written
      *   with "/" or "-" (null = detect; ambiguous files default to day first).
      * @param quickAddName name of a Waistline "Quick Add" entry that has no description.
+     * @param dayTotalName name of the entry that carries a CSV day's nutrition sums.
      */
-    fun parse(text: String, dayFirst: Boolean? = null, quickAddName: String = QUICK_ADD_NAME): Result {
+    fun parse(
+        text: String,
+        dayFirst: Boolean? = null,
+        quickAddName: String = QUICK_ADD_NAME,
+        dayTotalName: String = DAY_TOTAL_NAME,
+    ): Result {
         val clean = text.removePrefix("﻿").trim()
         if (clean.isEmpty()) return EMPTY
-        return if (clean.startsWith("{")) parseJson(clean, quickAddName) ?: EMPTY else parseCsv(clean, dayFirst)
+        return if (clean.startsWith("{")) parseJson(clean, quickAddName) ?: EMPTY else parseCsv(clean, dayFirst, dayTotalName)
     }
 
     // ── Metric names and units ───────────────────────────────────────
@@ -241,16 +262,19 @@ object WaistlineImport {
 
     private class Column(val index: Int, val metric: String?, val name: String, val unit: String?)
 
-    private fun parseCsv(text: String, dayFirstOverride: Boolean?): Result {
+    private fun parseCsv(text: String, dayFirstOverride: Boolean?, dayTotalName: String): Result {
         val lines = text.split(Regex("\r\n|\n|\r")).filter { it.isNotBlank() }
-        if (lines.size < 2) return EMPTY
+        if (lines.isEmpty()) return EMPTY
         val separator = if (lines.first().contains(';')) ';' else ','
         val header = splitCsv(lines.first(), separator)
         if (header.size < 2) return EMPTY
+        // Only the header: Waistline 3.11.1 on a day without food or weight (it writes only today).
+        if (lines.size < 2) return Result(Format.CSV, emptyList(), 0, null, null)
         val columns = header.drop(1).mapIndexedNotNull { i, cell -> bodyColumn(i + 1, cell) }
         // Every other column of Waistline's CSV is a nutriment, summed over the day.
         val foodTotals = header.drop(1).count { it.isNotBlank() } > columns.size
-        if (columns.isEmpty()) return Result(Format.CSV, emptyList(), 0, null, null, foodTotalsOnly = foodTotals)
+        val nutrientColumns = header.drop(1).mapIndexedNotNull { i, cell -> nutrientColumn(i + 1, cell) }
+        if (columns.isEmpty() && nutrientColumns.isEmpty()) return Result(Format.CSV, emptyList(), 0, null, null, foodTotalsOnly = foodTotals)
 
         val rows = lines.drop(1).map { splitCsv(it, separator) }
         val dates = rows.mapNotNull { it.firstOrNull()?.trim() }
@@ -272,7 +296,94 @@ object WaistlineImport {
                 out[day to key] = ParsedMeasurement(day, key, converted.first, converted.second)
             }
         }
-        return result(Format.CSV, out.values.toList(), skipped, ambiguous, dayFirst, customNames).copy(foodTotalsOnly = foodTotals)
+        val csvDays = rows.mapNotNull { parseCsvDate(it.firstOrNull()?.trim().orEmpty(), dayFirst) }.toSet().size
+        return result(Format.CSV, out.values.toList(), skipped, ambiguous, dayFirst, customNames)
+            .copy(foodTotalsOnly = foodTotals, csvDays = csvDays, food = dayTotals(rows, nutrientColumns, dayFirst, dayTotalName))
+    }
+
+    private enum class Nutrient { KCAL, KJ, PROTEIN, CARBS, FAT }
+
+    private class NutrientColumn(val index: Int, val nutrient: Nutrient)
+
+    /** Waistline's `nutriments.*` names in all its languages (locale-*.json, 3.11.1). */
+    private val NUTRIENT_NAMES: Map<String, Nutrient> = buildMap<String, Nutrient> {
+        fun add(n: Nutrient, vararg names: String) = names.forEach { put(it, n) }
+        add(Nutrient.KCAL, "calories", "calorie", "kalorien", "kalorie", "kalorier", "kalorije", "kalori", "kaloreita",
+            "calorias", "calorías", "calorieën", "calorii", "kilocalories",
+            "калории", "калорије", "калорії", "קלוריות", "කැලරි")
+        add(Nutrient.KJ, "kilojoules", "kilojoule", "kilojouleja", "kilojouli", "kilojouly", "kilojul", "kilojulios",
+            "quilojoules", "kilodżule", "kilodžula", "килоджаули", "килоджоулей", "килоџула", "кілоджоулі", "קילוג׳ולים",
+            "කිලෝජූල්")
+        add(Nutrient.PROTEIN, "proteins", "protein", "proteine", "proteínas", "protéines", "proteiini", "eiweiß", "eiweiss",
+            "eiwitten", "białko", "bílkoviny", "белки", "білок", "протеин", "протеини", "חלבון", "ପୁଷ୍ଟିସାର")
+        add(Nutrient.CARBS, "carbohydrates", "carbs", "kohlenhydrate", "carbohidratos", "carbohidrați", "carboidrati",
+            "carboidratos", "glucides", "hiilihydraatit", "karbonhidrat", "kolhydrater", "koolhydraten", "sacharidy",
+            "uglj. hidrati", "węglowodany", "вуглеводи", "въглехидрати", "углеводы", "угљ. хидрати", "פחמימות")
+        add(Nutrient.FAT, "fat", "fett", "gorduras", "grasa", "grasso", "grăsimi", "lipides", "masti", "rasva", "tuky",
+            "tłuszcze", "vet", "yağ", "жири", "жиры", "мазнини", "масти", "שומן", "ସ୍ନେହସାର", "මේදය")
+    }
+
+    /** Waistline's unit symbols for energy (`unit-symbols.kcal` / `.kJ` of its locales). */
+    private val KCAL_UNITS = setOf("kcal", "ккал", "קק״ל", "kilocalorii")
+    private val KJ_UNITS = setOf("kj", "кдж")
+
+    /** The energy and macro columns, by the nutriment's name or, for energy, its unit. */
+    private fun nutrientColumn(index: Int, headerCell: String): NutrientColumn? {
+        val match = Regex("^(.*?)\\s*\\(([^()]*)\\)\\s*$").find(headerCell.trim())
+        val name = (match?.groupValues?.get(1) ?: headerCell).trim().lowercase()
+        val unit = match?.groupValues?.get(2)?.trim()?.lowercase()
+        // The unit decides for energy ("Energie (kJ)"), the name for the macros.
+        val nutrient = when {
+            unit != null && unit in KCAL_UNITS -> Nutrient.KCAL
+            unit != null && unit in KJ_UNITS -> Nutrient.KJ
+            else -> NUTRIENT_NAMES[name]
+        } ?: return null
+        return NutrientColumn(index, nutrient)
+    }
+
+    /**
+     * One entry per CSV day with food: the day's sums of energy and macros (kJ
+     * converted when there is no kcal column). A day with "0" kcal and nothing
+     * else is a day without food (Waistline writes 0 kcal for a weight-only
+     * day) and gives none; burned energy below zero leaves the energy open.
+     */
+    private fun dayTotals(rows: List<List<String>>, columns: List<NutrientColumn>, dayFirst: Boolean?, name: String): FoodDiary {
+        if (columns.isEmpty()) return FoodDiary.EMPTY
+        val totals = LinkedHashMap<String, FoodLogEntry>()
+        var skipped = 0
+        for (row in rows) {
+            val values = mutableMapOf<Nutrient, Double>()
+            var unreadable = false
+            for (c in columns) {
+                val cell = row.getOrNull(c.index)?.trim().orEmpty()
+                if (cell.isEmpty()) continue
+                val v = parseNumber(cell)
+                if (v == null) unreadable = true else if (c.nutrient !in values) values[c.nutrient] = v
+            }
+            if (values.isEmpty()) { if (unreadable) skipped++; continue }
+            val day = parseCsvDate(row.firstOrNull()?.trim().orEmpty(), dayFirst)
+            if (day == null) { skipped++; continue }
+            val kcal = (values[Nutrient.KCAL] ?: values[Nutrient.KJ]?.let { it * KCAL_PER_KJ })?.takeIf { it >= 0 }?.let { roundTo(it, 2) }
+            fun grams(n: Nutrient) = values[n]?.takeIf { it >= 0 }?.let { roundTo(it, 2) }
+            val protein = grams(Nutrient.PROTEIN)
+            val carbs = grams(Nutrient.CARBS)
+            val fat = grams(Nutrient.FAT)
+            if (listOf(kcal, protein, carbs, fat).all { it == null || it == 0.0 }) continue
+            totals[day] = FoodLogEntry(
+                id = CSV_ID_PREFIX + day,
+                day = day,
+                loggedAt = dayStartMillis(day) + 12 * 3_600_000L,
+                meal = Meal.SNACK,
+                name = name,
+                portions = 1.0,
+                kcal = kcal,
+                proteinG = protein,
+                carbsG = carbs,
+                fatG = fat,
+            )
+        }
+        val entries = totals.values.sortedBy { it.day }
+        return FoodDiary(entries, emptyList(), 0, skipped, entries.firstOrNull()?.day, entries.lastOrNull()?.day, dayTotals = true)
     }
 
     /**
@@ -368,6 +479,8 @@ object WaistlineImport {
         val skipped: Int,
         val firstDay: String?,
         val lastDay: String?,
+        /** A CSV's day totals: one entry per day (id [CSV_ID_PREFIX]<day>), no single foods. */
+        val dayTotals: Boolean = false,
     ) {
         val days: Set<String> get() = entries.map { it.day }.toSet()
 

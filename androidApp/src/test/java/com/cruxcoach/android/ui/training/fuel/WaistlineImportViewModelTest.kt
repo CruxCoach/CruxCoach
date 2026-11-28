@@ -101,12 +101,40 @@ class WaistlineImportViewModelTest : AthleteScreenTest() {
         assertTrue(repo.foodLog("2026-10-02").all { it.id.startsWith("waistline:") })
     }
 
+    /** Waistline 3.11.1, German: a weight-only day and a day with food. */
+    private val csv = "Datum;Kalorien (kcal);Fett (g);Gesättigte Fettsäuren (g);Kohlenhydrate (g);Zucker (g);Eiweiß (g);Salz (g);Gewicht (kg)" +
+        "\n30.09.2026;0;;;;;;;72,4" +
+        "\n01.10.2026;1843,5;61,2;18,04;215,7;80,33;95,1;4,2;"
+
     @Test
-    fun `a diary CSV with food only as day totals says so`() {
+    fun `a diary CSV gives the weight and one day total, and the backup later replaces that total`() {
         val vm = WaistlineImportViewModel(service).tracked()
-        vm.preview("content://test/diary_export.csv", "Datum;Kalorien (kcal);Proteine (g)\n01.10.2026;2100;120\n")
+        vm.preview("content://test/diary_export.csv", csv, dayTotalName = "Waistline – Tagessumme")
+        compose.waitUntil(WAIT_MS) { vm.state.value.preview != null }
+        assertTrue(vm.state.value.preview!!.result.food.dayTotals)
+        val fromCsv = vm.imported()
+        assertTrue(fromCsv.dayTotals)
+        assertEquals(1, fromCsv.foodWritten)
+        assertEquals(1, fromCsv.bodyWritten)
+        assertEquals(72.4, repo.latest("weight")!!.value, 0.001)
+        val total = repo.foodLog("2026-10-01").single()
+        assertEquals("waistline-csv:2026-10-01", total.id)
+        assertEquals("Waistline – Tagessumme", total.name)
+        assertEquals(1843.5, total.kcal!!, 0.001)
+
+        // The same day from the backup: the day total is no conflict and goes, the single foods come.
+        vm.previewed()
+        assertEquals(0, vm.state.value.preview!!.foodConflictDays)
+        vm.imported()
+        assertEquals(setOf("waistline:2026-10-01:0", "waistline:2026-10-01:1"), repo.foodLog("2026-10-01").map { it.id }.toSet())
+    }
+
+    @Test
+    fun `a CSV without any values says that 3_11_1 writes only today`() {
+        val vm = WaistlineImportViewModel(service).tracked()
+        vm.preview("content://test/diary_export.csv", csv.substringBefore(
+))
         compose.waitUntil(WAIT_MS) { vm.state.value.outcome != null }
-        assertEquals(WaistlineImportOutcome.Empty(csvTotalsOnly = true), vm.state.value.outcome)
-        assertTrue(repo.foodLog("2026-10-01").isEmpty())
+        assertEquals(WaistlineImportOutcome.Empty(csv = true), vm.state.value.outcome)
     }
 }

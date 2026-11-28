@@ -59,7 +59,10 @@
         <item quantity="one">%d entry skipped (food missing, no amount or burned energy)</item>
         <item quantity="other">%d entries skipped (food missing, no amount or burned energy)</item>
     </plurals>
-    <string name="trb_import_csv_food_hint">The CSV has food only as daily totals. For the food diary, use the database backup (JSON).</string>
+    <string name="trb_import_csv_food_hint">The CSV has no single foods, only one sum per day. The database backup (JSON) is better: it brings every food and meal.</string>
+    <string name="trb_import_day_totals">Daily totals</string>
+    <string name="trb_import_day_total_name">Waistline – day total</string>
+    <string name="trb_import_csv_today_only">Waistline 3.11.1 writes only today into the CSV. For all days, use “Backup Database” (JSON).</string>
     <string name="trb_import_quick_add">Quick entry</string>
     <plurals name="trb_import_skipped">
         <item quantity="one">%d value skipped (unreadable or implausible)</item>
@@ -93,12 +96,16 @@
         <item quantity="one">%d food entry imported</item>
         <item quantity="other">%d food entries imported</item>
     </plurals>
+    <plurals name="trb_import_day_totals_done">
+        <item quantity="one">%d daily total imported</item>
+        <item quantity="other">%d daily totals imported</item>
+    </plurals>
     <plurals name="trb_import_food_days_kept">
         <item quantity="one">%d day with entries kept</item>
         <item quantity="other">%d days with entries kept</item>
     </plurals>
-    <string name="trb_import_empty">Nothing to import in this file. In Waistline, go to Settings → Import/Export: “Backup Database” gives the food diary and body values (JSON), “Export Diary to CSV” body values only.</string>
-    <string name="trb_import_csv_totals_only">This CSV has no body values and food only as daily totals. For the food diary, use “Backup Database” in Waistline (JSON).</string>
+    <string name="trb_import_empty">Nothing to import in this file. In Waistline, go to Settings → Import/Export: “Backup Database” gives the food diary and body values (JSON), “Export Diary to CSV” only daily totals and body values.</string>
+    <string name="trb_import_csv_empty">This CSV has nothing to import. Waistline 3.11.1 writes only today into it. For all days, use “Backup Database” in Waistline (JSON).</string>
     <string name="trb_import_failed">The file could not be read.</string>
     <string name="trb_import_too_large">The file is too large (max. 20 MB).</string>
     <string name="trb_waistline_badge">Waistline</string>

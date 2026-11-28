@@ -20,7 +20,7 @@ data class WaistlineImportPreview(
     val result: WaistlineImport.Result,
     /** Body values whose day already has a value for that metric here. */
     val bodyConflicts: Int,
-    /** Days of the food diary that already have food entries here. */
+    /** Days of the food diary that already have food entries here (a CSV day total does not count). */
     val foodConflictDays: Int,
     /** Day/month order could not be detected (or was chosen by hand): keep offering the switch. */
     val askDateOrder: Boolean,
@@ -35,10 +35,12 @@ sealed interface WaistlineImportOutcome {
         /** Days that already had food entries here and stayed as they were. */
         val foodDaysKept: Int,
         val foodSkipped: Int,
+        /** The food came as a CSV's day totals. */
+        val dayTotals: Boolean = false,
     ) : WaistlineImportOutcome
 
-    /** Nothing to import; [csvTotalsOnly]: a diary CSV whose food columns are only day totals. */
-    data class Empty(val csvTotalsOnly: Boolean) : WaistlineImportOutcome
+    /** Nothing to import; [csv]: it was a diary CSV (Waistline 3.11.1 writes only today into it). */
+    data class Empty(val csv: Boolean) : WaistlineImportOutcome
     data object Failed : WaistlineImportOutcome
     data object TooLarge : WaistlineImportOutcome
 }
@@ -65,24 +67,33 @@ class WaistlineImportViewModel @Inject constructor(private val service: AthleteS
     /** Raw text of the file being previewed, kept for re-parsing with another date order. */
     private var importText: String? = null
     private var quickAddName: String = WaistlineImport.QUICK_ADD_NAME
+    private var dayTotalName: String = WaistlineImport.DAY_TOTAL_NAME
 
     /** Parses a Waistline JSON backup or diary CSV; [text] null = the file could not be read. */
-    fun preview(source: String, text: String?, quickAddName: String = WaistlineImport.QUICK_ADD_NAME, dayFirst: Boolean? = null) {
+    fun preview(
+        source: String,
+        text: String?,
+        quickAddName: String = WaistlineImport.QUICK_ADD_NAME,
+        dayFirst: Boolean? = null,
+        dayTotalName: String = WaistlineImport.DAY_TOTAL_NAME,
+    ) {
         this.quickAddName = quickAddName
+        this.dayTotalName = dayTotalName
         if (text == null) { finish(source, WaistlineImportOutcome.Failed); return }
         // A re-parse (other date order) keeps the dialog of this file open meanwhile.
         _state.update { WaistlineImportState(source = source, busy = true, preview = it.preview.takeIf { _ -> it.source == source }) }
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
-            val result = runCatching { WaistlineImport.parse(text, dayFirst, quickAddName) }.getOrNull()
+            val result = runCatching { WaistlineImport.parse(text, dayFirst, quickAddName, dayTotalName) }.getOrNull()
             if (result == null || result.isEmpty) {
-                finish(source, if (result == null) WaistlineImportOutcome.Failed else WaistlineImportOutcome.Empty(result.foodTotalsOnly))
+                finish(source, if (result == null) WaistlineImportOutcome.Failed
+                    else WaistlineImportOutcome.Empty(csv = result.format == WaistlineImport.Format.CSV))
                 return@launch
             }
             importText = text
             val existing = existingDays(result.measurements.map { it.metric }.toSet())
             val bodyConflicts = result.measurements.count { it.day in existing[it.metric].orEmpty() }
-            val foodConflictDays = existingFoodDays(result.food).size
+            val foodConflictDays = takenDays(existingFoodDays(result.food)).size
             val askDateOrder = result.ambiguousDates || dayFirst != null
             _state.update {
                 it.copy(busy = false, preview = WaistlineImportPreview(result, bodyConflicts, foodConflictDays, askDateOrder))
@@ -96,7 +107,7 @@ class WaistlineImportViewModel @Inject constructor(private val service: AthleteS
     fun setDayFirst(dayFirst: Boolean) {
         val text = importText ?: return
         val source = _state.value.source ?: return
-        preview(source, text, quickAddName, dayFirst)
+        preview(source, text, quickAddName, dayFirst, dayTotalName)
     }
 
     fun cancel() {
@@ -113,6 +124,8 @@ class WaistlineImportViewModel @Inject constructor(private val service: AthleteS
      * Writes the previewed data. Without [overwriteBody] a day that already has a value for that metric keeps
      * it – CruxCoach's own entry wins. Food goes by whole days: without [replaceFoodDays] a day that already has
      * food entries here stays as it is; with it, that day's entries are removed and Waistline's day takes its place.
+     * A CSV day total never blocks a day and never stays next to what is written for it: a later backup (or CSV)
+     * of that day replaces it, so nothing counts twice.
      */
     fun confirm(overwriteBody: Boolean, replaceFoodDays: Boolean) {
         val preview = _state.value.preview ?: return
@@ -139,7 +152,8 @@ class WaistlineImportViewModel @Inject constructor(private val service: AthleteS
             }
 
             val food = result.food
-            val taken = existingFoodDays(food)
+            val existingByDay = existingFoodDays(food)
+            val taken = takenDays(existingByDay)
             // Foods first, so the entries find them; an earlier import's food keeps the athlete's favourite and use.
             food.foods.forEach { item ->
                 val old = repo.foodItem(item.id)
@@ -156,15 +170,15 @@ class WaistlineImportViewModel @Inject constructor(private val service: AthleteS
                 }
             }
             if (replaceFoodDays) taken.values.flatten().forEach { repo.deleteFoodLog(it.id) }
-            var foodWritten = 0
-            food.entries.forEach { e ->
-                if (!replaceFoodDays && e.day in taken) return@forEach
-                repo.saveFoodLog(e)
-                foodWritten++
+            val written = food.entries.filter { e -> replaceFoodDays || e.day !in taken }
+            written.map { it.day }.toSet().forEach { day ->
+                existingByDay[day].orEmpty().filter { isDayTotal(it) }.forEach { repo.deleteFoodLog(it.id) }
             }
+            written.forEach { repo.saveFoodLog(it) }
             WaistlineImportOutcome.Imported(
                 bodyWritten = bodyWritten, bodyKept = bodyKept, bodySkipped = result.skipped,
-                foodWritten = foodWritten, foodDaysKept = if (replaceFoodDays) 0 else taken.size, foodSkipped = food.skipped,
+                foodWritten = written.size, foodDaysKept = if (replaceFoodDays) 0 else taken.size, foodSkipped = food.skipped,
+                dayTotals = food.dayTotals,
             )
         }
     }
@@ -176,6 +190,12 @@ class WaistlineImportViewModel @Inject constructor(private val service: AthleteS
 
     private fun existingDays(metrics: Set<String>): Map<String, Set<String>> =
         metrics.associateWith { metric -> service.repo.series(metric).map { it.day }.toSet() }
+
+    private fun isDayTotal(e: FoodLogEntry) = e.id.startsWith(WaistlineImport.CSV_ID_PREFIX)
+
+    /** The days that have entries of their own: a CSV day total alone does not make a day taken. */
+    private fun takenDays(byDay: Map<String, List<FoodLogEntry>>): Map<String, List<FoodLogEntry>> =
+        byDay.filterValues { entries -> entries.any { !isDayTotal(it) } }
 
     /** The entries already logged here on the days of [food], by day. */
     private fun existingFoodDays(food: WaistlineImport.FoodDiary): Map<String, List<FoodLogEntry>> {

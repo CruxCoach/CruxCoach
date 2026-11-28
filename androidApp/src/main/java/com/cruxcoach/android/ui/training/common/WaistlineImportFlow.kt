@@ -104,12 +104,13 @@ private fun WaistlineImportFlow(
     val resources = LocalResources.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val quickAddName = stringResource(R.string.trb_import_quick_add)
+    val dayTotalName = stringResource(R.string.trb_import_day_total_name)
     val source = uri.toString()
     LaunchedEffect(source) {
         // After a rotation the view model still has this file: it is not read a second time.
         if (viewModel.state.value.source == source) return@LaunchedEffect
         when (val read = withContext(Dispatchers.IO) { readImportFile(context, uri) }) {
-            is ImportFile.Text -> viewModel.preview(source, read.value, quickAddName)
+            is ImportFile.Text -> viewModel.preview(source, read.value, quickAddName, dayTotalName = dayTotalName)
             ImportFile.TooLarge -> viewModel.tooLarge(source)
             ImportFile.Failed -> viewModel.preview(source, null)
         }
@@ -138,11 +139,14 @@ private fun outcomeText(res: Resources, o: WaistlineImportOutcome): String = whe
         if (o.bodyWritten + o.bodyKept > 0) add(res.getQuantityString(R.plurals.trb_import_done, o.bodyWritten, o.bodyWritten))
         if (o.bodyKept > 0) add(res.getQuantityString(R.plurals.trb_import_kept, o.bodyKept, o.bodyKept))
         if (o.bodySkipped > 0) add(res.getQuantityString(R.plurals.trb_import_skipped, o.bodySkipped, o.bodySkipped))
-        if (o.foodWritten + o.foodDaysKept > 0) add(res.getQuantityString(R.plurals.trb_import_food_done, o.foodWritten, o.foodWritten))
+        if (o.foodWritten + o.foodDaysKept > 0) {
+            add(res.getQuantityString(if (o.dayTotals) R.plurals.trb_import_day_totals_done else R.plurals.trb_import_food_done,
+                o.foodWritten, o.foodWritten))
+        }
         if (o.foodDaysKept > 0) add(res.getQuantityString(R.plurals.trb_import_food_days_kept, o.foodDaysKept, o.foodDaysKept))
         if (o.foodSkipped > 0) add(res.getQuantityString(R.plurals.trb_import_food_skipped, o.foodSkipped, o.foodSkipped))
     }.ifEmpty { listOf(res.getQuantityString(R.plurals.trb_import_done, 0, 0)) }.joinToString(" · ")
-    is WaistlineImportOutcome.Empty -> res.getString(if (o.csvTotalsOnly) R.string.trb_import_csv_totals_only else R.string.trb_import_empty)
+    is WaistlineImportOutcome.Empty -> res.getString(if (o.csv) R.string.trb_import_csv_empty else R.string.trb_import_empty)
     WaistlineImportOutcome.Failed -> res.getString(R.string.trb_import_failed)
     WaistlineImportOutcome.TooLarge -> res.getString(R.string.trb_import_too_large)
 }
@@ -205,7 +209,13 @@ private fun ImportPreviewDialog(
                 if (first != null && last != null) {
                     Text(stringResource(R.string.trb_import_range, LocalDate.parse(first).shortLabel(), LocalDate.parse(last).shortLabel()))
                 }
-                if (food.entries.isNotEmpty()) {
+                if (food.dayTotals && food.entries.isNotEmpty()) {
+                    // A CSV: one sum per day, no single foods.
+                    Text(stringResource(R.string.trb_import_day_totals), style = MaterialTheme.typography.labelLarge)
+                    CountRow(stringResource(R.string.trb_import_food_days), food.entries.size, "body_import_day_totals")
+                    Text(stringResource(R.string.trb_import_csv_food_hint), style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("body_import_csv_food_hint"))
+                } else if (food.entries.isNotEmpty()) {
                     Text(stringResource(R.string.trb_import_food_found), style = MaterialTheme.typography.labelLarge)
                     CountRow(stringResource(R.string.trb_import_food_entries), food.entries.size, "body_import_food_entries")
                     CountRow(stringResource(R.string.trb_import_food_days), food.days.size, "body_import_food_days")
@@ -229,9 +239,10 @@ private fun ImportPreviewDialog(
                     Text(pluralStringResource(R.plurals.trb_import_skipped, r.skipped, r.skipped),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (r.foodTotalsOnly) {
-                    Text(stringResource(R.string.trb_import_csv_food_hint), style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.testTag("body_import_csv_food_hint"))
+                // Waistline 3.11.1 writes only today into the CSV (its issue #980).
+                if (r.format == WaistlineImport.Format.CSV && r.csvDays <= 1) {
+                    Text(stringResource(R.string.trb_import_csv_today_only), style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("body_import_csv_today_only"))
                 }
                 if (preview.askDateOrder) {
                     Text(stringResource(R.string.trb_import_date_order), style = MaterialTheme.typography.labelLarge)
