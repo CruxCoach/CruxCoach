@@ -10,6 +10,7 @@ import com.cruxcoach.data.repository.BoardLocationRepository
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.domain.board.BoardBrand
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -292,5 +293,42 @@ class BoardSyncLocalShareResumeProtocolTest {
         verify(exactly = 1) { importer.importShinyWallSnapshot(any(), any()) }
         assertNull(LocalShareResumeStore(context).load())
         assertFalse(manager.state.value.isSyncing)
+    }
+
+    @Test
+    fun `a handed-over Shiny Wall catalogue that is gone is reported and loaded online`() = runTest {
+        val importer = mockk<BoardDatabaseImporter>(relaxed = true)
+        val (compressed, board) = compressedArtifact(
+            name = "shiny-gone",
+            artifactPath = LocalShareProtocol.V2_BOARD_PATH,
+        )
+        val (shinyCompressed, shiny) = shinyWallArtifact("gone")
+        LocalShareResumeStore(context).save(
+            LocalShareResumeStore.Pending(
+                requiredVersionCode = 0,
+                protocolVersion = LocalShareProtocol.VERSION_V2,
+                apkPath = null,
+                apkVersionName = "0.2.5.1",
+                boardPath = compressed.absolutePath,
+                board = board,
+                shinyWallPath = shinyCompressed.absolutePath,
+                shinyWall = shiny,
+            ),
+        )
+        // The system cleared it from the cache while the update was installed.
+        shinyCompressed.delete()
+        val preferences = mockk<UserPreferences>(relaxed = true)
+        every { preferences.boardDownloadBrands } returns flowOf(emptySet())
+
+        val manager = manager(importer, preferences = preferences)
+        runCurrent()
+
+        verify(exactly = 1) { importer.importFromLocalDb(any(), true, any()) }
+        verify(exactly = 0) { importer.importShinyWallSnapshot(any(), any()) }
+        assertTrue(BoardBrand.SHINYWALL in manager.state.value.boardErrors)
+        // The board itself arrived: no share-wide error.
+        assertNull(manager.state.value.errorMessage)
+        coVerify(exactly = 1) { preferences.includeBoardDownload(BoardBrand.SHINYWALL) }
+        assertNull(LocalShareResumeStore(context).load())
     }
 }

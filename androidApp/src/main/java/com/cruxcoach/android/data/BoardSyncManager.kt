@@ -1793,6 +1793,10 @@ class BoardSyncManager(
             if (shinyWallImported) {
                 val shinyWallStep = completedLocalShareSteps(listOf(BoardBrand.SHINYWALL))
                 _state.update { it.copy(localShareBoardSteps = it.localShareBoardSteps + shinyWallStep) }
+            } else if (shinyWall != null) {
+                // Handed over but not imported (file gone or broken): as in the share itself.
+                reportShinyWallNotReceived()
+                loadBoardCatalogue(BoardBrand.SHINYWALL)
             }
             pending.apkPath?.let(::File)?.delete()
             localShareResumeStore.clear()
@@ -1987,6 +1991,8 @@ class BoardSyncManager(
         var shinyWallDownload: File? = null
         var shinyWallArtifact: LocalShareProtocol.FamilyArtifact? = null
         var shinyWallCurrent = false
+        // Shiny Wall chosen by this receiver and offered by the sender.
+        var shinyWallWanted = false
         val receivedManifest: LocalShareProtocol.Manifest
         try {
             updateLocalShareProgress(ImportStep.FetchingManifest, emptyList())
@@ -2083,6 +2089,7 @@ class BoardSyncManager(
             val shinyWallOffer = receivedManifest.families
                 .firstOrNull { it.boardBrand == BoardBrand.SHINYWALL.wireValue }
                 ?.takeIf { BoardBrand.SHINYWALL in brands }
+            shinyWallWanted = shinyWallOffer != null
             shinyWallCurrent = shinyWallOffer != null && shinyWallOffer.uncompressedSha256 == keptShinyWallSha256()
             if (shinyWallOffer != null && !shinyWallCurrent) {
                 shinyWallArtifact = shinyWallOffer
@@ -2188,6 +2195,7 @@ class BoardSyncManager(
         }
         // The families the sender does not have follow the ordinary way, one after the
         // other, as soon as the share has released the sync slot.
+        val followUps = linkedSetOf<BoardBrand>()
         if (chosenShareBrands != null) {
             val savedSelection = userPreferences.boardDownloadBrands.first()
             // A Shiny Wall catalogue the share did not deliver follows the ordinary way.
@@ -2197,8 +2205,19 @@ class BoardSyncManager(
             // by the regular sync and needs no download of its own here.
             val present = boardRepository.getClimbCountsByBrand()
                 .filterValues { it > 0 }.keys.mapNotNull { BoardBrand.fromWireOrNull(it) }.toSet()
-            (savedSelection - fromShare - present).forEach(::loadBoardCatalogue)
+            followUps += savedSelection - fromShare - present
         }
+        // Chosen and offered, and still not here (transfer or import failed): its row says
+        // so, as a failed board snapshot does, and it follows over the internet on every
+        // route, a QR scan included, not only after the dialog's choice.
+        if (shinyWallWanted && shinyWallMissing) {
+            reportShinyWallNotReceived()
+            followUps += BoardBrand.SHINYWALL
+        } else if (shinyWallWanted) {
+            // Here now (or handed over to the update): an earlier share's failure is over.
+            reportBoardError(BoardBrand.SHINYWALL, null)
+        }
+        followUps.forEach(::loadBoardCatalogue)
         chosenShareBrands = null
         val networkAvailable = isNetworkAvailable(appContext)
         val wifiConnected = isWifiConnected(appContext)
@@ -2236,6 +2255,12 @@ class BoardSyncManager(
             )
         }
         refreshNetworkAfterLocalShare()
+    }
+
+    /** The Shiny Wall row of a share that was to bring it shows the failure (see [reportBoardError]). */
+    private fun reportShinyWallNotReceived() {
+        Log.w(TAG, "Shiny Wall catalogue chosen in a share but not received; loading it online")
+        reportBoardError(BoardBrand.SHINYWALL, appContext.getString(R.string.board_sync_error_import))
     }
 
     /** sha256 of the Shiny Wall snapshot this phone holds, null without one. */

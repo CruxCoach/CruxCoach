@@ -255,6 +255,26 @@ class LocalShareShinyWallCompatTest {
         assertEquals(senderSnapshotSha(base), receiver.memo.last())
     }
 
+    @Test fun `a Shiny Wall catalogue that fails in a share is reported and loaded online on every route`() {
+        seedSender(withShinyWall = true)
+        // The dialog's explicit choice, and no choice at all (a QR invitation).
+        for (shareBrands in listOf(setOf(BoardBrand.KILTER, BoardBrand.SHINYWALL), null)) {
+            val base = startSender(keptSnapshot, apkVersionCode = 1)
+            val importer = mockk<BoardDatabaseImporter>(relaxed = true)
+            every { importer.importShinyWallSnapshot(any(), any()) } throws IllegalStateException("broken catalogue")
+            val receiver = receiver(importer)
+            receiver.take(base, shareBrands)
+
+            val state = receiver.manager.state.value
+            assertTrue("$shareBrands: Shiny Wall row shows the failure", BoardBrand.SHINYWALL in state.boardErrors)
+            assertFalse("$shareBrands: no Done row", BoardBrand.SHINYWALL in state.localShareBoardSteps)
+            // The board share itself succeeded.
+            assertNull("$shareBrands", state.errorMessage)
+            verify(exactly = 1) { importer.importFromLocalDb(any(), true, any()) }
+            coVerify(timeout = 5_000) { receiver.preferences.includeBoardDownload(BoardBrand.SHINYWALL) }
+        }
+    }
+
     private fun senderSnapshotSha(base: String): String =
         checkNotNull(LocalShareProtocol.parseManifest(get(base, LocalShareProtocol.V2_MANIFEST_PATH)).board) {
             "sender has no ready snapshot"
