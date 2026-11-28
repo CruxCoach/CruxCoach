@@ -21,16 +21,16 @@ class BoardPickerDownloadConsentTest {
     private var applied = 0
     private var closed = 0
 
-    private fun show(defer: Boolean = false, needsConsent: Boolean = true) {
-        coEvery { vm.needsDownloadConsent(BoardBrand.MOONBOARD) } returns needsConsent
+    private fun show(defer: Boolean = false, needsConsent: Boolean = true, brand: BoardBrand = BoardBrand.MOONBOARD) {
+        coEvery { vm.needsDownloadConsent(brand) } returns needsConsent
         compose.setContent {
             MaterialTheme {
                 BoardDownloadRequestHost(vm, defer, onSelected = { closed++ }) { request ->
-                    Button(onClick = { request(BoardBrand.MOONBOARD) { applied++ } }) { Text("MoonBoard wählen") }
+                    Button(onClick = { request(brand) { applied++ } }) { Text("${brand.displayName} wählen") }
                 }
             }
         }
-        compose.onNodeWithText("MoonBoard wählen").performClick()
+        compose.onNodeWithText("${brand.displayName} wählen").performClick()
         compose.waitForIdle()
     }
 
@@ -49,6 +49,26 @@ class BoardPickerDownloadConsentTest {
         compose.onNodeWithText("Herunterladen und Updates aktivieren").performClick()
         compose.waitForIdle()
         coVerifyOrder { vm.enableDownloads(BoardBrand.MOONBOARD); vm.downloadSelectedBoard(BoardBrand.MOONBOARD) }
+        compose.runOnIdle { assertEquals(1, applied); assertEquals(1, closed) }
+    }
+
+    @Test fun `a deselected default board is called deselected`() {
+        show()
+        compose.onNodeWithText("für Downloads abgewählt", substring = true).assertIsDisplayed()
+    }
+
+    @Test fun `a board downloaded only once chosen is not called deselected and loads once`() {
+        show(brand = BoardBrand.SHINYWALL)
+        compose.onNodeWithText("Shiny Wall herunterladen?").assertIsDisplayed()
+        compose.onNodeWithText("noch nicht für Downloads ausgewählt", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("abgewählt", substring = true).assertDoesNotExist()
+
+        compose.onNodeWithText("Herunterladen und Updates aktivieren").performClick()
+        compose.waitForIdle()
+
+        coVerify { vm.enableDownloads(BoardBrand.SHINYWALL) }
+        // The applied selection (selectShinyWall) queues the catalogue; a second load would restart it.
+        verify(exactly = 0) { vm.downloadSelectedBoard(any()) }
         compose.runOnIdle { assertEquals(1, applied); assertEquals(1, closed) }
     }
 

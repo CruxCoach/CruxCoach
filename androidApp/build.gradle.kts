@@ -129,8 +129,8 @@ android {
         manifestPlaceholders["appLabel"] = "@string/app_name"
         minSdk = 28
         targetSdk = 35
-        versionCode = featureVersionCode ?: 11
-        versionName = "0.2.5"
+        versionCode = featureVersionCode ?: 12
+        versionName = "0.2.6"
 
         // Only bundle arm64 native libs. armeabi-v7a alone added ~10.7 MB
         // to the APK (libmaplibre 8 MB + sqlcipher + secp256k1 + sodium +

@@ -96,6 +96,26 @@ class SessionSummaryBuilderTest {
     }
 
     @Test
+    fun `distinct problems count a climb once per angle, as the recap does`() {
+        val rows = listOf(
+            ascent(uuid = "a", angle = 40L),
+            ascent(uuid = "b", angle = 40L, isSend = false, climbedAt = "2026-03-05T18:05:00"),
+            ascent(uuid = "c", angle = 25L, climbedAt = "2026-03-05T18:10:00"),
+            ascent(uuid = "d", climbUuid = "c-2", climbedAt = "2026-03-05T18:15:00"),
+        )
+        val summary = SessionSummaryBuilder.build(
+            ascents = rows,
+            zones = zones,
+            gradeScale = GradeScale.FRENCH,
+            trueFlashUuids = emptySet(),
+            history = rows,
+        )
+        // c-1 at 40°, c-1 at 25° and c-2.
+        assertEquals(3, summary.uniqueClimbs)
+        assertEquals(3, summary.recap!!.problems)
+    }
+
+    @Test
     fun `session attempt total uses tries stored on consolidated outcomes`() {
         val summary = SessionSummaryBuilder.build(
             ascents = listOf(

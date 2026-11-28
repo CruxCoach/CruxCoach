@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.content.Context
 import android.util.Log
+import com.cruxcoach.android.data.blossom.BlossomChunk
 import com.cruxcoach.android.data.blossom.BlossomManifest
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.util.withBackgroundThreadPriority
@@ -54,6 +55,10 @@ class ShinyWallCatalogueSync @Inject constructor(
                 val chunk = manifest.chunks.single()
                 if (blossom.getChangedChunks(manifest, BlossomSyncManager.BETA_IMPORT_VERSION).isEmpty()) {
                     blossom.saveAcceptedManifestTimestamp(manifest)
+                    // A keep that failed after the import is never retried by one while the
+                    // catalogue counts as current, and without the file this phone cannot
+                    // pass Shiny Wall on in an offline share.
+                    if (!ShinyWallCatalogueStore.file(context).isFile) keepCurrentChunk(chunk)
                     return@withContext Result.AlreadyCurrent
                 }
                 val output = File(context.cacheDir, "shinywall_${chunk.name}.sqlite3")
@@ -88,7 +93,7 @@ class ShinyWallCatalogueSync @Inject constructor(
                         .onFailure { Log.w(TAG, "Shiny Wall snapshot not kept for sharing", it) }
                     Result.Imported(count)
                 } finally {
-                    output.delete()
+                    deleteTemporaryDatabase(output)
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -96,6 +101,26 @@ class ShinyWallCatalogueSync @Inject constructor(
                 Log.w(TAG, "Shiny Wall catalogue sync failed", e)
                 Result.Failed(e.message ?: "Shiny Wall catalogue sync failed")
             }
+        }
+    }
+
+    /**
+     * Downloads the current, already imported chunk once more only to keep it for sharing
+     * ([ShinyWallCatalogueStore]); nothing is imported again. Best effort: the catalogue itself
+     * is current, so a failure here is logged and retried on the next sync.
+     */
+    private suspend fun keepCurrentChunk(chunk: BlossomChunk) {
+        val output = File(context.cacheDir, "shinywall_${chunk.name}.sqlite3")
+        try {
+            blossom.downloadAndDecompressChunk(chunk = chunk, outputFile = output)
+            ShinyWallCatalogueStore.keep(context, output)
+            Log.i(TAG, "Shiny Wall snapshot kept again for sharing")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Shiny Wall snapshot still not kept for sharing", e)
+        } finally {
+            deleteTemporaryDatabase(output)
         }
     }
 

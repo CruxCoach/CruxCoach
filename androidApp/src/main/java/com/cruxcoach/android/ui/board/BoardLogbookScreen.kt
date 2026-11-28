@@ -379,8 +379,11 @@ fun BoardLogbookScreen(
                                 showDate = false,
                                 layout = entryLayout,
                                 onClick = {
-                                    viewModel.climbNavState.climbUuids = state.ascents.map { it.climbUuid }.distinct()
-                                    viewModel.climbNavState.angle = ascent.angle.toInt()
+                                    viewModel.climbNavState.setClimbsWithAngles(
+                                        entries = state.ascents.map { it.climbUuid to it.angle.toInt() },
+                                        openedUuid = ascent.climbUuid,
+                                        openedAngle = ascent.angle.toInt(),
+                                    )
                                     viewModel.climbNavState.source = com.cruxcoach.android.ui.navigation.ClimbNavigationSource.LOGBOOK
                                     onNavigateToClimb(ascent.climbUuid, ascent.angle.toInt())
                                 },

@@ -366,6 +366,10 @@ internal fun BoardPickerDialog(
     }
 }
 
+/** Choosing a Shiny Wall queues its own catalogue load ([BoardPickerViewModel.selectShinyWall]), so a
+ *  confirmed download must not queue a second one. */
+private fun selectionLoadsOwnCatalogue(brand: BoardBrand): Boolean = brand == BoardBrand.SHINYWALL
+
 /** Shared by direct and gym pickers. The selection is applied only after consent. */
 @Composable
 internal fun BoardDownloadRequestHost(
@@ -384,7 +388,7 @@ internal fun BoardDownloadRequestHost(
         // from the map said "not downloaded yet" until "load catalogue" was tapped again). The sync manager queues
         // it behind a running import and the worker is unique per board, so an Aurora selection that already loads
         // its catalogue is not loaded twice.
-        if (enabled) viewModel.downloadSelectedBoard(brand)
+        if (enabled && !selectionLoadsOwnCatalogue(brand)) viewModel.downloadSelectedBoard(brand)
         onSelected(brand)
     }
     content { brand, apply ->
@@ -413,7 +417,13 @@ internal fun BoardDownloadRequestHost(
         AlertDialog(
             onDismissRequest = { if (!busy) pending = null },
             title = { Text(stringResource(R.string.board_picker_download_title, brand.displayName)) },
-            text = { Text(stringResource(if (failed) R.string.onboarding_download_selection_failed else R.string.board_picker_download_description)) },
+            text = {
+                // Only a default board can have been deselected; one that is downloaded only once
+                // chosen (Shiny Wall) may never have been selected at all.
+                val description = if (brand.downloadedByDefault) R.string.board_picker_download_description
+                else R.string.board_picker_download_description_not_selected
+                Text(stringResource(if (failed) R.string.onboarding_download_selection_failed else description))
+            },
             confirmButton = {
                 TextButton(enabled = !busy, onClick = {
                     busy = true

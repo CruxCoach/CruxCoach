@@ -78,6 +78,10 @@ object WhatsNewItems {
      *  Registered with versionCode 11 in the release preparation. */
     val RELEASE_025 = WhatsNewItem(id = "release-0.2.5", sinceVersionCode = 11)
 
+    /** 0.2.6: a hotfix for 0.2.5 that changes what users see: logs per climb and angle, the Waistline food
+     *  diary, all body readings, strength comparisons from published data. Registered with versionCode 12. */
+    val RELEASE_026 = WhatsNewItem(id = "release-0.2.6", sinceVersionCode = 12)
+
     /** FEAT-015 — Board Locations Map (0.2.0). Headline feature; users
      *  upgrading from 0.1.4 have no other entry point to discover the
      *  new map icon in the BoardBrowser search header. */
@@ -112,6 +116,7 @@ object WhatsNewItems {
         RELEASE_023,
         RELEASE_024,
         RELEASE_025,
+        RELEASE_026,
     )
 }
 
@@ -212,6 +217,8 @@ fun WhatsNewHost(
             Release024WhatsNewDialog(onDismiss = { vm.dismissCurrent() })
         WhatsNewItems.RELEASE_025.id ->
             Release025WhatsNewDialog(onDismiss = { vm.dismissCurrent() })
+        WhatsNewItems.RELEASE_026.id ->
+            Release026WhatsNewDialog(onDismiss = { vm.dismissCurrent() })
         WhatsNewItems.RELEASE_022.id ->
             Release022WhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },

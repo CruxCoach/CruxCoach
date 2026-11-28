@@ -177,12 +177,12 @@ class PersonalBoardRepositoryImpl(
         }
     }
 
-    override fun getUserSentClimbUuids(): Set<String> {
-        return database.ascentsQueries.getUserSentClimbUuids().executeAsList().toSet()
+    override fun getUserSentClimbUuidsAtAngle(angle: Long): Set<String> {
+        return database.ascentsQueries.getUserSentClimbUuidsAtAngle(angle).executeAsList().toSet()
     }
 
-    override fun getUserAttemptedClimbUuids(): Set<String> {
-        return database.bidsQueries.getUserAttemptedClimbUuids().executeAsList().toSet()
+    override fun getUserAttemptedClimbUuidsAtAngle(angle: Long): Set<String> {
+        return database.bidsQueries.getUserAttemptedClimbUuidsAtAngle(angle).executeAsList().toSet()
     }
 
     override fun getUserSendDifficulties(since: String): List<Double> {

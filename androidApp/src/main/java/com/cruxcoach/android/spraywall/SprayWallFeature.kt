@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.map
  * Settings, so its storage can still be freed. Turned on again, everything is back.
  */
 object SprayWallFeature {
-    /** False hides spray walls in this build. Off for 0.2.5 and planned for 0.2.6 (owner 2026-11-21). */
+    /** False hides spray walls in this build. Off for 0.2.5 and planned for 0.2.7 (0.2.6 became a hotfix) (owner 2026-11-21). */
     val enabled: Boolean = false
 
     /**

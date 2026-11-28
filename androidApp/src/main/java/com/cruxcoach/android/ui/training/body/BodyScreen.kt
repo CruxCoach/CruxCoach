@@ -2,10 +2,6 @@ package com.cruxcoach.android.ui.training.body
 
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import android.content.Context
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -30,7 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -43,15 +38,15 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
+import com.cruxcoach.android.ui.training.common.WaistlineImportHost
+import com.cruxcoach.android.ui.training.common.rememberWaistlineImport
 import com.cruxcoach.athlete.logic.Units
 import com.cruxcoach.athlete.logic.WaistlineImport
 import com.cruxcoach.athlete.model.BodyMeasurement
 import com.cruxcoach.athlete.model.BodyMetric
 import com.cruxcoach.athlete.model.MetricGroup
 import com.cruxcoach.athlete.model.UnitSystem
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -63,6 +58,8 @@ fun BodyScreen(
     viewModel: BodyViewModel = hiltViewModel(),
     tabBar: @Composable () -> Unit = {},
     onOpenBenchmarks: () -> Unit = {},
+    /** All readings ([HistoryFilter.key] to start with, null = all). */
+    onOpenHistory: (group: String?) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -72,31 +69,13 @@ fun BodyScreen(
     val deletedText = stringResource(R.string.trb_deleted)
     val undoText = stringResource(R.string.trb_undo)
     var roundOpen by rememberSaveable { mutableStateOf(false) }
-    val context = LocalContext.current
     val resources = androidx.compose.ui.platform.LocalResources.current
-    val tooLargeText = stringResource(R.string.trb_import_too_large)
-
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            when (val read = withContext(Dispatchers.IO) { readImportFile(context, uri) }) {
-                is ImportFile.Text -> viewModel.previewImport(read.value)
-                ImportFile.TooLarge -> snackbar.showSnackbar(tooLargeText)
-                ImportFile.Failed -> viewModel.previewImport(null)
-            }
-        }
-    }
+    // Food diary and body values from Waistline: the same flow as in nutrition and the training settings.
+    val waistline = rememberWaistlineImport()
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             val text = when (event) {
-                is BodyEvent.Imported -> buildList {
-                    add(resources.getQuantityString(R.plurals.trb_import_done, event.written, event.written))
-                    if (event.keptExisting > 0) add(resources.getQuantityString(R.plurals.trb_import_kept, event.keptExisting, event.keptExisting))
-                    if (event.skipped > 0) add(resources.getQuantityString(R.plurals.trb_import_skipped, event.skipped, event.skipped))
-                }.joinToString(" · ")
-                BodyEvent.ImportEmpty -> resources.getString(R.string.trb_import_empty)
-                BodyEvent.ImportFailed -> resources.getString(R.string.trb_import_failed)
                 is BodyEvent.RoundSaved -> resources.getQuantityString(R.plurals.trb_round_saved, event.count, event.count)
             }
             snackbar.showSnackbar(text, duration = SnackbarDuration.Long)
@@ -118,8 +97,7 @@ fun BodyScreen(
         bottomBar = tabBar,
         actions = {
             IconButton(
-                onClick = { importLauncher.launch(IMPORT_MIME_TYPES) },
-                enabled = !state.importBusy,
+                onClick = waistline::launch,
                 modifier = Modifier.testTag("body_import"),
             ) {
                 Icon(Icons.Default.FileOpen, contentDescription = stringResource(R.string.trb_import_action))
@@ -155,7 +133,7 @@ fun BodyScreen(
         ) {
             if (state.energy.signals.isNotEmpty()) item { EnergyCareCard(state.energy, state.profile, "body_reds", Modifier.padding(vertical = 8.dp)) }
             // Weight first – it is what most people come here for; the round of measurements after it.
-            item { Column { WeightSection(state, onRange = viewModel::setRange) } }
+            item { Column { WeightSection(state, onRange = viewModel::setRange, onOpenHistory = { onOpenHistory(HistoryFilter.WEIGHT.key) }) } }
             item { Box(Modifier.padding(top = 12.dp)) { RoundCard(onOpen = { roundOpen = true }) } }
             item {
                 SectionTitle(stringResource(R.string.trb_measurements)) {
@@ -188,6 +166,12 @@ fun BodyScreen(
                         dialog = entry to (BodyMetric.fromKey(entry.metric) ?: BodyMetric.WEIGHT)
                     }
                 }
+                // The recent list stops at 30; everything else, by month, one tap away (owner 2026-11-28).
+                item(key = "history") {
+                    TextButton(onClick = { onOpenHistory(null) }, modifier = Modifier.testTag("body_history_open")) {
+                        Text(stringResource(R.string.trb_history_action))
+                    }
+                }
             }
             item {
                 TextButton(onClick = onOpenSettings, modifier = Modifier.padding(top = 8.dp).testTag("body_settings_link")) {
@@ -209,15 +193,7 @@ fun BodyScreen(
         )
     }
 
-    state.importPreview?.let { preview ->
-        ImportPreviewDialog(
-            preview = preview,
-            busy = state.importBusy,
-            onDayFirst = viewModel::setImportDayFirst,
-            onConfirm = viewModel::confirmImport,
-            onDismiss = viewModel::cancelImport,
-        )
-    }
+    WaistlineImportHost(waistline, snackbar)
 
     if (roundOpen) {
         MeasurementRoundSheet(
@@ -231,37 +207,8 @@ fun BodyScreen(
     }
 }
 
-private val IMPORT_MIME_TYPES = arrayOf(
-    "application/json", "text/csv", "text/comma-separated-values", "text/plain", "application/octet-stream",
-)
-
-private const val MAX_IMPORT_BYTES = 20 * 1024 * 1024
-
-private sealed interface ImportFile {
-    data class Text(val value: String) : ImportFile
-    data object TooLarge : ImportFile
-    data object Failed : ImportFile
-}
-
-/** Reads a picked file as UTF-8, refusing anything above 20 MB. */
-private fun readImportFile(context: Context, uri: Uri): ImportFile = runCatching {
-    context.contentResolver.openInputStream(uri)?.use { input ->
-        val buffer = java.io.ByteArrayOutputStream()
-        val chunk = ByteArray(64 * 1024)
-        var total = 0
-        while (true) {
-            val n = input.read(chunk)
-            if (n < 0) break
-            total += n
-            if (total > MAX_IMPORT_BYTES) return ImportFile.TooLarge
-            buffer.write(chunk, 0, n)
-        }
-        ImportFile.Text(buffer.toString(Charsets.UTF_8.name()))
-    } ?: ImportFile.Failed
-}.getOrDefault(ImportFile.Failed)
-
 /** With "hide numbers" on, everything body-image related stays hidden; build data (height, span) does not. */
-private fun isHidden(metricKey: String, hideNumbers: Boolean): Boolean {
+internal fun isHidden(metricKey: String, hideNumbers: Boolean): Boolean {
     if (!hideNumbers) return false
     return BodyMetric.fromKey(metricKey)?.group != MetricGroup.ANTHROPOMETRY
 }
@@ -284,7 +231,7 @@ private fun formatValue(value: Double, unit: String, units: UnitSystem, signed: 
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit) {
+private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit, onOpenHistory: () -> Unit) {
     val units = state.profile.units
     val hide = state.profile.hideBodyNumbers
     val rate = state.weeklyRateKg
@@ -341,6 +288,9 @@ private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit) {
     }
     Spacer(Modifier.height(8.dp))
     TrendChart(visible, hideNumbers = hide, units = units, description = description, modifier = Modifier.fillMaxWidth())
+    TextButton(onClick = onOpenHistory, modifier = Modifier.testTag("body_weight_history")) {
+        Text(stringResource(R.string.trb_history_weight_action))
+    }
 }
 
 // ── Measurements ─────────────────────────────────────────────────────
@@ -391,7 +341,13 @@ private fun SummaryRow(summary: MetricSummary, units: UnitSystem, hidden: Boolea
 }
 
 @Composable
-private fun RecentRow(entry: BodyMeasurement, units: UnitSystem, hidden: Boolean, onClick: () -> Unit) {
+internal fun RecentRow(
+    entry: BodyMeasurement,
+    units: UnitSystem,
+    hidden: Boolean,
+    tagPrefix: String = "body_recent",
+    onClick: () -> Unit,
+) {
     ListItem(
         headlineContent = { Text(labelFor(entry.metric)) },
         supportingContent = {
@@ -416,7 +372,7 @@ private fun RecentRow(entry: BodyMeasurement, units: UnitSystem, hidden: Boolean
         trailingContent = {
             Text(if (hidden) stringResource(R.string.trb_hidden_value) else formatValue(entry.value, entry.unit, units))
         },
-        modifier = Modifier.clickable(onClick = onClick).testTag("body_recent_${entry.metric}_${entry.day}"),
+        modifier = Modifier.clickable(onClick = onClick).testTag("${tagPrefix}_${entry.metric}_${entry.day}"),
     )
 }
 
@@ -487,7 +443,7 @@ private fun LocalDate.utcMillis(): Long = java.time.LocalDate.parse(toString()).
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MeasurementDialog(
+internal fun MeasurementDialog(
     initial: BodyMeasurement?,
     defaultMetric: BodyMetric,
     units: UnitSystem,
@@ -701,79 +657,4 @@ private fun MeasurementRoundSheet(
         PastDatePickerDialog(day = LocalDate.parse(day), today = today, onPick = { day = it.toString(); picking = false },
             onDismiss = { picking = false })
     }
-}
-
-// ── Waistline import ─────────────────────────────────────────────────
-
-@Composable
-private fun ImportPreviewDialog(
-    preview: WaistlineImportPreview,
-    busy: Boolean,
-    onDayFirst: (Boolean) -> Unit,
-    onConfirm: (overwrite: Boolean) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var overwrite by rememberSaveable { mutableStateOf(false) }
-    val r = preview.result
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        modifier = Modifier.testTag("body_import_dialog"),
-        title = { Text(stringResource(R.string.trb_import_title)) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    stringResource(if (r.format == WaistlineImport.Format.JSON) R.string.trb_import_format_json else R.string.trb_import_format_csv),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                val first = r.firstDay
-                val last = r.lastDay
-                if (first != null && last != null) {
-                    Text(stringResource(R.string.trb_import_range, LocalDate.parse(first).shortLabel(), LocalDate.parse(last).shortLabel()))
-                }
-                Text(stringResource(R.string.trb_import_found), style = MaterialTheme.typography.labelLarge)
-                r.countsByMetric().entries
-                    .sortedBy { BodyMetric.fromKey(it.key)?.ordinal ?: Int.MAX_VALUE }
-                    .forEach { (key, n) ->
-                        Row(Modifier.fillMaxWidth().testTag("body_import_count_$key")) {
-                            Text(r.customNames[key] ?: labelFor(key), modifier = Modifier.weight(1f))
-                            Text(n.toString(), fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                if (r.skipped > 0) {
-                    Text(pluralStringResource(R.plurals.trb_import_skipped, r.skipped, r.skipped),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (preview.askDateOrder) {
-                    Text(stringResource(R.string.trb_import_date_order), style = MaterialTheme.typography.labelLarge)
-                    Text(stringResource(R.string.trb_import_date_order_hint), style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = r.dayFirst != false, onClick = { onDayFirst(true) }, enabled = !busy,
-                            label = { Text(stringResource(R.string.trb_import_day_month)) },
-                            modifier = Modifier.testTag("body_import_day_first"))
-                        FilterChip(selected = r.dayFirst == false, onClick = { onDayFirst(false) }, enabled = !busy,
-                            label = { Text(stringResource(R.string.trb_import_month_day)) },
-                            modifier = Modifier.testTag("body_import_month_first"))
-                    }
-                }
-                if (preview.conflicts > 0) {
-                    Text(pluralStringResource(R.plurals.trb_import_conflicts, preview.conflicts, preview.conflicts),
-                        style = MaterialTheme.typography.bodySmall)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.trb_import_overwrite), modifier = Modifier.weight(1f))
-                        Switch(checked = overwrite, onCheckedChange = { overwrite = it }, enabled = !busy,
-                            modifier = Modifier.testTag("body_import_overwrite"))
-                    }
-                }
-                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(overwrite) }, enabled = !busy, modifier = Modifier.testTag("body_import_confirm")) {
-                Text(stringResource(R.string.trb_import_confirm))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.tr_action_cancel)) }
-        },
-    )
 }

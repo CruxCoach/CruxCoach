@@ -97,7 +97,7 @@ class BoardBrowserStatusFilterTest {
         personalRepo.markSent("uuid-2")
         personalRepo.markSent("uuid-4")
 
-        val sentUuids = personalRepo.getUserSentClimbUuids()
+        val sentUuids = personalRepo.getUserSentClimbUuidsAtAngle(40)
         val filtered = climbs.filter { it.uuid in sentUuids }
 
         assertEquals(2, filtered.size)
@@ -111,8 +111,8 @@ class BoardBrowserStatusFilterTest {
         personalRepo.markAttempted("uuid-2")
         personalRepo.markAttempted("uuid-3")
 
-        val sentUuids = personalRepo.getUserSentClimbUuids()
-        val attemptedUuids = personalRepo.getUserAttemptedClimbUuids()
+        val sentUuids = personalRepo.getUserSentClimbUuidsAtAngle(40)
+        val attemptedUuids = personalRepo.getUserAttemptedClimbUuidsAtAngle(40)
 
         assertTrue("uuid-1" !in attemptedUuids, "sent climb should not be in attempted")
         assertEquals(setOf("uuid-2", "uuid-3"), attemptedUuids)
@@ -127,8 +127,8 @@ class BoardBrowserStatusFilterTest {
         personalRepo.markSent("uuid-1")
         personalRepo.markAttempted("uuid-2")
 
-        val sentUuids = personalRepo.getUserSentClimbUuids()
-        val attemptedUuids = personalRepo.getUserAttemptedClimbUuids()
+        val sentUuids = personalRepo.getUserSentClimbUuidsAtAngle(40)
+        val attemptedUuids = personalRepo.getUserAttemptedClimbUuidsAtAngle(40)
         val newClimbs = climbs.filter { it.uuid !in sentUuids && it.uuid !in attemptedUuids }
 
         assertEquals(3, newClimbs.size)
@@ -144,11 +144,25 @@ class BoardBrowserStatusFilterTest {
         personalRepo.markSent("uuid-1")
         personalRepo.markAttempted("uuid-2")
 
-        val sentUuids = personalRepo.getUserSentClimbUuids()
+        val sentUuids = personalRepo.getUserSentClimbUuidsAtAngle(40)
         val unsentClimbs = climbs.filter { it.uuid !in sentUuids }
 
         assertEquals(4, unsentClimbs.size)
         assertTrue("uuid-2" in unsentClimbs.map { it.uuid }, "attempted should be in unsent")
+    }
+
+    @Test
+    fun `status is per climb and angle`() {
+        val personalRepo = FakePersonalBoardRepository()
+        personalRepo.markSent("sent-at-40", angle = 40)
+        personalRepo.markAttempted("sent-at-40", angle = 25)
+        personalRepo.markAttempted("tried-at-40", angle = 40)
+
+        assertEquals(setOf("sent-at-40"), personalRepo.getUserSentClimbUuidsAtAngle(40))
+        assertEquals(setOf("tried-at-40"), personalRepo.getUserAttemptedClimbUuidsAtAngle(40))
+        // At 25° the 40° send counts for nothing: tried there, not sent.
+        assertEquals(emptySet(), personalRepo.getUserSentClimbUuidsAtAngle(25))
+        assertEquals(setOf("sent-at-40"), personalRepo.getUserAttemptedClimbUuidsAtAngle(25))
     }
 
     // ── Kotlin-side sorting (used for SENT/ATTEMPTED results) ────
@@ -282,7 +296,7 @@ class BoardBrowserStatusFilterTest {
         climbs.forEach { boardRepo.addClimb(it) }
         (1..15).forEach { personalRepo.markSent("uuid-$it") }
 
-        val sentUuids = personalRepo.getUserSentClimbUuids()
+        val sentUuids = personalRepo.getUserSentClimbUuidsAtAngle(40)
         val sentClimbs = boardRepo.getClimbsByUuids(
             sentUuids, angle = 40, layoutId = 1, boardBrand = "kilter",
             minDifficulty = 0.0, maxDifficulty = 100.0,

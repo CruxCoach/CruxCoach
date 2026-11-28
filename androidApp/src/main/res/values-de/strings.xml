@@ -824,9 +824,9 @@
     <string name="board_filter_ungraded_only_none">Auf diesem Board gibt es bei diesem Winkel keine — hier hat jeder Climb einen Grad.</string>
     <string name="board_filter_info_action">Filterbegriffe erklären</string>
     <string name="board_filter_info_title">Filter- &amp; Sortierbegriffe</string>
-    <string name="board_filter_info_status_new">Boulder ohne Begehung oder Versuch in deinem CruxCoach-Logbuch.</string>
-    <string name="board_filter_info_status_attempted">Boulder mit eingetragenen Versuchen, aber noch ohne erfolgreiche Begehung in deinem Logbuch.</string>
-    <string name="board_filter_info_status_sent">Boulder mit mindestens einer erfolgreichen Begehung in deinem Logbuch. Das Aufleuchten am Board zählt nicht als Begehung.</string>
+    <string name="board_filter_info_status_new">Boulder ohne Begehung oder Versuch beim gewählten Winkel in deinem CruxCoach-Logbuch.</string>
+    <string name="board_filter_info_status_attempted">Boulder mit eingetragenen Versuchen beim gewählten Winkel, aber dort noch ohne erfolgreiche Begehung in deinem Logbuch.</string>
+    <string name="board_filter_info_status_sent">Boulder mit mindestens einer erfolgreichen Begehung beim gewählten Winkel in deinem Logbuch. Eine Begehung bei einem anderen Winkel zählt hier nicht. Das Aufleuchten am Board zählt nicht als Begehung.</string>
     <string name="board_filter_info_benchmarks">Als Benchmark gekennzeichnete Boulder: Referenzboulder zum Vergleichen von Schwierigkeitsgraden.</string>
     <string name="board_filter_info_ungraded">Boulder ohne Schwierigkeitsgrad im Katalog. Das sagt nichts darüber aus, ob du sie schon versucht oder geschafft hast.</string>
     <string name="board_filter_info_sort_sends">Sortiert danach, wie viele Kletterer den Boulder laut Katalog geschafft haben. Deine persönlichen Logbucheinträge zählen hier nicht.</string>
@@ -1480,6 +1480,10 @@
     <string name="board_detail_count_thousands">%1$dk</string>
     <!-- A logging button's word and how often the climber has logged it for this climb: "Top (3)" -->
     <string name="board_dock_label_count">%1$s (%2$d)</string>
+    <!-- A logging button's word, how often it is logged at the angle on screen, then at every angle: "Versuch (0 · 3)" -->
+    <string name="board_dock_label_count_angle_total">%1$s (%2$d · %3$d)</string>
+    <!-- Read aloud for a logging button whose two counts differ: "Versuch: 0 bei diesem Winkel, 3 insgesamt" -->
+    <string name="cd_board_dock_count_angle_total">%1$s: %2$d bei diesem Winkel, %3$d insgesamt</string>
     <string name="board_dock_connect">Verbinden</string>
     <string name="board_dock_light">Leuchten</string>
     <string name="board_dock_queue">Queue</string>
@@ -1743,7 +1747,7 @@
     <string name="board_stats_open">Statistik öffnen</string>
     <string name="board_stats_problems">Boulder</string>
     <string name="board_stats_grades_title">Boulder je Grad</string>
-    <string name="board_stats_grades_help">Jeder Boulder, den du im gewählten Zeitraum geloggt hast, zählt einmal je Board, über alle Winkel, mit seinem besten Ergebnis: Flash, später geschafft oder noch offen.\n\nFür einen Flash muss der erste erfasste Eintrag bei diesem Winkel erfolgreich sein, mit höchstens einem Versuch.\n\nTippe auf einen Grad, um seine Zahlen zu sehen.</string>
+    <string name="board_stats_grades_help">Jeder Boulder, den du im gewählten Zeitraum geloggt hast, zählt einmal je Board und Winkel, mit seinem besten Ergebnis dort: Flash, später geschafft oder noch offen. Derselbe Boulder bei einem anderen Winkel zählt extra, mit seinem Grad bei diesem Winkel.\n\nFür einen Flash muss der erste erfasste Eintrag bei diesem Winkel erfolgreich sein, mit höchstens einem Versuch.\n\nTippe auf einen Grad, um seine Zahlen zu sehen.</string>
     <string name="board_stats_grades_open">Noch offen</string>
     <string name="board_logbook_filter_period">Zeitraum</string>
     <string name="board_stats_period_versus">Änderung gegenüber dem gleich langen Zeitraum davor</string>
@@ -2941,6 +2945,7 @@
     <string name="board_selection_quantum_schematic_hint">Das Originalbild des ausgewählten Quantum-Modells ist enthalten.</string>
     <string name="board_selection_shinywall_variant_label">Shiny-Wall-Variante</string>
     <string name="board_selection_shinywall_variant_hint">Wähle die Variante, als die deine Wand eingerichtet ist. Full-Wände haben zusätzlich die kleinen Griffe zwischen den Reihen.</string>
+    <string name="board_selection_shinywall_download_hint">Wir laden den Shiny-Wall-Katalog herunter und richten ihn als dein Board ein.</string>
     <string name="quantum_sync_failed_generic">Der Quantum-Katalog konnte nicht aktualisiert werden. Vorhandene Offline-Daten bleiben verfügbar.</string>
     <string name="board_layers_title">Board-Layer</string>
     <string name="board_layers_occupied">%1$d von %2$d aktiv</string>
@@ -3077,6 +3082,9 @@
     <string name="whatsnew_025_title">Neu in 0.2.5</string>
     <string name="whatsnew_025_body">• Training &amp; Ernährung&#160;– ein Coach fürs Training heute, über 200 Übungen und Ernährungsziele.\n• Statistiken&#160;– eine Logbuch-Übersicht, Versuche bis zur Begehung, deine Boards im Vergleich, Session-Rückblicke.\n• Jahresrückblick&#160;– dein Kletterjahr als Seiten zum Teilen, in den Statistiken.\n• Shiny Wall&#160;– wähle deine Shiny Wall in der Board-Auswahl, durchsuche ihre Boulder und lass sie per Bluetooth leuchten. Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten &amp; Importe.\n• Community auf Buzz&#160;– sprich mit den Entwicklern und teste neue Versionen zuerst (Einstellungen → Community).</string>
     <string name="whatsnew_025_hint">Außerdem: LED-Effekte für Kilter, PaintBox (Einstellungen → Extras), eine Prüfung der Board-Größe, nach dem Teilen wieder dein eigener Bluetooth-Name und Quantum-Boards als experimentell gekennzeichnet.</string>
+    <string name="whatsnew_026_title">Neu in 0.2.6</string>
+    <string name="whatsnew_026_body">• Pro Winkel&#160;– Versucht und Geschafft gelten für den eingestellten Winkel, wie in den Hersteller-Apps. Die Knöpfe Versuch und Top zeigen „an diesem Winkel · insgesamt“.\n• Waistline&#160;– der Import holt jetzt auch dein Ernährungstagebuch, zu finden unter Ernährung → ⋮.\n• Körper&#160;– alle Messwerte auf einer Seite, zum Korrigieren und Löschen.\n• Kraftvergleich&#160;– mit veröffentlichten Daten, getrennt nach Männern und Frauen, als Bereich statt als einzelner Grad.</string>
+    <string name="whatsnew_026_hint">Außerdem: Shiny Wall zeigt nach dem Board-Wechsel sofort seine Winkel, und Offline-Teilen bringt Shiny Wall und alle Hallen-Standorte mit.</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
 
@@ -3138,7 +3146,7 @@
     <string name="ux_account_help">Kontozugang\nDein privater Schlüssel funktioniert wie ein Passwort. Halte ihn geheim und bewahre ihn außerhalb dieses Handys auf. Er lässt sich nicht zurücksetzen.\n\nDeine Daten\nEine Schlüsselkopie ist kein Daten-Backup. Logbuch und Listen benötigen eine zusätzliche Sicherung.\n\nOptionale Hilfen\nAmber kann deinen Schlüssel in einer eigenen App verwalten. Deine öffentliche Konto-ID darfst du teilen; sie stellt den Zugang aber nicht wieder her.</string>
     <string name="ux_lists_help">Listen\nJede Liste enthält einen Boulder höchstens einmal. Favoriten sind eine integrierte Liste.\n\nAbspielen\nEin optionaler Ablauf ergänzt Wiederholungen, Winkel und Pausen. Ein abgespielter Schritt ist noch keine Begehung. Versuche und erfolgreiche Begehungen erfasst du im Logbuch.\n\nVerlauf\nDer Verlauf erfasst an die Board-LEDs übertragene Boulder. Er ist vom Kletterlogbuch getrennt.</string>
     <string name="ux_logbook_help">Einträge\nBegehungen sind erfolgreiche Logeinträge, auch Wiederholungen. Versuche meint hier Einträge ohne erfolgreiche Begehung. Ein Eintrag kann mehrere Kletterversuche enthalten.\n\nFilter\nZeitraum, Ergebnis, Board und Winkel grenzen diese Liste ein. Die Übersicht über der Liste gilt immer für das ganze Logbuch, und die Statistik hat ihren eigenen Zeitraum und Board-Filter. Einen Boulder am Board aufleuchten zu lassen erfasst keinen Kletterversuch.</string>
-    <string name="ux_stats_help">Filter\nBoard und Zeitraum oben gelten für alle Karten darunter. Die Board-Karte und die Versuche-Karte zeigen immer alle Boards nebeneinander.\n\nZahlen\nBegehungen zählen erfolgreiche Einträge, auch Wiederholungen. Versuche summieren die erfassten Kletterversuche aller Einträge einschließlich erfolgreicher Begehungen; jeder Eintrag zählt mindestens einmal. Klettertage sind Tage mit mindestens einem Eintrag. Boulder zählen jeden Boulder einmal je Board.\n\nBestwerte\nDer schwerste Flash, die meisten Begehungen an einem Tag, Klettertage pro Woche über den ganzen Zeitraum und die meisten Wochen in Folge mit einem Klettertag, alle im gewählten Zeitraum. Der Zeitraum beginnt frühestens mit deinem ersten Eintrag.\n\nFlash\nFür einen Flash muss der erste erfasste Eintrag zu diesem Boulder bei diesem Winkel erfolgreich sein, mit höchstens einem Versuch. Frühere erfolglose Einträge schließen ihn aus, auch außerhalb des gewählten Zeitraums; fehlende Einträge begrenzen diese Aussage.\n\nAktivität\nKalender und Wochendiagramm zählen Logeinträge, auch erfolglose.</string>
+    <string name="ux_stats_help">Filter\nBoard und Zeitraum oben gelten für alle Karten darunter. Die Board-Karte und die Versuche-Karte zeigen immer alle Boards nebeneinander.\n\nZahlen\nBegehungen zählen erfolgreiche Einträge, auch Wiederholungen. Versuche summieren die erfassten Kletterversuche aller Einträge einschließlich erfolgreicher Begehungen; jeder Eintrag zählt mindestens einmal. Klettertage sind Tage mit mindestens einem Eintrag. Boulder zählen jeden Boulder einmal je Board und Winkel.\n\nBestwerte\nDer schwerste Flash, die meisten Begehungen an einem Tag, Klettertage pro Woche über den ganzen Zeitraum und die meisten Wochen in Folge mit einem Klettertag, alle im gewählten Zeitraum. Der Zeitraum beginnt frühestens mit deinem ersten Eintrag.\n\nFlash\nFür einen Flash muss der erste erfasste Eintrag zu diesem Boulder bei diesem Winkel erfolgreich sein, mit höchstens einem Versuch. Frühere erfolglose Einträge schließen ihn aus, auch außerhalb des gewählten Zeitraums; fehlende Einträge begrenzen diese Aussage.\n\nAktivität\nKalender und Wochendiagramm zählen Logeinträge, auch erfolglose.</string>
     <string name="ux_restore_consequence">Wiederherstellen nutzt das bisherige Konto und aktiviert das verschlüsselte Backup. Den Kontowechsel bestätigst du vor dem Fortfahren.</string>
     <string name="ux_logbook_unsent_attempts">Ohne Begehung</string>
     <string name="ux_later_send">Später geschafft</string>
@@ -3226,6 +3234,7 @@
     <string name="onboarding_download_selection_failed">Die Download-Auswahl konnte nicht gespeichert werden. Bitte versuche es erneut.</string>
     <string name="board_picker_download_title">%1$s herunterladen?</string>
     <string name="board_picker_download_description">Dieses Board ist nicht offline verfügbar und für Downloads abgewählt. Jetzt herunterladen und dauerhaft für künftige Katalog- und Zusatzdaten-Updates auswählen?</string>
+    <string name="board_picker_download_description_not_selected">Dieses Board ist nicht offline verfügbar und noch nicht für Downloads ausgewählt. Jetzt herunterladen und dauerhaft für künftige Katalog- und Zusatzdaten-Updates auswählen?</string>
     <string name="board_picker_download_confirm">Herunterladen und Updates aktivieren</string>
     <string name="kilter_upload_counts">Übertragen: %1$d · Noch ausstehend: %2$d</string>
     <string name="kilter_upload_status_title">Letzter Übertragungsversuch des Logbuchs</string>
@@ -3669,6 +3678,9 @@
     <string name="shinywall_import_error_generic">Der Import ist fehlgeschlagen. Bitte versuche es noch einmal.</string>
     <string name="shinywall_list_favorites">Shiny-Wall-Favoriten</string>
     <string name="shinywall_list_own_routes">Meine Shiny-Wall-Routen</string>
+    <string name="shinywall_catalogue_missing">Lade zuerst den Shiny-Wall-Katalog. Der Import braucht ihn, um deine Routen zu finden.</string>
+    <string name="shinywall_catalogue_load">Katalog laden</string>
+    <string name="shinywall_catalogue_loading">Der Katalog wird geladen. Starte den Import noch einmal, sobald er da ist.</string>
     <!-- Board-Größe prüfen: optionale Hilfe, wenn jemand unsicher ist, welche Größe sein Board hat -->
     <string name="board_size_check_title">Board-Größe prüfen</string>
     <string name="board_size_check_link">Größe am Board prüfen</string>

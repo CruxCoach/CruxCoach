@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Built, but switched off in 0.2.5: spray walls and the wall games (Knot among them) come with 0.2.6.
+Built, but switched off since 0.2.5: spray walls and the wall games (Knot among them) come with 0.2.7.
 
 ### Added
 - Spray walls, from the main menu. Photograph your own wall (camera or photo
@@ -89,6 +89,61 @@ Built, but switched off in 0.2.5: spray walls and the wall games (Knot among the
   field as it lit. A colour's only foot hold within a climber's reach never
   gets both feet, a drawn field never lights more holds than the board takes,
   and the number of players stays adjustable when no field fits.
+
+## [0.2.6] - 2026-11-29
+
+A fix release for 0.2.5. It also changes how logs at different angles count.
+
+### Changed
+- Logs count per climb and angle, as in the board makers' apps. A climb you sent at 40° no longer
+  shows as "sent" at 25°. This applies to the board browser's status filter (New, Tried, Sent,
+  "exclude sent"), the playlist generator's projects, and the statistics: problems per grade, problem
+  counts, the session summary and the recap now all count climb and angle together, as the flash and
+  the year in review already did. MoonBoard is unchanged, because its angle is part of the problem.
+- The Try and Top buttons on a climb's page count the angle on screen first and then all angles,
+  for example "Try (0 · 3)". When both numbers are equal, they show one.
+- Strength comparisons use published data instead of our own estimate: Power Company Climbing and
+  Lattice Training, about 1,300 boulderers, for men and women separately (mixed without a gender in
+  the profile). The quick estimate shows the range of grades where a value is common ("common
+  between 5a and 7b") instead of one grade. The climber profile shows where a value sits for your
+  grade, together with the usual range in % of body weight, and how much it explains: finger strength
+  about half of the differences in grade, pull-up strength only about a third. This applies to the
+  benchmarks, the bottleneck view and the starting load for hangs too.
+
+### Added
+- The Waistline import reads the food diary too.
+  - From the database backup: every logged food with its meal, amount and nutrition, your Waistline
+    foods for the food search, and each recipe as one entry. A second import of the same backup adds
+    nothing twice.
+  - From the diary CSV: the nutrition day totals, as one entry per day. A later database backup for the
+    same day replaces the day total.
+  - "Import from Waistline" is now under Nutrition (⋮ menu) and in the training settings.
+- All body readings on one page: "All entries" on the body page and "All weights" under the weight
+  chart, by month, filtered by weight, composition or circumferences. Tap a reading to correct it, or
+  delete it with undo.
+
+### Fixed
+- Shiny Wall: after switching to it from another board, the angle sheet offered no angles until the
+  app was restarted. Coming from an angle above 60°, the list stayed empty with no way out. The angles
+  now appear as soon as the catalogue has arrived, and the angle moves to the nearest one the wall has.
+- Swiping between climbs from the logbook opened every climb at the angle of the entry you tapped, so
+  a quick log could land at the wrong angle. Each climb now opens at the angle it was logged at, and a
+  climb opened at an angle it doesn't exist at moves to its own angle.
+- After logging, undoing or deleting, history entries under an older ID of the same climb (merged
+  duplicates) no longer disappear from the climb's page and its counts.
+- Offline sharing:
+  - Shiny Wall now also arrives when the share updates the app.
+  - A receiver keeps the gym locations of boards it didn't take. On a test phone they had dropped
+    from about 3,200 to 1,200.
+  - A second share from the same phone no longer sends the whole board database again.
+  - A Shiny Wall that didn't arrive shows an error and is loaded online.
+  - No temporary files are left behind.
+- The Shiny Wall account import waits for the Shiny Wall catalogue and offers to load it, instead of
+  skipping entries that it then never picked up.
+- The Waistline diary CSV from Waistline 3.11.1 is read. That version writes only today's row (a
+  Waistline bug); the import says so and points to the database backup.
+- Board picker: Shiny Wall says that its catalogue will be downloaded. The download question no longer
+  claims you deselected a board you never chose. The catalogue is downloaded once instead of twice.
 
 ## [0.2.5] - 2026-11-27
 

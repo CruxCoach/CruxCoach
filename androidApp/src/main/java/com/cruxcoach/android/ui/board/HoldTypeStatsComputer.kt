@@ -46,10 +46,10 @@ object HoldTypeStatsComputer {
     }
 
     /**
-     * One entry per problem on [board], as the other stats count problems: per climb, across angles. [ascents] are
-     * sends and attempts; a problem is sent when any entry is a send, and its grade is that of its hardest send, or
-     * of its hardest entry when not sent. Entries without frames (attempts have none) take them from [frames], by
-     * [normalizeClimbUuid].
+     * One entry per climb on [board], across angles: its holds are the same at every angle (the other stats count a
+     * climb per angle, see [BoardStatsComputer.problemKey]). [ascents] are sends and attempts; a climb is sent when
+     * any entry is a send, and its grade is that of its hardest send, or of its hardest entry when not sent. Entries
+     * without frames (attempts have none) take them from [frames], by [normalizeClimbUuid].
      */
     fun problems(ascents: List<AscentWithClimb>, board: String, frames: Map<String, String> = emptyMap()): List<TypedClimb> =
         ascents.filter { it.boardBrand == board }

@@ -762,6 +762,37 @@ class BoardStatsComputerTest {
         )
         val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
         assertEquals(1, stats.gradeOutcomes.sumOf { it.flashCount })
+        // The 30° attempt is a problem of its own, still open there.
+        assertEquals(1, stats.gradeOutcomes.sumOf { it.attemptCount })
+        assertEquals(2, stats.uniqueClimbs)
+    }
+
+    @Test
+    fun `a climb at two angles is two problems, each with the grade it has there`() {
+        val logs = listOf(
+            // Sent at 40°, where it is graded harder, and only tried at 25°.
+            ascent(uuid = "send40", climbUuid = "same", angle = 40L, isSend = true, bidCount = 3L, difficulty = 24.0),
+            ascent(uuid = "bid25", climbUuid = "same", angle = 25L, isSend = false, bidCount = 2L, difficulty = 14.0,
+                climbedAt = "2026-03-06T18:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+        assertEquals(2, stats.uniqueClimbs)
+        val byDifficulty = stats.gradeOutcomes.associateBy { it.difficultyInt }
+        assertEquals(listOf(14, 24), byDifficulty.keys.sorted())
+        assertEquals(listOf(0, 1, 0), byDifficulty.getValue(24).let { listOf(it.flashCount, it.redpointCount, it.attemptCount) })
+        assertEquals(listOf(0, 0, 1), byDifficulty.getValue(14).let { listOf(it.flashCount, it.redpointCount, it.attemptCount) })
+    }
+
+    @Test
+    fun `the pyramid counts a climb sent at two angles as two problems`() {
+        val logs = listOf(
+            ascent(uuid = "s40", climbUuid = "same", angle = 40L, difficulty = 18.0),
+            ascent(uuid = "s40again", climbUuid = "same", angle = 40L, difficulty = 18.0, climbedAt = "2026-03-06T18:00:00"),
+            ascent(uuid = "s35", climbUuid = "same", angle = 35L, difficulty = 18.0, climbedAt = "2026-03-07T18:00:00"),
+        )
+        val pyramid = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE).gradePyramid.single()
+        assertEquals(3, pyramid.count)
+        assertEquals(2, pyramid.problems)
     }
 
     // -- Grade pyramid label fidelity --
@@ -880,14 +911,16 @@ class BoardStatsComputerTest {
     }
 
     @Test
-    fun `ungraded attempts count once per problem and same ids on different boards stay separate`() {
+    fun `ungraded attempts count once per problem and angle and same ids on different boards stay separate`() {
         val logs = listOf(
             ascent(uuid = "one", isSend = false, difficulty = null, bidCount = 7),
+            ascent(uuid = "again", isSend = false, difficulty = null, climbedAt = "2026-03-06T18:00:00"),
             ascent(uuid = "two", isSend = false, difficulty = null, angle = 30),
             ascent(uuid = "moon", isSend = false, difficulty = null, boardBrand = "moonboard"),
         )
         val stats = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE)
-        assertEquals(2, stats.uniqueClimbs)
+        // c-1 at 40° (twice), c-1 at 30° and the MoonBoard c-1.
+        assertEquals(3, stats.uniqueClimbs)
         assertTrue(stats.gradeOutcomes.isEmpty())
     }
 

@@ -130,8 +130,9 @@ internal fun workingDifficulty(profile: AthleteProfile, logbook: LogbookSummary?
     profile.coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) } ?: logbook?.takeIf { it.hasGrades }?.workingDifficulty
 
 /**
- * The value in % body weight on a scale [GradeStrengthNorms] knows (10-s
- * max on ~20 mm with both hands, pull-up 1RM), or null for other protocols.
+ * The value in % body weight on a scale [GradeStrengthNorms] knows, or null for other protocols: a two-hand max
+ * hang on 18–22 mm (or no edge given), read back to 10 s by [HoldCurve] – the norms assume a half crimp – and the
+ * pull-up 1RM (Epley, from loaded or body-weight reps).
  */
 internal fun normValue(def: ExerciseDefinition, b: Benchmark, bodyweight: Double?): Pair<GradeStrengthNorms.Metric, Double>? {
     val bw = (b.bodyweightKg ?: bodyweight)?.takeIf { it > 0 } ?: return null
@@ -275,7 +276,7 @@ private fun BenchmarkRowCard(
                     }
                     // While the value is still being learned it is no verdict on the athlete's level.
                     if (row.learning !is LearningState.State.Learning) normValue(row.def, b, bodyweight)?.let { (metric, pct) ->
-                        com.cruxcoach.android.ui.training.coach.PlausibilityHint(metric, pct, workingDifficulty)
+                        com.cruxcoach.android.ui.training.coach.PlausibilityHint(metric, pct, workingDifficulty, GradeStrengthNorms.NormSex.of(profile.sex))
                     }
                 }
             }
@@ -510,7 +511,7 @@ fun BenchmarkEntryDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     normValue(def, draft, bodyweight)?.let { (metric, pct) ->
-                        com.cruxcoach.android.ui.training.coach.PlausibilityHint(metric, pct, workingDifficulty)
+                        com.cruxcoach.android.ui.training.coach.PlausibilityHint(metric, pct, workingDifficulty, GradeStrengthNorms.NormSex.of(profile.sex))
                     }
                 }
             }

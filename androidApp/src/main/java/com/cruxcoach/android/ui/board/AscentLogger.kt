@@ -20,6 +20,18 @@ import kotlinx.coroutines.withContext
 import java.util.UUID
 
 /**
+ * The user's history for one climb under all its [identityUuids] (the canonical uuid plus every
+ * climb_aliases entry: remapped Kilter and MoonBoard duplicates), each entry once, newest first.
+ */
+internal fun mergedClimbHistory(
+    identityUuids: Collection<String>,
+    historyFor: (String) -> List<AscentWithClimb>,
+): List<AscentWithClimb> =
+    identityUuids.flatMap(historyFor)
+        .distinctBy { it.uuid }
+        .sortedByDescending { it.climbedAt }
+
+/**
  * Handles ascent/bid CRUD operations for the climb detail screen.
  *
  * Plain Kotlin class (not a ViewModel). Receives a [CoroutineScope] from the
@@ -33,6 +45,9 @@ internal class AscentLogger(
     private val zoneManager: IntensityZoneManager,
     private val climbNavState: ClimbNavigationState,
     private val currentClimbUuid: () -> String,
+    /** The history shown for a climb, merged over its aliases like the detail's first load
+     *  ([mergedClimbHistory]); reloading only the climb's own uuid dropped every alias entry. */
+    private val climbHistory: (climbUuid: String) -> List<AscentWithClimb>,
     private val onAscentSaved: (isSend: Boolean) -> Unit,
     /** Immediate UI-side follow-up for a successful quick log. Sync remains
      * deferred until the undo window closes, but the rest timer must restart
@@ -163,7 +178,7 @@ internal class AscentLogger(
                     }
                 }
                 activeQuickLog = pending.before
-                val updated = personalBoardRepo.getUserHistoryForClimb(pending.climbUuid)
+                val updated = climbHistory(pending.climbUuid)
                 state.update {
                     it.copy(
                         userAscents = updated,
@@ -441,7 +456,7 @@ internal class AscentLogger(
                     }
                 }
                 val updatedAscents = try {
-                    personalBoardRepo.getUserHistoryForClimb(climbUuid)
+                    climbHistory(climbUuid)
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -542,7 +557,7 @@ internal class AscentLogger(
             withContext(Dispatchers.IO) {
                 if (entry?.isSend == false) personalBoardRepo.deleteBid(uuid)
                 else personalBoardRepo.deleteAscent(uuid)
-                val updatedAscents = personalBoardRepo.getUserHistoryForClimb(climbUuid)
+                val updatedAscents = climbHistory(climbUuid)
                 state.update { it.copy(ascent = it.ascent.copy(deleteConfirmUuid = null), userAscents = updatedAscents) }
             }
             climbNavState.statusDataChanged = true

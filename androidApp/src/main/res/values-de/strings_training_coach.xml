@@ -170,7 +170,10 @@
     <string name="trc_estimate_no_weight">Trag dein Körpergewicht ein, dann rechnet der Coach auch in Prozent des Körpergewichts.</string>
     <string name="trc_estimate_note">Wird als „geschätzt“ gespeichert und vom ersten echten Satz ersetzt – nach oben wie nach unten.</string>
     <string name="trc_estimate_pct">≈\u00A0%1$d\u00A0%% des Körpergewichts</string>
-    <string name="trc_estimate_typical">typisch für etwa %1$s</string>
+    <string name="trc_estimate_range">üblich zwischen %1$s und %2$s</string>
+    <string name="trc_estimate_range_one">üblich bei etwa %1$s</string>
+    <string name="trc_estimate_range_up_to">üblich bis %1$s</string>
+    <string name="trc_estimate_range_from">üblich ab %1$s</string>
     <string name="trc_estimate_high">ungewöhnlich hoch für %1$s – Eingabe prüfen?</string>
     <string name="trc_estimate_low">ungewöhnlich niedrig für %1$s – Eingabe prüfen?</string>
     <string name="trc_card_level">Vorschläge: %1$s</string>

@@ -77,10 +77,12 @@ import kotlin.random.Random
 import javax.inject.Inject
 import com.cruxcoach.android.util.safeLaunch
 
-/** Status of a climb relative to the local user. The three buckets are
- *  DISJOINT — `getUserAttemptedClimbUuids` `EXCEPT`s sent climbs, so every
- *  climb is in exactly one — which is what makes the multi-select union both
- *  unambiguous and O(1)-countable.
+/** Status of a climb relative to the local user, at the browsed wall angle:
+ *  as in the board makers' apps, a send at 40° leaves the climb new at 25°.
+ *  The three buckets are DISJOINT — `getUserAttemptedClimbUuidsAtAngle`
+ *  `EXCEPT`s climbs sent at that angle, so every climb is in exactly one —
+ *  which is what makes the multi-select union both unambiguous and
+ *  O(1)-countable.
  *
  *  The browser status filter is a multi-select [Set] of these: an **empty
  *  set means "no status constraint"** (the "Alle" chip). The legacy
@@ -326,6 +328,12 @@ object BoardAnglePicker {
     fun clampAngle(angle: Int, chips: List<Int>): Int =
         if (chips.isEmpty() || angle in chips) angle
         else chips.minBy { kotlin.math.abs(it - angle) }
+
+    /** A catalogue-angle board on screen without chips whose catalogue is now in the database: its angles
+     *  were read before the catalogue existed (a switch to a board not downloaded yet, e.g. the opt-in
+     *  Shiny Wall), so they must be read again. False once chips are known, so no extra read follows. */
+    fun awaitsCatalogueChips(brand: BoardBrand, chips: List<Int>, brandHasCatalogue: Boolean): Boolean =
+        brand.usesCatalogueAngles && chips.isEmpty() && brandHasCatalogue
 
     fun sliderIndex(chips: List<Int>, angle: Int): Int {
         require(chips.isNotEmpty())
@@ -581,6 +589,27 @@ internal fun BoardBrowserState.showPendingBoard(boardBrand: String, layoutId: In
     )
 }
 
+/**
+ * The catalogue angles of the board already on screen, read after its catalogue landed. Device 0.2.5: Kilter at
+ * 45° → Shiny Wall (not downloaded yet). The switch read no angles, so the angle sheet offered none until a
+ * restart; from Kilter at 70° the list stayed empty (Shiny Wall has 0–60°) with no way out. This is no board
+ * switch: only the chips and the angle (snapped to the nearest chip) change, every other filter stays. A board
+ * that changed meanwhile keeps its own state.
+ */
+internal fun BoardBrowserState.withCatalogueAngles(
+    boardBrand: String,
+    layoutId: Int,
+    angleChips: List<Int>,
+): BoardBrowserState {
+    if (filter.boardBrand != boardBrand || filter.layoutId != layoutId) return this
+    return copy(
+        filter = filter.copy(
+            angle = BoardAnglePicker.clampAngle(filter.angle, angleChips),
+            angleChips = angleChips,
+        ),
+    )
+}
+
 @HiltViewModel
 class BoardBrowserViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
@@ -618,10 +647,23 @@ class BoardBrowserViewModel @Inject constructor(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.Eagerly, sessionManager.state.value.isActive)
 
-    // Cached user climb status sets (loaded once, reused for client-side filtering)
-    private var sentUuids: Set<String> = emptySet()
-    private var attemptedUuids: Set<String> = emptySet()
-    private var statusLoaded = false
+    /** The browser's status buckets at one wall [angle]. [attempted] excludes
+     *  [sent] (the query's `EXCEPT`), so the buckets stay disjoint. */
+    private class StatusSets(val angle: Int, val sent: Set<String>, val attempted: Set<String>) {
+        /** The single disjoint bucket a climb falls into at [angle]. */
+        fun statusOf(uuid: String): ClimbStatusFilter = when (uuid) {
+            in sent -> ClimbStatusFilter.SENT
+            in attempted -> ClimbStatusFilter.ATTEMPTED
+            else -> ClimbStatusFilter.NEW
+        }
+    }
+
+    // Cached user climb status sets of ONE wall angle, reused for client-side
+    // filtering. Status is per climb AND angle, like the board makers' apps:
+    // browsing another angle loads that angle's sets, and refreshBoardData
+    // drops them after a new log.
+    @Volatile
+    private var statusSets: StatusSets? = null
     // Ignored climbs ("Quatsch" the user never wants suggested). Loaded once
     // like the status sets and applied as an always-on client-side filter to
     // every fetched page (the ignored UUIDs live in the encrypted SecureDB,
@@ -642,6 +684,9 @@ class BoardBrowserViewModel @Inject constructor(
     private var refreshJob: Job? = null
     /** A board switch is on screen ([showPendingBoard]) but its catalogue angles are not read yet. */
     private var boardSwitchPending = false
+    /** Board + catalogue revision the missing angle chips were last read for, so a board whose catalogue
+     *  has no angles for its layout is not asked again on every refresh. */
+    private var catalogueAnglesReadFor: String? = null
 
     // RANDOM sort, browse mode. SQL ORDER BY RANDOM() re-shuffles per page →
     // duplicates and gaps when scrolling. Instead: page 1 is a fast SQL
@@ -816,7 +861,7 @@ class BoardBrowserViewModel @Inject constructor(
                 }
                 // Eagerly load status UUIDs in background (non-blocking)
                 launch(Dispatchers.IO) {
-                    PerfLogger.traceSuspend("ensureStatusLoaded") { ensureStatusLoaded() }
+                    PerfLogger.traceSuspend("ensureStatusLoaded") { ensureStatusLoaded(_state.value.filter.angle) }
                 }
                 // Live updates for grade scale changes
                 launch {
@@ -1005,7 +1050,7 @@ class BoardBrowserViewModel @Inject constructor(
         }
 
         // Invalidate caches so new ascents/bids + ignore-toggles are picked up
-        statusLoaded = false
+        statusSets = null
         hiddenLoaded = false
         // Latest-wins: cancel any in-flight refresh so a rapid board switch
         // doesn't stack multiple full query sets on the single DB connection.
@@ -1082,6 +1127,26 @@ class BoardBrowserViewModel @Inject constructor(
                             angleChips = angleChips,
                         ) }
                         boardSwitchPending = false
+                    } else if (BoardAnglePicker.awaitsCatalogueChips(
+                            prefBrand, _state.value.filter.angleChips, brandHasCatalogue,
+                        )
+                    ) {
+                        // The switch read no angles because the board's catalogue was not
+                        // downloaded yet (Shiny Wall is opt-in). Read them once it is here, so the
+                        // picker offers them without a restart and an angle the board lacks snaps
+                        // to a real one. Persisted like a picked angle, so a later prefs re-seed
+                        // and the other screens use it too. Once per board and catalogue revision.
+                        val anglesKey = "$prefBoardBrand|$prefLayoutId|${syncManager.state.value.catalogueRevision}"
+                        if (anglesKey != catalogueAnglesReadFor) {
+                            val supported = boardRepository.getSupportedAnglesForLayout(prefLayoutId, prefBoardBrand)
+                            catalogueAnglesReadFor = anglesKey
+                            val chips = BoardAnglePicker.chipsFor(prefBrand, prefLayoutId, supported)
+                            if (chips.isNotEmpty()) {
+                                val angleBefore = _state.value.filter.angle
+                                _state.update { it.withCatalogueAngles(prefBoardBrand, prefLayoutId, chips) }
+                                if (_state.value.filter.angle != angleBefore) persistFilters()
+                            }
+                        }
                     }
                     // FEAT-031: placements are namespaced by board_brand; reload
                     // them (with the active brand) on a board change, not just
@@ -1391,22 +1456,29 @@ class BoardBrowserViewModel @Inject constructor(
         }
     }
 
-    private suspend fun ensureStatusLoaded() {
-        if (!statusLoaded) {
-            sentUuids = PerfLogger.traceQuery("getUserSentClimbUuids") {
-                boardRepository.canonicalizeClimbUuids(
-                    personalBoardRepo.getUserSentClimbUuids()
-                )
-            }
-            attemptedUuids = PerfLogger.traceQuery("getUserAttemptedClimbUuids") {
-                boardRepository.canonicalizeClimbUuids(
-                    personalBoardRepo.getUserAttemptedClimbUuids()
-                )
-            }
-            statusLoaded = true
-            PerfLogger.milestone("Status UUIDs loaded (sent=${sentUuids.size}, attempted=${attemptedUuids.size})")
+    /** The status sets at [angle]: cached, and read anew for another angle or
+     *  after a log dropped the cache. */
+    private suspend fun ensureStatusLoaded(angle: Int): StatusSets {
+        statusSets?.takeIf { it.angle == angle }?.let { return it }
+        val sent = PerfLogger.traceQuery("getUserSentClimbUuidsAtAngle") {
+            boardRepository.canonicalizeClimbUuids(
+                personalBoardRepo.getUserSentClimbUuidsAtAngle(angle.toLong())
+            )
         }
+        val attempted = PerfLogger.traceQuery("getUserAttemptedClimbUuidsAtAngle") {
+            boardRepository.canonicalizeClimbUuids(
+                personalBoardRepo.getUserAttemptedClimbUuidsAtAngle(angle.toLong())
+            )
+        }
+        PerfLogger.milestone("Status UUIDs loaded (angle=$angle, sent=${sent.size}, attempted=${attempted.size})")
+        return StatusSets(angle, sent, attempted).also { statusSets = it }
     }
+
+    /** The status sets [f] filters by: those of its angle, read only when a
+     *  status is selected (without one, every status filter is a no-op). */
+    private suspend fun statusSetsFor(f: BrowserFilterState): StatusSets =
+        if (f.statusFilter.isEmpty()) StatusSets(f.angle, emptySet(), emptySet())
+        else ensureStatusLoaded(f.angle)
 
     private suspend fun ensureHiddenLoaded() {
         if (!hiddenLoaded) {
@@ -1428,19 +1500,14 @@ class BoardBrowserViewModel @Inject constructor(
         if (hiddenUuids.isEmpty()) climbs else climbs.filterNot { it.uuid in hiddenUuids }
 
     /** Client-side multi-select status filter (OR-union over the selected
-     *  disjoint buckets). Empty selection = no constraint. */
-    private fun applyStatusFilter(climbs: List<ClimbWithStats>, statuses: Set<ClimbStatusFilter>): List<ClimbWithStats> {
+     *  disjoint buckets) at the angle of [status]. Empty selection = no constraint. */
+    private fun applyStatusFilter(
+        climbs: List<ClimbWithStats>,
+        statuses: Set<ClimbStatusFilter>,
+        status: StatusSets,
+    ): List<ClimbWithStats> {
         if (statuses.isEmpty()) return climbs
-        return climbs.filter { statusOf(it.uuid) in statuses }
-    }
-
-    /** The single disjoint bucket a climb falls into. `attemptedUuids` already
-     *  excludes sends (the `EXCEPT` in `getUserAttemptedClimbUuids`), so the
-     *  three checks are mutually exclusive. */
-    private fun statusOf(uuid: String): ClimbStatusFilter = when {
-        uuid in sentUuids -> ClimbStatusFilter.SENT
-        uuid in attemptedUuids -> ClimbStatusFilter.ATTEMPTED
-        else -> ClimbStatusFilter.NEW
+        return climbs.filter { status.statusOf(it.uuid) in statuses }
     }
 
     /** True when the selection can be served by a direct UUID query — a
@@ -1449,12 +1516,12 @@ class BoardBrowserViewModel @Inject constructor(
     private fun isDirectUuidStatus(statuses: Set<ClimbStatusFilter>): Boolean =
         statuses.isNotEmpty() && ClimbStatusFilter.NEW !in statuses
 
-    /** Union of the logged-UUID sets for a direct-UUID selection. The two sets
-     *  are disjoint, so this is just their concatenation. */
-    private fun directStatusUuids(statuses: Set<ClimbStatusFilter>): Set<String> {
-        val out = HashSet<String>(sentUuids.size + attemptedUuids.size)
-        if (ClimbStatusFilter.SENT in statuses) out += sentUuids
-        if (ClimbStatusFilter.ATTEMPTED in statuses) out += attemptedUuids
+    /** Union of the logged-UUID sets of [status]'s angle for a direct-UUID
+     *  selection. The two sets are disjoint, so this is just their concatenation. */
+    private fun directStatusUuids(statuses: Set<ClimbStatusFilter>, status: StatusSets): Set<String> {
+        val out = HashSet<String>(status.sent.size + status.attempted.size)
+        if (ClimbStatusFilter.SENT in statuses) out += status.sent
+        if (ClimbStatusFilter.ATTEMPTED in statuses) out += status.attempted
         return out
     }
 
@@ -1543,7 +1610,7 @@ class BoardBrowserViewModel @Inject constructor(
             try {
                 val filter = _state.value.filter
                 val (results, newDbOffset, dbExhausted) = withContext(Dispatchers.IO) {
-                    if (filter.statusFilter.isNotEmpty()) ensureStatusLoaded()
+                    if (filter.statusFilter.isNotEmpty()) ensureStatusLoaded(filter.angle)
                     ensureHiddenLoaded()
                     PerfLogger.traceQuery("searchClimbs.fetchFiltered") {
                         refillBrowsePages(targetSize) { offset -> fetchFiltered(filter, dbOffset = offset) }
@@ -1604,7 +1671,7 @@ class BoardBrowserViewModel @Inject constructor(
      * All client-side restrictions are counted through the browse pipeline. */
     private suspend fun resolveCount(filter: BrowserFilterState): Long {
         ensureHiddenLoaded()
-        if (filter.statusFilter.isNotEmpty()) ensureStatusLoaded()
+        if (filter.statusFilter.isNotEmpty()) ensureStatusLoaded(filter.angle)
         val plain = filter.statusFilter.isEmpty() &&
             filter.originFilter == OriginFilter.ALL && !filter.myClimbsOnly &&
             !_state.value.holdSearch.holdFilterActive &&
@@ -1651,6 +1718,8 @@ class BoardBrowserViewModel @Inject constructor(
      * For ALL/NEW/UNSENT: page-scans (high hit rate, most climbs match).
      */
     private suspend fun fetchFiltered(f: BrowserFilterState, dbOffset: Int, pageSize: Int = PAGE_SIZE): Triple<List<ClimbWithStats>, Int, Boolean> {
+        // Status buckets of this filter's angle (status is per climb AND angle).
+        val status = statusSetsFor(f)
         // MY-CLIMBS FILTER: short-circuit the paginated browse path. We pull
         // every climb authored by the local pubkey on this layout in one
         // call and apply remaining filters client-side. Drafts (source=
@@ -1664,7 +1733,7 @@ class BoardBrowserViewModel @Inject constructor(
             val all = boardRepository.getOwnClimbsForBrowse(pubkey, f.layoutId, f.angle, f.boardBrand)
             val nameFiltered = if (f.searchQuery.isBlank()) all
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
-            val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
+            val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter, status)
             val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
             val originFiltered = applyQuantumRuleFilter(applyOriginFilter(benchFiltered, f.originFilter), f)
             val sorted = sortInKotlin(
@@ -1692,7 +1761,7 @@ class BoardBrowserViewModel @Inject constructor(
             )
             val nameFiltered = if (f.searchQuery.isBlank()) all
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
-            val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
+            val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter, status)
             val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
             val sorted = sortInKotlin(
                 applyQuantumOverlapFilter(
@@ -1722,7 +1791,7 @@ class BoardBrowserViewModel @Inject constructor(
             )
             val nameFiltered = if (f.searchQuery.isBlank()) all
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
-            val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
+            val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter, status)
             val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
             val sorted = sortInKotlin(
                 applyQuantumOverlapFilter(
@@ -1753,7 +1822,7 @@ class BoardBrowserViewModel @Inject constructor(
             val holdFiltered = if (hs.holdFilterActive) {
                 nameFiltered.filter { it.uuid in hs.holdFilterUuids }
             } else nameFiltered
-            val statusFiltered = applyStatusFilter(holdFiltered, f.statusFilter)
+            val statusFiltered = applyStatusFilter(holdFiltered, f.statusFilter, status)
             val sorted = sortInKotlin(
                 applyQuantumOverlapFilter(applyHiddenFilter(statusFiltered), f),
                 f.sortField, f.sortDirection,
@@ -1777,7 +1846,7 @@ class BoardBrowserViewModel @Inject constructor(
             val all = boardRepository.getClimbsByUuids(
                 hs.holdFilterUuids, f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
             )
-            val filtered = applyQuantumRuleFilter(applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(all, f.statusFilter), f.benchmarkOnly), f.originFilter), f)
+            val filtered = applyQuantumRuleFilter(applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(all, f.statusFilter, status), f.benchmarkOnly), f.originFilter), f)
             val sorted = sortInKotlin(
                 applyQuantumOverlapFilter(applyHiddenFilter(filtered), f),
                 f.sortField, f.sortDirection,
@@ -1790,7 +1859,7 @@ class BoardBrowserViewModel @Inject constructor(
         // The sets are disjoint, so the union needs no dedup and the count is
         // exact (sorted.size).
         if (isDirectUuidStatus(f.statusFilter)) {
-            val uuids = directStatusUuids(f.statusFilter)
+            val uuids = directStatusUuids(f.statusFilter, status)
             if (uuids.isEmpty()) return Triple(emptyList(), 0, true)
             if (dbOffset > 0) return Triple(emptyList(), dbOffset, true)
             val gb = gradeBounds(f)
@@ -1834,7 +1903,7 @@ class BoardBrowserViewModel @Inject constructor(
                         applyQuantumRuleFilter(
                             applyOriginFilter(
                                 applyBenchmarkFilter(
-                                    applyStatusFilter(page, f.statusFilter), f.benchmarkOnly,
+                                    applyStatusFilter(page, f.statusFilter, status), f.benchmarkOnly,
                                 ),
                                 f.originFilter,
                             ),

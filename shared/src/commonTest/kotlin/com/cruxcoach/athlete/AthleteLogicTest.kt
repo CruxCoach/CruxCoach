@@ -724,10 +724,10 @@ class BenchmarkLogicTest {
 
     @Test
     fun startEstimateGivesACarefulLoadInsteadOfZero() {
-        // 68.5 kg, no grade: 6a max-hang band low 94.75 % → 64.9 kg → pick-up 70 % = 45.4 kg → careful 80 % = 36.3 kg
-        // → the first session feels out from 85 % of that = 30.9 kg (owner 2026-10-10).
+        // 68.5 kg, no grade, no sex: everyone's 6a max-hang band low 99.64 % → 68.3 kg → pick-up 70 % = 47.8 kg
+        // → careful 80 % = 38.2 kg → the first session feels out from 85 % of that = 32.5 kg (owner 2026-10-10).
         val cap = StartEstimate.capacity(twoArmPickup, 68.5, null, null)!!
-        assertEquals(30.9, cap.value, 0.1)
+        assertEquals(32.5, cap.value, 0.1)
         assertTrue(cap.estimated)
         val item = RoutineItem(twoArmPickup.slug, sets = 4, durationS = 10, edgeMm = 20)
         val load = LoadPrescriber.prescribe(twoArmPickup, item, cap, 68.5, 1.0)!!.loadKg!!
@@ -737,6 +737,9 @@ class BenchmarkLogicTest {
         assertTrue(oneLoad in 10.0..15.0, "one-arm $oneLoad")
         // A higher grade gives more; a related value wins over the grade.
         assertTrue(StartEstimate.capacity(twoArmPickup, 68.5, null, 22.0)!!.value > cap.value)
+        // The profile's sex picks the comparison group: men's 6a band low 102.15 % → 33.3 kg; "other" compares with everyone.
+        assertEquals(33.3, StartEstimate.capacity(twoArmPickup, 68.5, null, null, Sex.MALE)!!.value, 0.1)
+        assertEquals(cap.value, StartEstimate.capacity(twoArmPickup, 68.5, null, null, Sex.OTHER)!!.value, 1e-9)
         assertEquals(34.0, StartEstimate.capacity(twoArmPickup, 68.5, 50.0, null)!!.value, 1e-9)
         // Hangs on body weight, non-finger work and an unknown body weight keep their own rules.
         assertNull(StartEstimate.capacity(twoArmPickup.copy(load = LoadMode.BODYWEIGHT_PLUS), 68.5, null, null))

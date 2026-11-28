@@ -53,6 +53,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -189,11 +190,13 @@ fun BoardClimbDetailScreen(
         else listOf(viewModel.initialClimbUuid)
     }
     val fallbackNavAngle = remember { viewModel.climbNavState.angle }
+    // Per-climb angles of the source list (logbook entries); empty for sources with one angle.
+    val navClimbAngles = remember { viewModel.climbNavState.climbAngles }
     val navAngleFor: (String) -> Int = { uuid ->
         if (navigatedFromQueue && detailQueueState.isActive) {
             if (uuid == viewModel.initialClimbUuid) fallbackNavAngle
             else detailQueueState.queue.firstOrNull { it.climbUuid == uuid }?.angle ?: fallbackNavAngle
-        } else fallbackNavAngle
+        } else navClimbAngles[uuid] ?: fallbackNavAngle
     }
     val initialIndex = remember(navUuids) {
         val idx = navUuids.indexOf(viewModel.initialClimbUuid)
@@ -2227,7 +2230,7 @@ private fun BoardDetailBottomActions(
         ) {
             BoardDetailActionDock(
                 loggingEnabled = !state.isLoading && !state.isQuickLogging,
-                counts = remember(state.userAscents) { climbLogCounts(state.userAscents) },
+                counts = remember(state.userAscents, state.angle) { climbLogCounts(state.userAscents, state.angle) },
                 lamp = BoardDeliveryPolicy.lampMode(
                     decision = decision,
                     hasDirectPayload = hasDirectPayload,
@@ -2262,12 +2265,28 @@ private fun DockButtonContent(
     contentDescription: String,
     label: String,
     iconTint: Color = LocalContentColor.current,
-    /** How often this button's log exists for the climb; shown after the word as "Top (3)", nothing at zero. */
+    /** How often this button's log exists for the climb at the angle on screen. */
+    countAtAngle: Int = 0,
+    /** How often it exists at every angle. Shown after the word as "Top (3)" when both agree, as "Top (0 · 3)",
+     *  this angle first, when they do not; nothing at zero. */
     count: Int = 0,
 ) {
-    val counted = if (count > 0) stringResource(R.string.board_dock_label_count, label, count) else null
-    // A narrow phone with a large font has no room for the number: then the word alone, never a cut one.
-    var countFits by remember(counted) { mutableStateOf(true) }
+    // Longest first. A narrow phone with a large font takes the next form that fits, never a cut one: both
+    // numbers, then the one for this angle, then the word alone.
+    val forms = when {
+        count <= 0 -> listOf(label)
+        countAtAngle == count -> listOf(stringResource(R.string.board_dock_label_count, label, count), label)
+        else -> listOf(
+            stringResource(R.string.board_dock_label_count_angle_total, label, countAtAngle, count),
+            stringResource(R.string.board_dock_label_count, label, countAtAngle),
+            label,
+        )
+    }
+    // Two different numbers are read out in words, also when a shorter form hides the total.
+    val countDescription = if (count > 0 && countAtAngle != count) {
+        stringResource(R.string.cd_board_dock_count_angle_total, label, countAtAngle, count)
+    } else null
+    var formIndex by remember(forms) { mutableIntStateOf(0) }
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -2276,12 +2295,15 @@ private fun DockButtonContent(
         Icon(icon, contentDescription = contentDescription, tint = iconTint, modifier = Modifier.size(27.dp))
         Spacer(Modifier.height(1.dp))
         Text(
-            if (counted != null && countFits) counted else label,
+            forms[formIndex.coerceAtMost(forms.lastIndex)],
+            modifier = if (countDescription != null) {
+                Modifier.semantics { this.contentDescription = countDescription }
+            } else Modifier,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             softWrap = false,
-            onTextLayout = { if (it.hasVisualOverflow) countFits = false },
+            onTextLayout = { if (it.hasVisualOverflow && formIndex < forms.lastIndex) formIndex++ },
         )
     }
 }
@@ -2289,7 +2311,8 @@ private fun DockButtonContent(
 @Composable
 private fun BoardDetailActionDock(
     loggingEnabled: Boolean,
-    /** This climber's logged tries and tops of the climb, in brackets on the two logging buttons. */
+    /** This climber's logged tries and tops of the climb, at the angle on screen and at every angle, in brackets
+     *  on the two logging buttons. */
     counts: ClimbLogCounts,
     lamp: BoardDetailLampMode,
     lightEnabled: Boolean,
@@ -2320,6 +2343,7 @@ private fun BoardDetailActionDock(
                 contentDescription = stringResource(R.string.board_ascent_attempt),
                 label = stringResource(R.string.board_dock_attempt),
                 iconTint = ErrorRed,
+                countAtAngle = counts.triesAtAngle,
                 count = counts.tries,
             )
         }
@@ -2408,6 +2432,7 @@ private fun BoardDetailActionDock(
                 contentDescription = stringResource(R.string.board_ascent_send),
                 label = stringResource(R.string.board_dock_top),
                 iconTint = SuccessGreen,
+                countAtAngle = counts.topsAtAngle,
                 count = counts.tops,
             )
         }

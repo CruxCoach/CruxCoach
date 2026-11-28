@@ -272,6 +272,44 @@ class LocalShareModernSchemaTest {
         verify { boardRepository.upsertSyncState("climbs", "2026-07-01 00:00:00") }
     }
 
+    /**
+     * A peer's gym directory is the sender's copy, not the published dataset. It used to
+     * replace the receiver's whole directory: a receiver that had MoonBoard, Aurora and
+     * Shiny Wall gyms kept only what the snapshot carried (3169 → 1162 on a device), and
+     * as the locations chunk still counted as current they never came back.
+     */
+    @Test
+    fun existingInstall_peerGymDirectoryReplacesOnlyTheFamiliesItCarries() {
+        openTarget().use { db ->
+            fun gym(uuid: String, brand: String) = db.execSQL(
+                "INSERT INTO kilter_board_location(gym_uuid, name, lat, lng, country_code, board_brand) " +
+                    "VALUES (?, 'Gym', 48.0, 11.0, 'DE', ?)",
+                arrayOf<Any?>(uuid, brand),
+            )
+            gym("gym-kilter", "kilter")
+            gym("gym-tension", "tension")
+            gym("gym-shiny", "shinywall")
+            gym("gym-moon-closed", "moonboard")
+        }
+
+        // The sender's directory carries one MoonBoard gym only.
+        importer.importFromLocalDb(srcPath)
+
+        openTarget().use { db ->
+            // Families the snapshot does not carry keep every gym.
+            assertEquals(1, countWhere(db, "kilter_board_location", "gym_uuid = 'gym-kilter'"))
+            assertEquals(1, countWhere(db, "kilter_board_location", "gym_uuid = 'gym-tension'"))
+            assertEquals(1, countWhere(db, "kilter_board_location", "gym_uuid = 'gym-shiny'"))
+            // The family it carries is the sender's: its list replaces this phone's.
+            assertEquals(
+                1,
+                countWhere(db, "kilter_board_location", "gym_uuid = 'gym-1' AND board_brand = 'moonboard'"),
+            )
+            assertEquals(0, countWhere(db, "kilter_board_location", "gym_uuid = 'gym-moon-closed'"))
+            assertEquals(4, countWhere(db, "kilter_board_location", "1=1"))
+        }
+    }
+
     @Test
     fun eachMissingAdditiveGeometryTableStillImportsTheGenericCatalogueAtomically() {
         val additivePublicTables = listOf(

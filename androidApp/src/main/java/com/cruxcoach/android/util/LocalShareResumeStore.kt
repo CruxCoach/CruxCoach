@@ -15,6 +15,13 @@ class LocalShareResumeStore(private val context: Context) {
         val apkVersionName: String?,
         val boardPath: String?,
         val board: LocalShareProtocol.BoardArtifact?,
+        /**
+         * The Shiny Wall catalogue received next to the board snapshot (v2 `families`
+         * only), imported by the updated app after the board. Records written before
+         * 0.2.5.1 have neither field.
+         */
+        val shinyWallPath: String? = null,
+        val shinyWall: LocalShareProtocol.FamilyArtifact? = null,
     )
 
     private val preferences =
@@ -60,6 +67,24 @@ class LocalShareResumeStore(private val context: Context) {
                         }
                     },
                 )
+        }
+        // Only the one family a v2 manifest can name; anything else is not persisted and
+        // the catalogue then follows over the internet.
+        val shinyWall = pending.shinyWall
+        if (shinyWall != null && pending.shinyWallPath != null &&
+            pending.protocolVersion == LocalShareProtocol.VERSION_V2 &&
+            shinyWall.boardBrand == LocalShareProtocol.SHINYWALL_BRAND &&
+            shinyWall.format == LocalShareProtocol.SHINYWALL_FORMAT &&
+            shinyWall.artifact.path == LocalShareProtocol.V2_SHINYWALL_PATH &&
+            shinyWall.compression == "gzip"
+        ) {
+            json.put("shinyWallPath", pending.shinyWallPath)
+                .put("shinyWallFormat", shinyWall.format)
+                .put("shinyWallSizeBytes", shinyWall.artifact.sizeBytes)
+                .put("shinyWallSha256", shinyWall.artifact.sha256)
+                .put("shinyWallUncompressedSizeBytes", shinyWall.uncompressedSizeBytes)
+                .put("shinyWallUncompressedSha256", shinyWall.uncompressedSha256)
+                .put("shinyWallClimbCount", shinyWall.climbCount)
         }
         preferences.edit().putString(KEY, json.toString()).apply()
     }
@@ -119,6 +144,35 @@ class LocalShareResumeStore(private val context: Context) {
                     }.orEmpty(),
                 )
             }
+            // Optional and on its own: a Shiny Wall part this version cannot trust is
+            // dropped (the catalogue then follows over the internet) without costing the
+            // board snapshot or the APK hand-off.
+            val shinyWallPath = json.optString("shinyWallPath").takeIf { it.isNotBlank() && it != "null" }
+            val shinyWall = shinyWallPath?.let { path ->
+                runCatching {
+                    require(protocolVersion == LocalShareProtocol.VERSION_V2) {
+                        "Shiny Wall travels only in the v2 share"
+                    }
+                    require(
+                        json.optString("shinyWallFormat", LocalShareProtocol.SHINYWALL_FORMAT) ==
+                            LocalShareProtocol.SHINYWALL_FORMAT,
+                    ) { "Unknown Shiny Wall format" }
+                    requireInsideCache(path)
+                    LocalShareProtocol.FamilyArtifact(
+                        boardBrand = LocalShareProtocol.SHINYWALL_BRAND,
+                        format = LocalShareProtocol.SHINYWALL_FORMAT,
+                        artifact = LocalShareProtocol.Artifact(
+                            path = LocalShareProtocol.V2_SHINYWALL_PATH,
+                            sizeBytes = json.getLong("shinyWallSizeBytes"),
+                            sha256 = json.getString("shinyWallSha256"),
+                        ),
+                        compression = "gzip",
+                        uncompressedSizeBytes = json.getLong("shinyWallUncompressedSizeBytes"),
+                        uncompressedSha256 = json.getString("shinyWallUncompressedSha256"),
+                        climbCount = json.optLong("shinyWallClimbCount", 0L).coerceAtLeast(0L),
+                    )
+                }.getOrNull()
+            }
             Pending(
                 requiredVersionCode = json.getLong("requiredVersionCode"),
                 protocolVersion = protocolVersion,
@@ -128,6 +182,8 @@ class LocalShareResumeStore(private val context: Context) {
                 },
                 boardPath = boardPath,
                 board = board,
+                shinyWallPath = shinyWallPath?.takeIf { shinyWall != null },
+                shinyWall = shinyWall,
             )
         }.getOrElse {
             clear()
