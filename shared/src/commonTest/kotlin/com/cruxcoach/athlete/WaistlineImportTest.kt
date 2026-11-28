@@ -2,9 +2,11 @@ package com.cruxcoach.athlete
 
 import com.cruxcoach.athlete.logic.WaistlineImport
 import com.cruxcoach.athlete.logic.WaistlineImport.Format
+import com.cruxcoach.athlete.model.Meal
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class WaistlineImportTest {
@@ -139,5 +141,232 @@ class WaistlineImportTest {
         assertEquals(70.25, WaistlineImport.parseNumber("70,25"))
         assertEquals(70.25, WaistlineImport.parseNumber(" 70.25 "))
         assertEquals(null, WaistlineImport.parseNumber(""))
+    }
+
+    // ── Food diary (JSON backup) ───────────────────────────────────
+
+    /**
+     * Shaped like a real `waistline_export.json` (settings.js writeDatabaseBackupToFile):
+     * diary items reference foodList/recipes by id, carry portion/quantity as typed
+     * (strings) or numbers, and `category` is the meal's index into the meal names.
+     */
+    private val backup = """
+        {"diary":[
+          {"id":1,"dateTime":"2026-10-01T00:00:00.000Z","stats":{"weight":70.2},"items":[
+            {"id":3,"portion":"150","quantity":"1","type":"food","dateTime":"2026-10-01T06:40:12.345Z","category":0},
+            {"id":5,"portion":"1","quantity":"2","type":"food","dateTime":"2026-10-01T10:02:00.000Z","category":"1"},
+            {"id":2,"portion":1,"type":"food","dateTime":"2026-10-01T15:00:00.000Z","category":3,"quantity":250,"description":"Kuchen beim Bäcker"},
+            {"id":1,"portion":"400","quantity":"0.5","type":"recipe","dateTime":"2026-10-01T18:30:00.000Z","category":2},
+            {"id":2,"portion":1,"type":"food","dateTime":"2026-10-01T17:00:00Z","category":0,"quantity":-320,"description":"Ride"},
+            {"id":99,"portion":"100","quantity":"1","type":"food","category":4}
+          ]},
+          {"id":2,"dateTime":"2026-10-02T00:00:00.000Z","stats":{},"items":[
+            {"id":3,"portion":"50","quantity":"2","type":"food","dateTime":"2026-10-02T07:00:00.000Z","category":0}
+          ]}
+        ],
+        "foodList":[
+          {"id":2,"name":"Quick Add","barcode":"quick-add","portion":1,"nutrition":{"calories":1},"archived":true},
+          {"id":3,"name":"Haferflocken","brand":"Kölln","barcode":"4000540000108","portion":"100","unit":"g",
+           "nutrition":{"calories":372,"kilojoules":1575,"fat":7,"carbohydrates":58.7,"proteins":13.5,"sugars":0.7},
+           "dateTime":"2026-10-02T07:00:00.000Z","categories":[]},
+          {"id":5,"name":"Toast","portion":"1","unit":"Scheibe","nutrition":{"calories":67,"fat":1.1,"carbohydrates":12.2,"proteins":2.1},
+           "dateTime":"2026-10-01T10:01:59.000Z"}
+        ],
+        "recipes":[
+          {"id":1,"name":"Linsencurry","portion":"800","unit":"g","quantity":"1","archived":false,
+           "items":[{"id":3,"portion":"100","quantity":"1","type":"food"}],
+           "nutrition":{"calories":960,"proteins":48,"carbohydrates":120,"fat":28}}
+        ],
+        "meals":[],"version":34,
+        "settings":{"diary":{"meal-names":["Frühstück","Lunch","Dinner","Snacks","Vesper","",""]},"units":{"energy":"kcal"}}}
+    """.trimIndent()
+
+    private fun WaistlineImport.Result.entry(id: String) = food.entries.single { it.id == id }
+
+    @Test
+    fun foodDiaryEntriesWithWaistlinesNutritionMath() {
+        val r = WaistlineImport.parse(backup)
+        val food = r.food
+        assertEquals(5, food.entries.size)
+        assertEquals(2, food.skipped)   // burned energy (negative quick add) and a food missing from the backup
+        assertEquals(1, food.recipeEntries)
+        assertEquals(setOf("2026-10-01", "2026-10-02"), food.days)
+        assertEquals("2026-10-01", food.firstDay)
+        assertEquals("2026-10-02", food.lastDay)
+
+        // 150 g of a food stored per 100 g: × 1.5, each nutrient rounded to 2 decimals.
+        val oats = r.entry("waistline:2026-10-01:0")
+        assertEquals("Haferflocken (Kölln)", oats.name)
+        assertEquals(Meal.BREAKFAST, oats.meal)
+        assertEquals(150.0, oats.amountG)
+        assertNull(oats.portions)
+        assertEquals(558.0, oats.kcal)
+        assertEquals(20.25, oats.proteinG)
+        assertEquals(88.05, oats.carbsG)
+        assertEquals(10.5, oats.fatG)
+        assertEquals("waistline:3", oats.foodItemId)
+        assertEquals(1790836812345L, oats.loggedAt)
+
+        // A counted unit ("Scheibe"): portions, no grams; the category may be a string.
+        val toast = r.entry("waistline:2026-10-01:1")
+        assertEquals(Meal.LUNCH, toast.meal)
+        assertNull(toast.amountG)
+        assertEquals(2.0, toast.portions)
+        assertEquals(134.0, toast.kcal)
+        assertEquals(4.2, toast.proteinG)
+        assertEquals(24.4, toast.carbsG)
+        assertEquals(2.2, toast.fatG)
+
+        // Quick add: the quantity is the energy, the description the name, no saved food.
+        val cake = r.entry("waistline:2026-10-01:2")
+        assertEquals("Kuchen beim Bäcker", cake.name)
+        assertEquals(Meal.SNACK, cake.meal)
+        assertEquals(250.0, cake.kcal)
+        assertEquals(1.0, cake.portions)
+        assertNull(cake.proteinG)
+        assertNull(cake.foodItemId)
+
+        // Recipe: one entry, 400 g × 0.5 of an 800 g recipe = a quarter of its nutrition.
+        val curry = r.entry("waistline:2026-10-01:3")
+        assertEquals("Linsencurry", curry.name)
+        assertEquals(Meal.DINNER, curry.meal)
+        assertEquals(200.0, curry.amountG)
+        assertEquals(240.0, curry.kcal)
+        assertEquals(12.0, curry.proteinG)
+        assertEquals(30.0, curry.carbsG)
+        assertEquals(7.0, curry.fatG)
+        assertNull(curry.foodItemId)
+
+        val second = r.entry("waistline:2026-10-02:0")
+        assertEquals(100.0, second.amountG)
+        assertEquals(372.0, second.kcal)
+        assertEquals("2026-10-02", second.day)
+    }
+
+    @Test
+    fun referencedFoodsBecomeCruxCoachFoods() {
+        val foods = WaistlineImport.parse(backup).food.foods.associateBy { it.id }
+        assertEquals(setOf("waistline:3", "waistline:5"), foods.keys)   // no quick add, no recipe
+        val oats = foods.getValue("waistline:3")
+        assertEquals("Haferflocken", oats.name)
+        assertEquals("Kölln", oats.brand)
+        assertEquals("4000540000108", oats.barcode)
+        assertEquals(WaistlineImport.SOURCE, oats.source)
+        assertEquals(372.0, oats.kcalPer100)
+        assertEquals(13.5, oats.proteinPer100)
+        assertEquals(58.7, oats.carbsPer100)
+        assertEquals(7.0, oats.fatPer100)
+        assertNull(oats.servingG)   // its portion is 100 g, the basis anyway
+        assertEquals(2, oats.useCount)
+        assertEquals(1790924400000L, oats.lastUsedAt)
+        // Counted foods keep Waistline's portion: values per portion, the portion as label.
+        val toast = foods.getValue("waistline:5")
+        assertEquals(WaistlineImport.PER_PORTION_SOURCE, toast.source)
+        assertEquals(67.0, toast.kcalPer100)
+        assertEquals("1 Scheibe", toast.servingLabel)
+        assertNull(toast.servingG)
+    }
+
+    @Test
+    fun portionsInGramsAndMillilitresGivePer100Values() {
+        val json = """
+            {"diary":[{"dateTime":"2026-10-05T00:00:00.000Z","items":[
+              {"id":7,"portion":"500","quantity":"1","type":"food","category":0},
+              {"id":8,"portion":"45","quantity":"2","type":"food","category":0},
+              {"id":9,"portion":"100","quantity":"1","type":"food","category":0}]}],
+             "foodList":[
+              {"id":7,"name":"Milch","portion":"250","unit":"ml","nutrition":{"calories":160}},
+              {"id":8,"name":"Müsli","portion":"45","unit":"g","nutrition":{"calories":170,"proteins":4.5}},
+              {"id":9,"name":"Brühe","portion":"100","unit":"g","nutrition":{"kilojoules":418.4}}]}
+        """.trimIndent()
+        val r = WaistlineImport.parse(json)
+        val milk = r.entry("waistline:2026-10-05:0")
+        assertEquals(500.0, milk.amountG)
+        assertEquals(320.0, milk.kcal)
+        val milkFood = r.food.foods.single { it.id == "waistline:7" }
+        assertEquals(64.0, milkFood.kcalPer100)
+        assertEquals(250.0, milkFood.servingG)
+        assertEquals("250 ml", milkFood.servingLabel)   // marks it as a drink
+        val muesli = r.entry("waistline:2026-10-05:1")
+        assertEquals(90.0, muesli.amountG)
+        assertEquals(340.0, muesli.kcal)
+        val muesliFood = r.food.foods.single { it.id == "waistline:8" }
+        assertEquals(377.78, muesliFood.kcalPer100)
+        assertEquals(10.0, muesliFood.proteinPer100)
+        assertEquals(45.0, muesliFood.servingG)
+        assertEquals("45 g", muesliFood.servingLabel)
+        // Only kJ stored: converted with Waistline's own factor.
+        assertEquals(100.0, r.entry("waistline:2026-10-05:2").kcal)
+    }
+
+    @Test
+    fun mealNamesInWaistlinesLanguagesAndAnythingElseIsASnack() {
+        assertEquals(Meal.BREAKFAST, WaistlineImport.mealForName("Frühstück"))
+        assertEquals(Meal.BREAKFAST, WaistlineImport.mealForName(" Petit Déjeuner "))
+        assertEquals(Meal.LUNCH, WaistlineImport.mealForName("Déjeuner"))
+        assertEquals(Meal.LUNCH, WaistlineImport.mealForName("Mittagessen"))
+        assertEquals(Meal.DINNER, WaistlineImport.mealForName("Abendessen"))
+        assertEquals(Meal.DINNER, WaistlineImport.mealForName("Middag"))
+        assertEquals(Meal.SNACK, WaistlineImport.mealForName("Snacks"))
+        assertEquals(Meal.SNACK, WaistlineImport.mealForName("Vesper"))
+        assertEquals(Meal.SNACK, WaistlineImport.mealForName(""))
+        // Without settings Waistline's default names count, by index.
+        val json = """
+            {"diary":[{"dateTime":"2026-10-06T00:00:00.000Z","items":[
+              {"id":1,"portion":"1","quantity":"1","category":0},{"id":1,"portion":"1","quantity":"1","category":1},
+              {"id":1,"portion":"1","quantity":"1","category":2},{"id":1,"portion":"1","quantity":"1","category":3},
+              {"id":1,"portion":"1","quantity":"1","category":6},{"id":1,"portion":"1","quantity":"1"}]}],
+             "foodList":[{"id":1,"name":"Apfel","portion":"1","unit":"Stück","nutrition":{"calories":80}}]}
+        """.trimIndent()
+        assertEquals(
+            listOf(Meal.BREAKFAST, Meal.LUNCH, Meal.DINNER, Meal.SNACK, Meal.SNACK, Meal.SNACK),
+            WaistlineImport.parse(json).food.entries.map { it.meal },
+        )
+    }
+
+    @Test
+    fun theSameBackupGivesTheSameIdsSoASecondImportAddsNothing() {
+        val first = WaistlineImport.parse(backup).food
+        val again = WaistlineImport.parse(backup).food
+        assertEquals(first.entries.map { it.id }, again.entries.map { it.id })
+        assertEquals(first.foods.map { it.id }, again.foods.map { it.id })
+        assertEquals(first.entries.size, first.entries.map { it.id }.toSet().size)
+        // Two diary records of one day: numbered on, never the same id twice.
+        val twoRecords = """
+            {"diary":[
+              {"dateTime":"2026-10-07T00:00:00.000Z","items":[{"id":1,"portion":"1","quantity":"1","category":0}]},
+              {"dateTime":"2026-10-07T00:00:00.000Z","items":[{"id":1,"portion":"1","quantity":"1","category":1}]}],
+             "foodList":[{"id":1,"name":"Apfel","portion":"1","unit":"Stück","nutrition":{"calories":80}}]}
+        """.trimIndent()
+        assertEquals(listOf("waistline:2026-10-07:0", "waistline:2026-10-07:1"),
+            WaistlineImport.parse(twoRecords).food.entries.map { it.id })
+    }
+
+    @Test
+    fun bodyValuesOfTheSameBackupStayAsTheyWere() {
+        val r = WaistlineImport.parse(backup)
+        assertEquals(listOf("weight"), r.measurements.map { it.metric })
+        assertEquals(70.2, r.value("2026-10-01", "weight"))
+        assertEquals("2026-10-01", r.firstDay)
+        assertEquals("2026-10-01", r.lastDay)
+        assertEquals(0, r.skipped)
+        assertFalse(r.isEmpty)
+        // A backup with food only is not empty.
+        val onlyFood = WaistlineImport.parse(backup.replace("\"stats\":{\"weight\":70.2},", ""))
+        assertTrue(onlyFood.measurements.isEmpty())
+        assertFalse(onlyFood.isEmpty)
+    }
+
+    @Test
+    fun csvHasFoodOnlyAsDayTotalsAndStaysBodyOnly() {
+        val csv = "Datum;Kalorien (kcal);Proteine (g);Gewicht (kg)\n01.10.2026;2100;120;70,2\n"
+        val r = WaistlineImport.parse(csv)
+        assertTrue(r.foodTotalsOnly)
+        assertTrue(r.food.entries.isEmpty())
+        assertEquals(70.2, r.value("2026-10-01", "weight"))
+        val totalsOnly = WaistlineImport.parse("Datum;Kalorien (kcal)\n01.10.2026;2100\n")
+        assertTrue(totalsOnly.isEmpty)
+        assertTrue(totalsOnly.foodTotalsOnly)
+        assertFalse(WaistlineImport.parse("Date;Weight (kg)\n2026-10-01;70\n").foodTotalsOnly)
     }
 }
