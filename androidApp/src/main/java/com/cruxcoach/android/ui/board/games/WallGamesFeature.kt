@@ -6,6 +6,6 @@ package com.cruxcoach.android.ui.board.games
  * only their own screen starts a game. Turned on again, everything is back; they keep no data of their own.
  */
 object WallGamesFeature {
-    /** False hides the wall games in this build. Off for 0.2.5 and planned for 0.2.6 (owner 2026-11-21). */
+    /** False hides the wall games in this build. Off for 0.2.5 and planned for 0.2.7 (0.2.6 became a hotfix) (owner 2026-11-21). */
     val enabled: Boolean = false
 }

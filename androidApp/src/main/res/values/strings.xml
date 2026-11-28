@@ -3085,6 +3085,9 @@
     <string name="whatsnew_025_title">New in 0.2.5</string>
     <string name="whatsnew_025_body">• Training &amp; nutrition&#160;– a coach for today’s training, 200+ exercises and food targets.\n• Statistics&#160;– a logbook overview, tries until the send, your boards compared, session recaps.\n• Year in review&#160;– your climbing year as pages to share, in the statistics.\n• Shiny Wall&#160;– choose your Shiny Wall in the board picker, browse its climbs and light them over Bluetooth. Import your Shiny Wall logbook under Settings → Board accounts &amp; imports.\n• Community on Buzz&#160;– talk to the developers and test new builds first (Settings → Community).</string>
     <string name="whatsnew_025_hint">Also: LED effects for Kilter, PaintBox (Settings → Extras), a board size check, your own Bluetooth name back after sharing, and Quantum boards marked experimental.</string>
+    <string name="whatsnew_026_title">New in 0.2.6</string>
+    <string name="whatsnew_026_body">• Per angle&#160;– tried and sent count for the angle you set, as in the board makers\' apps. The Try and Top buttons show “this angle · all angles”.\n• Waistline&#160;– the import now brings your food diary too, under Nutrition → ⋮.\n• Body&#160;– all your readings on one page, to correct or delete.\n• Strength comparison&#160;– based on published data, for men and women separately, as a range instead of one grade.</string>
+    <string name="whatsnew_026_hint">Also: Shiny Wall shows its angles right after you switch boards, and offline sharing brings Shiny Wall and every gym location along.</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
 
