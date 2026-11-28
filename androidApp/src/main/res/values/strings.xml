@@ -1435,6 +1435,10 @@
     <string name="board_detail_count_thousands">%1$dk</string>
     <!-- A logging button's word and how often the climber has logged it for this climb: "Top (3)" -->
     <string name="board_dock_label_count">%1$s (%2$d)</string>
+    <!-- A logging button's word, how often it is logged at the angle on screen, then at every angle: "Try (0 · 3)" -->
+    <string name="board_dock_label_count_angle_total">%1$s (%2$d · %3$d)</string>
+    <!-- Read aloud for a logging button whose two counts differ: "Try: 0 at this angle, 3 in total" -->
+    <string name="cd_board_dock_count_angle_total">%1$s: %2$d at this angle, %3$d in total</string>
     <string name="board_dock_connect">Connect</string>
     <string name="board_dock_light">Light</string>
     <string name="board_dock_queue">Queue</string>
