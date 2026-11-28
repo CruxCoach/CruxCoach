@@ -61,6 +61,31 @@ class LocalShareSnapshotPrunerTest {
         }
     }
 
+    @Test fun `the gym directory is no catalogue and keeps every family`() {
+        seed { db ->
+            db.execSQL("CREATE TABLE climbs (uuid TEXT PRIMARY KEY, board_brand TEXT)")
+            db.execSQL("CREATE TABLE kilter_board_location (gym_uuid TEXT PRIMARY KEY, board_brand TEXT)")
+            db.execSQL("CREATE TABLE kilter_board_wall (wall_uuid TEXT PRIMARY KEY, gym_uuid TEXT)")
+            db.execSQL("INSERT INTO climbs VALUES ('k1','kilter'),('m1','moonboard')")
+            db.execSQL(
+                "INSERT INTO kilter_board_location VALUES ('g1','kilter'),('g2','moonboard')," +
+                    "('g3','tension'),('g4','shinywall')"
+            )
+            db.execSQL("INSERT INTO kilter_board_wall VALUES ('w1','g1')")
+        }
+
+        assertEquals(1L, LocalShareSnapshotPruner.prune(file, setOf(BoardBrand.KILTER)))
+        read { db ->
+            assertEquals(listOf("k1"), db.strings("SELECT uuid FROM climbs"))
+            // A receiver taking Kilter alone still gets, and keeps, every family's gyms.
+            assertEquals(
+                listOf("g1", "g2", "g3", "g4"),
+                db.strings("SELECT gym_uuid FROM kilter_board_location ORDER BY gym_uuid"),
+            )
+            assertEquals(listOf("w1"), db.strings("SELECT wall_uuid FROM kilter_board_wall"))
+        }
+    }
+
     @Test fun `CruxCoach community climbs never cross a share, whatever was chosen`() {
         seed { db ->
             db.execSQL("CREATE TABLE climbs (uuid TEXT PRIMARY KEY, board_brand TEXT, source TEXT)")

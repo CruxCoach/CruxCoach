@@ -11,6 +11,7 @@ import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.board.ClimbUuid
 import com.cruxcoach.domain.board.ShinyWallVariant
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
@@ -87,6 +88,8 @@ class ShinyWallSyncEngineTest {
         climb("r9", ShinyWallVariant.ST5, "Route nine")
 
         board = mockk(relaxed = true)
+        // The Shiny Wall catalogue is on the phone (see no_import_before_the_catalogue_is_here).
+        every { board.hasClimbsForBrand("shinywall") } returns true
         every { board.getClimbsByUuidsAnyAngle(any()) } answers {
             firstArg<Collection<String>>().mapNotNull { catalogue[ClimbUuid.normKey(it)] }.distinctBy { it.uuid }
         }
@@ -181,6 +184,29 @@ class ShinyWallSyncEngineTest {
         val preview = engine.previewImport().getOrThrow()
         assertEquals(ShinyWallImportPreview(totalEntries = 11, newAscents = 5, newProjects = 1, duplicates = 0, skipped = 5), preview)
         assertTrue(ascents().isEmpty())
+    }
+
+    /**
+     * Without the catalogue an entry that names no wall variant cannot be placed, and once an
+     * import has moved its window past it, it is never looked at again. So neither the preview
+     * nor the import starts: nothing is fetched, written or recorded until the catalogue is here.
+     */
+    @Test
+    fun no_import_before_the_catalogue_is_here() = runTest {
+        every { board.hasClimbsForBrand("shinywall") } returns false
+
+        assertTrue(engine.previewImport().exceptionOrNull() is ShinyWallCatalogueMissingException)
+        assertTrue(engine.importAll(names).exceptionOrNull() is ShinyWallCatalogueMissingException)
+        assertTrue(ascents().isEmpty())
+        assertEquals(null, store.historyWatermarkMs("uid1"))
+        assertEquals(null, store.lastImportAtMs())
+        coVerify(exactly = 0) { client.fetchHistory(any()) }
+
+        // Once it has arrived, the entry without a variant is placed through it (h8 → st5).
+        every { board.hasClimbsForBrand("shinywall") } returns true
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(5, result.newAscents)
+        assertTrue(ascents().any { it.externalId == "shinywall:history:h8" })
     }
 
     @Test

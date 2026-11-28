@@ -75,6 +75,7 @@ internal fun ShinyWallAccountSection(viewModel: ShinyWallAccountViewModel = hilt
         onDismissDisconnectConfirm = viewModel::dismissDisconnectConfirm,
         onDisconnect = viewModel::disconnect,
         onDismissResult = viewModel::dismissResult,
+        onLoadCatalogue = viewModel::loadCatalogue,
     )
 }
 
@@ -93,6 +94,7 @@ internal fun ShinyWallAccountContent(
     onDismissDisconnectConfirm: () -> Unit,
     onDisconnect: () -> Unit,
     onDismissResult: () -> Unit,
+    onLoadCatalogue: () -> Unit = {},
 ) {
     SettingsInfoHeading(
         title = stringResource(R.string.shinywall_section_title),
@@ -107,6 +109,25 @@ internal fun ShinyWallAccountContent(
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
         ) { Text(stringResource(R.string.shinywall_connect_button)) }
+    }
+
+    // The import waits for the catalogue (ShinyWallCatalogueMissingException): say why, and offer it.
+    if (state.isConnected && state.catalogueMissing) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.1f)),
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.shinywall_catalogue_missing), style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton(
+                    onClick = onLoadCatalogue,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
+                ) { Text(stringResource(R.string.shinywall_catalogue_load)) }
+            }
+        }
     }
 
     state.resultMessage?.let { msg ->

@@ -913,12 +913,17 @@ class BoardSyncManager(
      * have changed either. That is bounded (the picker exists only while its
      * settings screen is open) and it buys correctness in the cases above; no
      * regression has been measured from it.
+     *
+     * @param clearShareMemo false only for a family the board snapshot never carries
+     *   (Shiny Wall, [LocalShareSchema.NON_SHAREABLE_BRANDS]): its import changes nothing
+     *   a remembered snapshot holds, and clearing the memo there made every later share
+     *   from the same sender send the whole board database again.
      */
-    private suspend fun bumpCatalogueRevision() {
+    private suspend fun bumpCatalogueRevision(clearShareMemo: Boolean = true) {
         _state.update { it.copy(catalogueRevision = it.catalogueRevision + 1) }
         // The remembered peer snapshot is a valid no-download gate only while
         // the catalogue has not changed through any other path.
-        userPreferences.setLastLocalShareSnapshotSha256(null)
+        if (clearShareMemo) userPreferences.setLastLocalShareSnapshotSha256(null)
     }
 
     private fun isStale(lastSync: String?, interval: SyncInterval): Boolean {
@@ -1561,7 +1566,8 @@ class BoardSyncManager(
                     reportBoardStep(BoardBrand.SHINYWALL, ImportStep.Done(0, 0, 0)); false
                 }
                 is ShinyWallCatalogueSync.Result.Imported -> {
-                    bumpCatalogueRevision(); true
+                    // Not in any board snapshot: a remembered share snapshot stays current.
+                    bumpCatalogueRevision(clearShareMemo = false); true
                 }
                 is ShinyWallCatalogueSync.Result.Failed -> {
                     reportBoardStep(BoardBrand.SHINYWALL, null)
@@ -1762,7 +1768,12 @@ class BoardSyncManager(
 
         val compressed = pending.boardPath?.let(::File)?.takeIf { it.isFile }
         val board = pending.board
-        if (compressed == null || board == null) {
+        // The Shiny Wall catalogue received next to the board. Its file may be gone (the
+        // system can clear the cache): the catalogue then follows over the internet.
+        val shinyWall = pending.shinyWall
+        val shinyWallFile = pending.shinyWallPath?.let(::File)?.takeIf { it.isFile }
+        val resumeBoard = compressed != null && board != null
+        if (!resumeBoard && shinyWall == null) {
             pending.apkPath?.let(::File)?.delete()
             localShareResumeStore.clear()
             return
@@ -1770,20 +1781,34 @@ class BoardSyncManager(
         if (!claimSyncSlot(ImportStep.Extract, localShare = true)) return
         holdLocalTransferInForeground()
         try {
-            importDownloadedBoard(
-                compressed, board, pending.protocolVersion,
-                offeredBrands = catalogueBrands(board.catalogues, pending.protocolVersion),
-            )
+            if (compressed != null && board != null) {
+                importDownloadedBoard(
+                    compressed, board, pending.protocolVersion,
+                    offeredBrands = catalogueBrands(board.catalogues, pending.protocolVersion),
+                )
+            }
+            // After the board, as in the share itself.
+            val shinyWallImported = shinyWall != null && shinyWallFile != null &&
+                importSharedShinyWallCatalogue(shinyWallFile, shinyWall)
+            if (shinyWallImported) {
+                val shinyWallStep = completedLocalShareSteps(listOf(BoardBrand.SHINYWALL))
+                _state.update { it.copy(localShareBoardSteps = it.localShareBoardSteps + shinyWallStep) }
+            } else if (shinyWall != null) {
+                // Handed over but not imported (file gone or broken): as in the share itself.
+                reportShinyWallNotReceived()
+                loadBoardCatalogue(BoardBrand.SHINYWALL)
+            }
             pending.apkPath?.let(::File)?.delete()
             localShareResumeStore.clear()
             val timestamp = DateTimeUtil.nowIso()
-            userPreferences.setLastSyncTimestamp(timestamp)
+            if (resumeBoard) userPreferences.setLastSyncTimestamp(timestamp)
+            val imported = resumeBoard || importer.isImported()
             _state.update {
                 it.copy(
                     isSyncing = false,
-                    syncComplete = true,
-                    alreadyImported = true,
-                    lastSyncTimestamp = timestamp,
+                    syncComplete = imported,
+                    alreadyImported = imported,
+                    lastSyncTimestamp = if (resumeBoard) timestamp else it.lastSyncTimestamp,
                     importStep = null,
                     errorMessage = null,
                     localShareInProgress = false,
@@ -1835,7 +1860,8 @@ class BoardSyncManager(
         }
         try {
             updateLocalShareProgress(ImportStep.VerifyingSnapshot, brands)
-            raw.delete()
+            // With its journal: SQLite must never see a stale one next to a fresh copy.
+            deleteTemporaryDatabase(raw)
             LocalTransferLimits.requireSpace(appContext.cacheDir, board.uncompressedSizeBytes)
             require(board.compression == "gzip") { "Unsupported share compression" }
             ShareCompression.gunzip(
@@ -1871,7 +1897,10 @@ class BoardSyncManager(
             val prunedMs = phaseMillis()
             Log.i(TAG, "Local share cut to ${brands.map { it.wireValue }}: $removed climbs left out")
             // Families left out are what the same sender must still be able to supply later.
-            val cutToSelection = brands.size < offeredBrands.size
+            // Only families this snapshot can carry count: Shiny Wall travels as its own
+            // artifact, so taking it or leaving it out cuts nothing from the snapshot.
+            fun inSnapshot(brand: BoardBrand) = brand.wireValue !in LocalShareSchema.NON_SHAREABLE_BRANDS
+            val cutToSelection = brands.count(::inSnapshot) < offeredBrands.count(::inSnapshot)
             withBackgroundThreadPriority {
                 importer.importFromLocalDb(
                     raw,
@@ -1918,7 +1947,8 @@ class BoardSyncManager(
                     .onFailure { Log.w(TAG, "Post-share ANALYZE failed", it) }
             }
         } finally {
-            raw.delete()
+            // The pruner opened the copy read-write: an empty -journal was left each time.
+            deleteTemporaryDatabase(raw)
         }
     }
 
@@ -1963,6 +1993,8 @@ class BoardSyncManager(
         var shinyWallDownload: File? = null
         var shinyWallArtifact: LocalShareProtocol.FamilyArtifact? = null
         var shinyWallCurrent = false
+        // Shiny Wall chosen by this receiver and offered by the sender.
+        var shinyWallWanted = false
         val receivedManifest: LocalShareProtocol.Manifest
         try {
             updateLocalShareProgress(ImportStep.FetchingManifest, emptyList())
@@ -2052,11 +2084,14 @@ class BoardSyncManager(
             }
 
             // The Shiny Wall catalogue travels as its own artifact (never in the board
-            // snapshot, see LocalShareProtocol.V2_SHINYWALL_PATH). Skipped while an APK
-            // update is pending, and when this phone already holds the same snapshot.
+            // snapshot, see LocalShareProtocol.V2_SHINYWALL_PATH). Skipped only when this
+            // phone already holds the same snapshot. While an APK update is pending it is
+            // downloaded too and handed over with the board (LocalShareResumeStore): the
+            // updated app imports it on its first start, as it does the board.
             val shinyWallOffer = receivedManifest.families
                 .firstOrNull { it.boardBrand == BoardBrand.SHINYWALL.wireValue }
-                ?.takeIf { BoardBrand.SHINYWALL in brands && apkDownload == null }
+                ?.takeIf { BoardBrand.SHINYWALL in brands }
+            shinyWallWanted = shinyWallOffer != null
             shinyWallCurrent = shinyWallOffer != null && shinyWallOffer.uncompressedSha256 == keptShinyWallSha256()
             if (shinyWallOffer != null && !shinyWallCurrent) {
                 shinyWallArtifact = shinyWallOffer
@@ -2112,10 +2147,12 @@ class BoardSyncManager(
 
         val offeredBoard = boardArtifact
         val compressedBoard = boardDownload
+        val receivedShinyWall = shinyWallDownload
+        val receivedShinyWallArtifact = shinyWallArtifact.takeIf { receivedShinyWall != null }
         var boardImported = false
         if (readyUpdate != null) {
             // The running (older) app must not parse a snapshot from a newer
-            // schema. Persist both verified downloads; the new APK resumes the
+            // schema. Persist the verified downloads; the new APK resumes the
             // local import on its first launch.
             localShareResumeStore.save(
                 LocalShareResumeStore.Pending(
@@ -2125,6 +2162,8 @@ class BoardSyncManager(
                     apkVersionName = readyUpdate.versionName,
                     boardPath = compressedBoard?.absolutePath,
                     board = offeredBoard,
+                    shinyWallPath = receivedShinyWall?.absolutePath,
+                    shinyWall = receivedShinyWallArtifact,
                 ),
             )
         } else if (offeredBoard != null && compressedBoard != null) {
@@ -2136,16 +2175,18 @@ class BoardSyncManager(
             )
             boardImported = true
         }
-        val receivedShinyWall = shinyWallDownload
-        val shinyWallImported = readyUpdate == null && receivedShinyWall != null && shinyWallArtifact != null &&
-            importSharedShinyWallCatalogue(receivedShinyWall, shinyWallArtifact!!)
-        val shinyWallMissing = !shinyWallImported && !shinyWallCurrent
+        // Handed over to the updated app next to the board, see above.
+        val shinyWallDeferred = readyUpdate != null && receivedShinyWallArtifact != null
+        val shinyWallImported = readyUpdate == null && receivedShinyWall != null &&
+            receivedShinyWallArtifact != null &&
+            importSharedShinyWallCatalogue(receivedShinyWall, receivedShinyWallArtifact)
+        val shinyWallMissing = !shinyWallImported && !shinyWallCurrent && !shinyWallDeferred
 
         val timestamp = DateTimeUtil.nowIso()
         if (boardImported) userPreferences.setLastSyncTimestamp(timestamp)
         val imported = importer.isImported()
-        val terminalBoardSteps = if (readyUpdate != null && compressedBoard != null) {
-            // A newer app will resume this downloaded board snapshot. Do not
+        val terminalBoardSteps = if (readyUpdate != null && (compressedBoard != null || shinyWallDeferred)) {
+            // A newer app will resume these downloaded catalogues. Do not
             // leave non-terminal spinners behind in the old process.
             emptyMap()
         } else {
@@ -2156,6 +2197,7 @@ class BoardSyncManager(
         }
         // The families the sender does not have follow the ordinary way, one after the
         // other, as soon as the share has released the sync slot.
+        val followUps = linkedSetOf<BoardBrand>()
         if (chosenShareBrands != null) {
             val savedSelection = userPreferences.boardDownloadBrands.first()
             // A Shiny Wall catalogue the share did not deliver follows the ordinary way.
@@ -2165,8 +2207,19 @@ class BoardSyncManager(
             // by the regular sync and needs no download of its own here.
             val present = boardRepository.getClimbCountsByBrand()
                 .filterValues { it > 0 }.keys.mapNotNull { BoardBrand.fromWireOrNull(it) }.toSet()
-            (savedSelection - fromShare - present).forEach(::loadBoardCatalogue)
+            followUps += savedSelection - fromShare - present
         }
+        // Chosen and offered, and still not here (transfer or import failed): its row says
+        // so, as a failed board snapshot does, and it follows over the internet on every
+        // route, a QR scan included, not only after the dialog's choice.
+        if (shinyWallWanted && shinyWallMissing) {
+            reportShinyWallNotReceived()
+            followUps += BoardBrand.SHINYWALL
+        } else if (shinyWallWanted) {
+            // Here now (or handed over to the update): an earlier share's failure is over.
+            reportBoardError(BoardBrand.SHINYWALL, null)
+        }
+        followUps.forEach(::loadBoardCatalogue)
         chosenShareBrands = null
         val networkAvailable = isNetworkAvailable(appContext)
         val wifiConnected = isWifiConnected(appContext)
@@ -2206,6 +2259,12 @@ class BoardSyncManager(
         refreshNetworkAfterLocalShare()
     }
 
+    /** The Shiny Wall row of a share that was to bring it shows the failure (see [reportBoardError]). */
+    private fun reportShinyWallNotReceived() {
+        Log.w(TAG, "Shiny Wall catalogue chosen in a share but not received; loading it online")
+        reportBoardError(BoardBrand.SHINYWALL, appContext.getString(R.string.board_sync_error_import))
+    }
+
     /** sha256 of the Shiny Wall snapshot this phone holds, null without one. */
     private fun keptShinyWallSha256(): String? =
         ShinyWallCatalogueStore.file(appContext).takeIf { it.isFile }
@@ -2235,7 +2294,8 @@ class BoardSyncManager(
             withBackgroundThreadPriority { importer.importShinyWallSnapshot(raw) }
             runCatching { ShinyWallCatalogueStore.keep(appContext, raw) }
                 .onFailure { Log.w(TAG, "Shared Shiny Wall snapshot not kept", it) }
-            bumpCatalogueRevision()
+            // Not in the board snapshot: the memo of the received snapshot stays true.
+            bumpCatalogueRevision(clearShareMemo = false)
             true
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
@@ -2243,7 +2303,7 @@ class BoardSyncManager(
             Log.w(TAG, "Shared Shiny Wall catalogue not imported", error)
             false
         } finally {
-            raw.delete()
+            deleteTemporaryDatabase(raw)
             compressed.delete()
         }
     }
@@ -2366,7 +2426,7 @@ class BoardSyncManager(
                     errorMessage = appContext.getString(R.string.board_sync_error_import)
                 ) }
             } finally {
-                tempFile.delete()
+                deleteTemporaryDatabase(tempFile)
             }
         }
     }
@@ -2580,6 +2640,16 @@ internal fun refreshLogbookDenormalized(
             }
         }
     }
+}
+
+/**
+ * Deletes a temporary SQLite copy together with the journal files SQLite keeps next to it.
+ * Android's default rollback journal is truncated, not deleted, so opening a copy read-write
+ * left an empty `-journal` in the cache after every import.
+ */
+internal fun deleteTemporaryDatabase(file: File) {
+    file.delete()
+    for (suffix in listOf("-journal", "-wal", "-shm")) File(file.path + suffix).delete()
 }
 
 /**

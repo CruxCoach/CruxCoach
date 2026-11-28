@@ -17,12 +17,17 @@ import java.io.File
  *    such climbs made a receiver's Kilter board look "loaded" without its catalogue.
  *  - **Board families the receiver did not choose.** A share is ONE database holding every
  *    catalogue the sender has; a receiver with a Kilter wall has no use for its MoonBoard.
+ *    The gym directory ([GYM_DIRECTORY_TABLES]) names every family too, but it is no
+ *    catalogue: it stays whole, or a receiver lost the gyms of every board it did not take.
  *
  * Only rows that NAME another family are removed by the second cut. A row with no
  * `board_brand` (older senders wrote Kilter geometry that way) is left for the importer to
  * judge, and a legacy snapshot without the columns a cut needs is not touched by that cut.
  */
 internal object LocalShareSnapshotPruner {
+
+    /** The public gym directory (FEAT-006/007): small, public, and no catalogue. */
+    private val GYM_DIRECTORY_TABLES = setOf("kilter_board_location", "kilter_board_wall")
 
     /**
      * @param keep the families to take; empty means "no choice was made" and keeps them all.
@@ -67,7 +72,7 @@ internal object LocalShareSnapshotPruner {
                 }
                 if (cutFamilies) {
                     val kept = keep.joinToString(",") { "'${it.wireValue}'" }
-                    tables.filter { "board_brand" in columns(db, it) }.forEach { table ->
+                    tables.filter { it !in GYM_DIRECTORY_TABLES && "board_brand" in columns(db, it) }.forEach { table ->
                         db.execSQL(
                             "DELETE FROM \"$table\" WHERE board_brand IS NOT NULL " +
                                 "AND LOWER(TRIM(board_brand)) NOT IN ($kept)"

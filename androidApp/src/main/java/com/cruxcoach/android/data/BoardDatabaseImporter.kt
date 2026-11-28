@@ -1713,7 +1713,9 @@ class BoardDatabaseImporter(
                 // hasLayout like the Kilter path.
                 // The sender's DB also carries gym locations + walls.
                 // Guarded + non-fatal by design (skips when absent/empty).
-                importLocations(rawDb)
+                // A peer's directory is not the published one: it replaces
+                // only the families it carries (see importLocations).
+                importLocations(rawDb, keepFamiliesMissingFromSource = true)
                 checkNotNull(modernLayoutCount)
             } else {
                 val hasLayout = snapshot != null && snapshot.placementCount > 0
@@ -3610,8 +3612,15 @@ class BoardDatabaseImporter(
      * If the chunk is structurally invalid (table missing, etc.) we log
      * and bail without throwing — locations are non-essential and must
      * not break the rest of the sync.
+     *
+     * @param keepFamiliesMissingFromSource true for a peer's DB (offline
+     *   share). It is the sender's copy, possibly older or incomplete, never
+     *   the published dataset: its rows replace the receiver's rows of the
+     *   board families it carries, and the gyms of every other family stay. A replace-all here once shrank a receiver's
+     *   directory from 3169 to 1162 gyms, and as the locations chunk still
+     *   counted as current they never came back.
      */
-    private fun importLocations(rawDb: SQLiteDatabase) {
+    private fun importLocations(rawDb: SQLiteDatabase, keepFamiliesMissingFromSource: Boolean = false) {
         if (!hasTable(rawDb, "kilter_board_location")) {
             Log.w("BoardDatabaseImporter", "locations chunk missing kilter_board_location table — skipping")
             return
@@ -3646,12 +3655,23 @@ class BoardDatabaseImporter(
                 val wellpassExpr = if ("wellpass" in srcLocCols) "wellpass" else "NULL"
                 targetDb.beginTransaction()
                 try {
-                    // Replace-all semantics: cron snapshot is authoritative,
-                    // so old rows that fell out of the dataset (delisted gym,
-                    // closed location) get removed automatically.
-                    targetDb.execSQL("DELETE FROM kilter_board_location")
+                    if (keepFamiliesMissingFromSource) {
+                        // Per family: the source's rows replace this family's rows only.
+                        targetDb.execSQL(
+                            "DELETE FROM kilter_board_location WHERE LOWER(TRIM(board_brand)) IN " +
+                                "(SELECT DISTINCT LOWER(TRIM($brandExpr)) FROM loc_src.kilter_board_location)"
+                        )
+                    } else {
+                        // Replace-all semantics: cron snapshot is authoritative,
+                        // so old rows that fell out of the dataset (delisted gym,
+                        // closed location) get removed automatically.
+                        targetDb.execSQL("DELETE FROM kilter_board_location")
+                    }
+                    // OR REPLACE only for the per-family merge: a gym the source files
+                    // under another family than this phone did takes the source's row.
+                    val insert = if (keepFamiliesMissingFromSource) "INSERT OR REPLACE" else "INSERT"
                     targetDb.execSQL("""
-                        INSERT INTO kilter_board_location(
+                        $insert INTO kilter_board_location(
                             gym_uuid, name, lat, lng, address, city, country_code,
                             phone, email, url, instagram,
                             layout_name, layout_id, size_label, product_size_id,
