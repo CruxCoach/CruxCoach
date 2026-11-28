@@ -3673,6 +3673,9 @@
     <string name="shinywall_import_error_generic">The import failed. Please try again.</string>
     <string name="shinywall_list_favorites">Shiny Wall favourites</string>
     <string name="shinywall_list_own_routes">My Shiny Wall routes</string>
+    <string name="shinywall_catalogue_missing">Load the Shiny Wall catalogue first. The import needs it to find your routes.</string>
+    <string name="shinywall_catalogue_load">Load catalogue</string>
+    <string name="shinywall_catalogue_loading">The catalogue is loading. Start the import again once it is there.</string>
     <!-- Board-size check: optional help for users unsure about their board size -->
     <string name="board_size_check_title">Check your board size</string>
     <string name="board_size_check_link">Check the size on your board</string>

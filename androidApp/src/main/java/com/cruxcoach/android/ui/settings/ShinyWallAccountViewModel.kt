@@ -5,8 +5,10 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
+import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.shinywall.ShinyWallAccountClient
 import com.cruxcoach.android.data.shinywall.ShinyWallAuthResult
+import com.cruxcoach.android.data.shinywall.ShinyWallCatalogueMissingException
 import com.cruxcoach.android.data.shinywall.ShinyWallImportPreview
 import com.cruxcoach.android.data.shinywall.ShinyWallListNames
 import com.cruxcoach.android.data.shinywall.ShinyWallSyncEngine
@@ -15,6 +17,7 @@ import com.cruxcoach.android.data.shinywall.formatShinyWallImportSummary
 import com.cruxcoach.android.data.shinywall.isShinyWallSessionExpired
 import com.cruxcoach.android.data.shinywall.localizeShinyWallImportError
 import com.cruxcoach.android.data.shinywall.localized
+import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +42,8 @@ data class ShinyWallAccountState(
     val showDisconnectConfirm: Boolean = false,
     /** Shiny Wall no longer accepts the stored sign-in; the card offers to sign in again. */
     val sessionExpired: Boolean = false,
+    /** The import needs the Shiny Wall catalogue first; the card offers to load it. */
+    val catalogueMissing: Boolean = false,
 )
 
 /**
@@ -52,6 +57,7 @@ class ShinyWallAccountViewModel @Inject constructor(
     private val tokenStore: ShinyWallTokenStorage,
     private val client: ShinyWallAccountClient,
     private val engine: ShinyWallSyncEngine,
+    private val boardSyncManager: BoardSyncManager,
 ) : AndroidViewModel(application) {
 
     private companion object {
@@ -114,7 +120,7 @@ class ShinyWallAccountViewModel @Inject constructor(
     /** Counts what an import would bring, then shows the preview dialog. */
     fun loadPreview() {
         if (_state.value.isImporting) return
-        _state.update { it.copy(isImporting = true, resultMessage = null) }
+        _state.update { it.copy(isImporting = true, resultMessage = null, catalogueMissing = false) }
         viewModelScope.launch {
             engine.previewImport()
                 .onSuccess { preview -> _state.update { it.copy(isImporting = false, preview = preview) } }
@@ -129,7 +135,7 @@ class ShinyWallAccountViewModel @Inject constructor(
 
     fun importNow() {
         if (_state.value.isImporting) return
-        _state.update { it.copy(isImporting = true, resultMessage = null) }
+        _state.update { it.copy(isImporting = true, resultMessage = null, catalogueMissing = false) }
         viewModelScope.launch {
             val names = ShinyWallListNames(
                 favorites = context.getString(R.string.shinywall_list_favorites),
@@ -153,10 +159,31 @@ class ShinyWallAccountViewModel @Inject constructor(
         }
     }
 
-    /** An expired sign-in shows on the card with its action; any other failure as a message. */
-    private fun ShinyWallAccountState.failedWith(error: Throwable): ShinyWallAccountState =
-        if (isShinyWallSessionExpired(error)) copy(isImporting = false, sessionExpired = true)
-        else copy(isImporting = false, resultMessage = localizeShinyWallImportError(context, error), resultIsError = true)
+    /**
+     * An expired sign-in and a missing catalogue show on the card with their action; any other
+     * failure as a message.
+     */
+    private fun ShinyWallAccountState.failedWith(error: Throwable): ShinyWallAccountState = when {
+        isShinyWallSessionExpired(error) -> copy(isImporting = false, sessionExpired = true)
+        error is ShinyWallCatalogueMissingException -> copy(isImporting = false, catalogueMissing = true)
+        else -> copy(isImporting = false, resultMessage = localizeShinyWallImportError(context, error), resultIsError = true)
+    }
+
+    /**
+     * Loads the Shiny Wall catalogue the import needs, as "Load" in the board catalogue list does.
+     * The import itself is started again by the user once it is there.
+     */
+    fun loadCatalogue() {
+        boardSyncManager.loadBoardCatalogue(BoardBrand.SHINYWALL)
+        _state.update {
+            it.copy(
+                catalogueMissing = false,
+                preview = null,
+                resultMessage = context.getString(R.string.shinywall_catalogue_loading),
+                resultIsError = false,
+            )
+        }
+    }
 
     fun showDisconnectConfirm() = _state.update { it.copy(showDisconnectConfirm = true) }
     fun dismissDisconnectConfirm() = _state.update { it.copy(showDisconnectConfirm = false) }

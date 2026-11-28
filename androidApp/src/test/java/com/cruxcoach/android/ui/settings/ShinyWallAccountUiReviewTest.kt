@@ -190,6 +190,10 @@ class ShinyWallAccountUiReviewTest {
         shoot("page-10-only-deleted-entries") {
             ImportsPage(connected.copy(resultMessage = summary(ShinyWallImportResult(0, 0, 0, 0, 0, deleted = 1))))
         }
+        shoot("page-11-catalogue-missing") { ImportsPage(connected.copy(catalogueMissing = true)) }
+        shoot("page-12-catalogue-loading") {
+            ImportsPage(connected.copy(resultMessage = app.getString(R.string.shinywall_catalogue_loading)))
+        }
     }
 
     private fun overlays(language: String, width: Int, fontScale: Float) {

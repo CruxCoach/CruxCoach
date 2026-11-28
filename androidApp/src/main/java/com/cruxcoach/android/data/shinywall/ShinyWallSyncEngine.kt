@@ -54,6 +54,13 @@ data class ShinyWallImportResult(
 data class ShinyWallListNames(val favorites: String, val ownRoutes: String)
 
 /**
+ * The Shiny Wall catalogue is not on this phone yet. The import waits for it: an entry that
+ * names no wall variant is placed through the catalogue, and the import's window (see
+ * [ShinyWallSyncEngine.plan]) would move past entries skipped without it for good.
+ */
+class ShinyWallCatalogueMissingException : Exception("Shiny Wall catalogue not loaded")
+
+/**
  * Imports the signed-in user's own Shiny Wall logbook into CruxCoach.
  * Read-only towards Shiny Wall: nothing is uploaded, changed or deleted there.
  *
@@ -233,6 +240,7 @@ class ShinyWallSyncEngine @Inject constructor(
     suspend fun previewImport(): Result<ShinyWallImportPreview> = withContext(Dispatchers.IO) {
         val session = storedSession().getOrElse { return@withContext Result.failure(it) }
             ?: return@withContext notSignedIn<ShinyWallImportPreview>()
+        catalogueMissing()?.let { return@withContext Result.failure<ShinyWallImportPreview>(it) }
         val history = client.fetchHistory(session.uid).getOrElse { return@withContext Result.failure(it) }
         logbookStep { plan(session.uid, history) }.map { plan ->
             ShinyWallImportPreview(
@@ -250,6 +258,8 @@ class ShinyWallSyncEngine @Inject constructor(
         importMutex.withLock {
             val session = storedSession().getOrElse { return@withLock Result.failure(it) }
                 ?: return@withLock notSignedIn<ShinyWallImportResult>()
+            // Before anything is fetched or recorded: nothing moves the window yet.
+            catalogueMissing()?.let { return@withLock Result.failure<ShinyWallImportResult>(it) }
             val history = client.fetchHistory(session.uid).getOrElse { return@withLock Result.failure<ShinyWallImportResult>(it) }
             val plan = logbookStep { plan(session.uid, history) }.getOrElse { return@withLock Result.failure(it) }
             logbookStep { write(plan) }.getOrElse { return@withLock Result.failure(it) }
@@ -281,6 +291,22 @@ class ShinyWallSyncEngine @Inject constructor(
                 )
             )
         }
+    }
+
+    /**
+     * Null once the Shiny Wall catalogue is here, else why the import waits for it
+     * ([ShinyWallCatalogueMissingException]; a database error fails the import as it would later).
+     * Kilter and MoonBoard keep such entries pending until their catalogue arrives; this import
+     * keeps no such queue, so it does not start without the catalogue. The account screen offers
+     * to load it.
+     */
+    private fun catalogueMissing(): Throwable? = try {
+        if (boardRepository.hasClimbsForBrand(BRAND)) null else ShinyWallCatalogueMissingException()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "Catalogue check failed (${e.javaClass.simpleName})")
+        e
     }
 
     /** The stored session; a Keystore error fails the import instead of crashing the app. */

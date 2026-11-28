@@ -3669,6 +3669,9 @@
     <string name="shinywall_import_error_generic">Der Import ist fehlgeschlagen. Bitte versuche es noch einmal.</string>
     <string name="shinywall_list_favorites">Shiny-Wall-Favoriten</string>
     <string name="shinywall_list_own_routes">Meine Shiny-Wall-Routen</string>
+    <string name="shinywall_catalogue_missing">Lade zuerst den Shiny-Wall-Katalog. Der Import braucht ihn, um deine Routen zu finden.</string>
+    <string name="shinywall_catalogue_load">Katalog laden</string>
+    <string name="shinywall_catalogue_loading">Der Katalog wird geladen. Starte den Import noch einmal, sobald er da ist.</string>
     <!-- Board-Größe prüfen: optionale Hilfe, wenn jemand unsicher ist, welche Größe sein Board hat -->
     <string name="board_size_check_title">Board-Größe prüfen</string>
     <string name="board_size_check_link">Größe am Board prüfen</string>
