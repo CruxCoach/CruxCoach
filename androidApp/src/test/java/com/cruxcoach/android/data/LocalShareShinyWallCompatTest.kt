@@ -3,24 +3,43 @@ package com.cruxcoach.android.data
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.net.Network
+import com.cruxcoach.android.BuildConfig
+import com.cruxcoach.android.updater.IntegrityVerifier
 import com.cruxcoach.android.util.LocalApkServer
 import com.cruxcoach.android.util.LocalShareClient
+import com.cruxcoach.android.util.LocalShareDiscovery
 import com.cruxcoach.android.util.LocalShareProtocol
+import com.cruxcoach.android.util.LocalShareResumeStore
 import com.cruxcoach.android.util.ShareCompression
 import com.cruxcoach.android.util.compat.LocalShareProtocol024
+import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.db.board.BoardDatabase
+import com.cruxcoach.domain.board.BoardBrand
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.GZIPInputStream
 import javax.net.SocketFactory
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -44,6 +63,7 @@ class LocalShareShinyWallCompatTest {
     private lateinit var endpointDir: File
     private lateinit var keptSnapshot: File
     private val servers = mutableListOf<LocalApkServer>()
+    private val receiverScopes = mutableListOf<CoroutineScope>()
     private val network = mockk<Network>().also { every { it.socketFactory } returns SocketFactory.getDefault() }
 
     @Before fun setUp() {
@@ -59,6 +79,12 @@ class LocalShareShinyWallCompatTest {
     }
 
     @After fun tearDown() {
+        receiverScopes.forEach { it.cancel() }
+        context.getSharedPreferences("local_share_resume_v1", Context.MODE_PRIVATE).edit().clear().commit()
+        ShinyWallCatalogueStore.clear(context)
+        context.cacheDir.listFiles()
+            ?.filter { it.name.startsWith("local_") }
+            ?.forEach { it.delete() }
         servers.forEach { it.stop() }
         runCatching { senderDb.delete() }
         runCatching { receiverDb.delete() }
@@ -172,6 +198,114 @@ class LocalShareShinyWallCompatTest {
         assertEquals(listOf("kilter"), withoutUsable.declaredCatalogues.map { it.boardBrand })
     }
 
+    // ── the receiver, end to end ────────────────────────────────────────
+
+    @Test fun `Shiny Wall taken during an app update is handed over and imported after it`() {
+        seedSender(withShinyWall = true)
+        // A sender with a newer app: the receiver must update before it imports.
+        val base = startSender(keptSnapshot, apkVersionCode = BuildConfig.VERSION_CODE.toLong() + 1)
+        val old = receiver()
+        old.take(base, setOf(BoardBrand.KILTER, BoardBrand.SHINYWALL))
+
+        assertNotNull(old.manager.state.value.localShareUpdate)
+        val pending = checkNotNull(LocalShareResumeStore(context).load()) { "no hand-off saved" }
+        assertNotNull(pending.board)
+        val shinyWall = checkNotNull(pending.shinyWall) { "Shiny Wall not handed over" }
+        assertEquals(LocalShareProtocol.sha256(keptSnapshot), shinyWall.uncompressedSha256)
+        assertTrue(File(checkNotNull(pending.shinyWallPath)).isFile)
+        // The old app imports nothing, and Shiny Wall is not sent online as "missing".
+        verify(exactly = 0) { old.importer.importShinyWallSnapshot(any(), any()) }
+        verify(exactly = 0) { old.importer.importFromLocalDb(any(), any(), any()) }
+        assertFalse(BoardBrand.SHINYWALL in old.manager.state.value.boardErrors)
+        Thread.sleep(300)
+        coVerify(exactly = 0) { old.preferences.includeBoardDownload(BoardBrand.SHINYWALL) }
+
+        // The updated app's first start.
+        LocalShareResumeStore(context).save(pending.copy(requiredVersionCode = 0))
+        val updated = receiver(downloadSelection = setOf(BoardBrand.KILTER, BoardBrand.SHINYWALL))
+        awaitTrue("resumed import") {
+            LocalShareResumeStore(context).load() == null && !updated.manager.state.value.isSyncing
+        }
+
+        verify(exactly = 1) { updated.importer.importFromLocalDb(any(), true, any()) }
+        verify(exactly = 1) { updated.importer.importShinyWallSnapshot(any(), any()) }
+        assertEquals(LocalShareProtocol.sha256(keptSnapshot), LocalShareProtocol.sha256(ShinyWallCatalogueStore.file(context)))
+        assertNull(updated.manager.state.value.errorMessage)
+    }
+
+    private class Receiver(
+        val manager: BoardSyncManager,
+        val importer: BoardDatabaseImporter,
+        val preferences: UserPreferences,
+        /** Every value the share memo (last fully received snapshot) was set to, in order. */
+        val memo: MutableList<String?>,
+        /** What the landing link finds; set by [take]. */
+        val offer: AtomicReference<LocalShareDiscovery.Found?>,
+    )
+
+    /** A receiver with this app's share code; the catalogue importer itself is a mock. */
+    private fun receiver(
+        importer: BoardDatabaseImporter = mockk(relaxed = true),
+        downloadSelection: Set<BoardBrand> = setOf(BoardBrand.KILTER),
+    ): Receiver {
+        val offer = AtomicReference<LocalShareDiscovery.Found?>(null)
+        every { importer.isImported() } returns false
+        val preferences = mockk<UserPreferences>(relaxed = true)
+        every { preferences.lastSyncTimestamp } returns flowOf(null)
+        every { preferences.lastLocalShareSnapshotSha256 } returns flowOf(null)
+        every { preferences.boardDownloadBrands } returns flowOf(downloadSelection)
+        coEvery { preferences.hasBoardDownloadSelection() } returns false
+        val memo = Collections.synchronizedList(mutableListOf<String?>())
+        coEvery { preferences.setLastLocalShareSnapshotSha256(any()) } answers { memo += firstArg<String?>() }
+        val boards = mockk<BoardRepository>(relaxed = true)
+        every { boards.getClimbCountsByBrand() } returns emptyMap()
+        val personal = mockk<PersonalBoardRepository>(relaxed = true)
+        every { personal.getAllClimbKeys() } returns emptyList()
+        val verifier = mockk<IntegrityVerifier>()
+        every { verifier.verify(any(), any(), any()) } returns IntegrityVerifier.Result.Ok
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO).also { receiverScopes += it }
+        val manager = BoardSyncManager(
+            importer = importer,
+            blossomSyncManager = mockk(relaxed = true),
+            userPreferences = preferences,
+            appContext = context,
+            boardRepository = boards,
+            personalBoardRepo = personal,
+            boardLocationRepository = mockk(relaxed = true),
+            moonBoardCatalogueSync = mockk(relaxed = true),
+            auroraCatalogueSync = mockk(relaxed = true),
+            quantumCatalogueSync = mockk(relaxed = true),
+            integrityVerifier = verifier,
+            scope = scope,
+            discoverConnectedShare = { offer.get() },
+            startLocalTransferKeepAlive = {},
+        )
+        return Receiver(manager, importer, preferences, memo, offer)
+    }
+
+    /**
+     * Takes the share at [base] the way the share dialog does: the landing link stages the
+     * sender, the receiver confirms [shareBrands] (null: no choice shown, as after a QR scan).
+     * Returns once the share has released the sync slot.
+     */
+    private fun Receiver.take(base: String, shareBrands: Set<BoardBrand>?) {
+        val manifest = LocalShareProtocol.parseManifest(awaitV2Manifest(base) { it.has("families") }.toString())
+        offer.set(LocalShareDiscovery.Found(network, base, manifest))
+        awaitTrue("idle receiver") { !manager.state.value.isSyncing }
+        manager.stageConnectedShare(LocalShareProtocol.ConnectedInvitation(base))
+        awaitTrue("staged share") { manager.state.value.pendingDiscoveredShare != null }
+        manager.confirmDiscoveredShare(shareBrands = shareBrands)
+        awaitTrue("finished share") { !manager.state.value.isSyncing }
+    }
+
+    private fun awaitTrue(what: String, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 60_000_000_000L
+        while (!condition()) {
+            if (System.nanoTime() >= deadline) throw AssertionError("Timed out waiting for $what")
+            Thread.sleep(25)
+        }
+    }
+
     // ── fixtures ────────────────────────────────────────────────────────
 
     private fun createRealSchema(name: String) {
@@ -235,13 +369,13 @@ class LocalShareShinyWallCompatTest {
 
     // ── HTTP helpers ────────────────────────────────────────────────────
 
-    private fun startSender(shinyWallCatalogue: File?): String {
+    private fun startSender(shinyWallCatalogue: File?, apkVersionCode: Long = 25): String {
         val apk = File(endpointDir, "CruxCoach-${servers.size}.apk").apply { writeText("test apk") }
         val server = LocalApkServer(
             apkFile = apk,
             boardDbFile = senderDb,
             snapshotDir = File(endpointDir, "snap-${servers.size}").apply { mkdirs() },
-            apkVersionCode = 25,
+            apkVersionCode = apkVersionCode,
             apkVersionName = "0.2.5",
             shinyWallCatalogue = shinyWallCatalogue,
         )

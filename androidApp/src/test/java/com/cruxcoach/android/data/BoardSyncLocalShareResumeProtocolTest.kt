@@ -9,9 +9,11 @@ import com.cruxcoach.android.util.ShareCompression
 import com.cruxcoach.data.repository.BoardLocationRepository
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.domain.board.BoardBrand
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
 import java.io.File
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -21,6 +23,9 @@ import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -48,6 +53,29 @@ class BoardSyncLocalShareResumeProtocolTest {
         context.cacheDir.listFiles()
             ?.filter { it.name.startsWith("resume-protocol-") }
             ?.forEach { it.delete() }
+        ShinyWallCatalogueStore.clear(context)
+    }
+
+    /** A Shiny Wall catalogue as a share hands it over: gzip, both hashes known. */
+    private fun shinyWallArtifact(name: String): Pair<File, LocalShareProtocol.FamilyArtifact> {
+        val raw = File(context.cacheDir, "resume-protocol-$name.shiny").apply {
+            writeText("verified Shiny Wall catalogue for $name")
+        }
+        val compressed = File(context.cacheDir, "resume-protocol-$name.shiny.gz")
+        ShareCompression.gzip(raw, compressed)
+        return compressed to LocalShareProtocol.FamilyArtifact(
+            boardBrand = LocalShareProtocol.SHINYWALL_BRAND,
+            format = LocalShareProtocol.SHINYWALL_FORMAT,
+            artifact = LocalShareProtocol.Artifact(
+                path = LocalShareProtocol.V2_SHINYWALL_PATH,
+                sizeBytes = compressed.length(),
+                sha256 = LocalShareProtocol.sha256(compressed),
+            ),
+            compression = "gzip",
+            uncompressedSizeBytes = raw.length(),
+            uncompressedSha256 = LocalShareProtocol.sha256(raw),
+            climbCount = 3,
+        )
     }
 
     private fun compressedArtifact(
@@ -76,18 +104,20 @@ class BoardSyncLocalShareResumeProtocolTest {
     private fun TestScope.manager(
         importer: BoardDatabaseImporter,
         keepAlive: (Context) -> Unit = {},
+        preferences: UserPreferences = mockk(relaxed = true),
     ): BoardSyncManager {
         every { importer.isImported() } returns false
-        val preferences = mockk<UserPreferences>(relaxed = true)
         every { preferences.lastSyncTimestamp } returns flowOf(null)
         val personal = mockk<PersonalBoardRepository>(relaxed = true)
         every { personal.getAllClimbKeys() } returns emptyList()
+        val boards = mockk<BoardRepository>(relaxed = true)
+        every { boards.getClimbCountsByBrand() } returns emptyMap()
         return BoardSyncManager(
             importer = importer,
             blossomSyncManager = mockk<BlossomSyncManager>(relaxed = true),
             userPreferences = preferences,
             appContext = context,
-            boardRepository = mockk<BoardRepository>(relaxed = true),
+            boardRepository = boards,
             personalBoardRepo = personal,
             boardLocationRepository = mockk<BoardLocationRepository>(relaxed = true),
             moonBoardCatalogueSync = mockk<MoonBoardCatalogueSync>(relaxed = true),
@@ -199,5 +229,68 @@ class BoardSyncLocalShareResumeProtocolTest {
 
         verify(exactly = 1) { importer.importFromLocalDb(any(), true, any()) }
         assertEquals(1, keepAliveRequests)
+    }
+
+    @Test
+    fun `the updated app imports the Shiny Wall catalogue after the board`() = runTest {
+        val importer = mockk<BoardDatabaseImporter>(relaxed = true)
+        val (compressed, board) = compressedArtifact(
+            name = "with-shiny",
+            artifactPath = LocalShareProtocol.V2_BOARD_PATH,
+        )
+        val (shinyCompressed, shiny) = shinyWallArtifact("with-board")
+        LocalShareResumeStore(context).save(
+            LocalShareResumeStore.Pending(
+                requiredVersionCode = 0,
+                protocolVersion = LocalShareProtocol.VERSION_V2,
+                apkPath = null,
+                apkVersionName = "0.2.5.1",
+                boardPath = compressed.absolutePath,
+                board = board,
+                shinyWallPath = shinyCompressed.absolutePath,
+                shinyWall = shiny,
+            ),
+        )
+
+        val manager = manager(importer)
+        runCurrent()
+
+        verifyOrder {
+            importer.importFromLocalDb(any(), true, any())
+            importer.importShinyWallSnapshot(any(), any())
+        }
+        // Kept to pass on, exactly as a share without an update keeps it.
+        assertEquals(shiny.uncompressedSha256, LocalShareProtocol.sha256(ShinyWallCatalogueStore.file(context)))
+        assertNull(LocalShareResumeStore(context).load())
+        assertFalse(shinyCompressed.exists())
+        assertFalse(manager.state.value.isSyncing)
+        assertTrue(BoardBrand.SHINYWALL in manager.state.value.localShareBoardSteps)
+    }
+
+    @Test
+    fun `a Shiny Wall catalogue handed over without a board snapshot is imported alone`() = runTest {
+        // The receiver held the sender's board snapshot already; only Shiny Wall was new.
+        val importer = mockk<BoardDatabaseImporter>(relaxed = true)
+        val (shinyCompressed, shiny) = shinyWallArtifact("alone")
+        LocalShareResumeStore(context).save(
+            LocalShareResumeStore.Pending(
+                requiredVersionCode = 0,
+                protocolVersion = LocalShareProtocol.VERSION_V2,
+                apkPath = null,
+                apkVersionName = "0.2.5.1",
+                boardPath = null,
+                board = null,
+                shinyWallPath = shinyCompressed.absolutePath,
+                shinyWall = shiny,
+            ),
+        )
+
+        val manager = manager(importer)
+        runCurrent()
+
+        verify(exactly = 0) { importer.importFromLocalDb(any(), any(), any()) }
+        verify(exactly = 1) { importer.importShinyWallSnapshot(any(), any()) }
+        assertNull(LocalShareResumeStore(context).load())
+        assertFalse(manager.state.value.isSyncing)
     }
 }

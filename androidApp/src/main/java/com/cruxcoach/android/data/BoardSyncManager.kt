@@ -1762,7 +1762,12 @@ class BoardSyncManager(
 
         val compressed = pending.boardPath?.let(::File)?.takeIf { it.isFile }
         val board = pending.board
-        if (compressed == null || board == null) {
+        // The Shiny Wall catalogue received next to the board. Its file may be gone (the
+        // system can clear the cache): the catalogue then follows over the internet.
+        val shinyWall = pending.shinyWall
+        val shinyWallFile = pending.shinyWallPath?.let(::File)?.takeIf { it.isFile }
+        val resumeBoard = compressed != null && board != null
+        if (!resumeBoard && shinyWall == null) {
             pending.apkPath?.let(::File)?.delete()
             localShareResumeStore.clear()
             return
@@ -1770,20 +1775,30 @@ class BoardSyncManager(
         if (!claimSyncSlot(ImportStep.Extract, localShare = true)) return
         holdLocalTransferInForeground()
         try {
-            importDownloadedBoard(
-                compressed, board, pending.protocolVersion,
-                offeredBrands = catalogueBrands(board.catalogues, pending.protocolVersion),
-            )
+            if (compressed != null && board != null) {
+                importDownloadedBoard(
+                    compressed, board, pending.protocolVersion,
+                    offeredBrands = catalogueBrands(board.catalogues, pending.protocolVersion),
+                )
+            }
+            // After the board, as in the share itself.
+            val shinyWallImported = shinyWall != null && shinyWallFile != null &&
+                importSharedShinyWallCatalogue(shinyWallFile, shinyWall)
+            if (shinyWallImported) {
+                val shinyWallStep = completedLocalShareSteps(listOf(BoardBrand.SHINYWALL))
+                _state.update { it.copy(localShareBoardSteps = it.localShareBoardSteps + shinyWallStep) }
+            }
             pending.apkPath?.let(::File)?.delete()
             localShareResumeStore.clear()
             val timestamp = DateTimeUtil.nowIso()
-            userPreferences.setLastSyncTimestamp(timestamp)
+            if (resumeBoard) userPreferences.setLastSyncTimestamp(timestamp)
+            val imported = resumeBoard || importer.isImported()
             _state.update {
                 it.copy(
                     isSyncing = false,
-                    syncComplete = true,
-                    alreadyImported = true,
-                    lastSyncTimestamp = timestamp,
+                    syncComplete = imported,
+                    alreadyImported = imported,
+                    lastSyncTimestamp = if (resumeBoard) timestamp else it.lastSyncTimestamp,
                     importStep = null,
                     errorMessage = null,
                     localShareInProgress = false,
@@ -2052,11 +2067,13 @@ class BoardSyncManager(
             }
 
             // The Shiny Wall catalogue travels as its own artifact (never in the board
-            // snapshot, see LocalShareProtocol.V2_SHINYWALL_PATH). Skipped while an APK
-            // update is pending, and when this phone already holds the same snapshot.
+            // snapshot, see LocalShareProtocol.V2_SHINYWALL_PATH). Skipped only when this
+            // phone already holds the same snapshot. While an APK update is pending it is
+            // downloaded too and handed over with the board (LocalShareResumeStore): the
+            // updated app imports it on its first start, as it does the board.
             val shinyWallOffer = receivedManifest.families
                 .firstOrNull { it.boardBrand == BoardBrand.SHINYWALL.wireValue }
-                ?.takeIf { BoardBrand.SHINYWALL in brands && apkDownload == null }
+                ?.takeIf { BoardBrand.SHINYWALL in brands }
             shinyWallCurrent = shinyWallOffer != null && shinyWallOffer.uncompressedSha256 == keptShinyWallSha256()
             if (shinyWallOffer != null && !shinyWallCurrent) {
                 shinyWallArtifact = shinyWallOffer
@@ -2112,10 +2129,12 @@ class BoardSyncManager(
 
         val offeredBoard = boardArtifact
         val compressedBoard = boardDownload
+        val receivedShinyWall = shinyWallDownload
+        val receivedShinyWallArtifact = shinyWallArtifact.takeIf { receivedShinyWall != null }
         var boardImported = false
         if (readyUpdate != null) {
             // The running (older) app must not parse a snapshot from a newer
-            // schema. Persist both verified downloads; the new APK resumes the
+            // schema. Persist the verified downloads; the new APK resumes the
             // local import on its first launch.
             localShareResumeStore.save(
                 LocalShareResumeStore.Pending(
@@ -2125,6 +2144,8 @@ class BoardSyncManager(
                     apkVersionName = readyUpdate.versionName,
                     boardPath = compressedBoard?.absolutePath,
                     board = offeredBoard,
+                    shinyWallPath = receivedShinyWall?.absolutePath,
+                    shinyWall = receivedShinyWallArtifact,
                 ),
             )
         } else if (offeredBoard != null && compressedBoard != null) {
@@ -2136,16 +2157,18 @@ class BoardSyncManager(
             )
             boardImported = true
         }
-        val receivedShinyWall = shinyWallDownload
-        val shinyWallImported = readyUpdate == null && receivedShinyWall != null && shinyWallArtifact != null &&
-            importSharedShinyWallCatalogue(receivedShinyWall, shinyWallArtifact!!)
-        val shinyWallMissing = !shinyWallImported && !shinyWallCurrent
+        // Handed over to the updated app next to the board, see above.
+        val shinyWallDeferred = readyUpdate != null && receivedShinyWallArtifact != null
+        val shinyWallImported = readyUpdate == null && receivedShinyWall != null &&
+            receivedShinyWallArtifact != null &&
+            importSharedShinyWallCatalogue(receivedShinyWall, receivedShinyWallArtifact)
+        val shinyWallMissing = !shinyWallImported && !shinyWallCurrent && !shinyWallDeferred
 
         val timestamp = DateTimeUtil.nowIso()
         if (boardImported) userPreferences.setLastSyncTimestamp(timestamp)
         val imported = importer.isImported()
-        val terminalBoardSteps = if (readyUpdate != null && compressedBoard != null) {
-            // A newer app will resume this downloaded board snapshot. Do not
+        val terminalBoardSteps = if (readyUpdate != null && (compressedBoard != null || shinyWallDeferred)) {
+            // A newer app will resume these downloaded catalogues. Do not
             // leave non-terminal spinners behind in the old process.
             emptyMap()
         } else {
