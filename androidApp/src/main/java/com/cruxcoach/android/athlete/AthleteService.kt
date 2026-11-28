@@ -321,7 +321,8 @@ class AthleteService @Inject constructor(
     fun climberProfile(): ClimberProfileData {
         val today = today()
         val rows = logbookRows()
-        val coach = repo.profile().coach
+        val profile = repo.profile()
+        val coach = profile.coach
         val summary = LogbookSummaries.withCoachGrades(LogbookSummaries.summarize(rows, today), coach.currentGrade, coach.currentFlashGrade)
         val zone = zone
         val sets = PerformanceProfiles.RELEVANT_SLUGS.flatMap { slug -> repo.history(slug, HISTORY_LIMIT) }
@@ -330,7 +331,10 @@ class AthleteService @Inject constructor(
         return PerformanceProfiles.build(
             rows, summary, sets, repo.allBenchmarks(), catalog,
             weightTrend().map { it.day to it.trend }, today,
-        ) { ms -> dayOfMillis(ms, zone) }
+            dayOfMillis = { ms -> dayOfMillis(ms, zone) },
+            // The norms compare with men or women when the profile says so, else with everyone.
+            sex = profile.sex,
+        )
     }
 
     private fun dayOfMillis(ms: Long, zone: TimeZone): LocalDate =
@@ -985,7 +989,8 @@ class AthleteService @Inject constructor(
             ?: known(MAX_HANG_SLUG)?.times(StartEstimate.PICKUP_OF_HANG)
             ?: (known(ONE_ARM_PICKUP_SLUG, Side.LEFT) ?: known(ONE_ARM_PICKUP_SLUG, Side.RIGHT))?.div(StartEstimate.ONE_ARM_SHARE)
         val difficulty = if (twoHand == null) runCatching { gradeSummary().workingDifficulty }.getOrNull() else null
-        return StartEstimate.capacity(def, bodyweightKg, twoHand, difficulty)
+        val sex = if (twoHand == null) repo.profile().sex else null
+        return StartEstimate.capacity(def, bodyweightKg, twoHand, difficulty, sex)
     }
 
     /**

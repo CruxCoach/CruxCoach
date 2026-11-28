@@ -210,6 +210,7 @@ private fun PositionSection(
                 label = { Text(stringResource(R.string.trl_tab_pull)) }, modifier = Modifier.testTag("profile_tab_pull"))
         }
         val metric = if (tab == PositionTab.FINGER) GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM else GradeStrengthNorms.Metric.PULL_UP_1RM
+        val normSex = GradeStrengthNorms.NormSex.of(p.sex)
         val points = if (tab == PositionTab.FINGER) fingerPoints else pullPoints
         val position = if (tab == PositionTab.FINGER) p.fingerPosition else p.pullPosition
         Text(stringResource(if (tab == PositionTab.FINGER) R.string.trl_position_finger_axis else R.string.trl_position_pull_axis),
@@ -226,19 +227,20 @@ private fun PositionSection(
             }
             points.isEmpty() -> {
                 Text(stringResource(R.string.trl_position_no_grade), style = MaterialTheme.typography.bodyMedium)
+                position?.let { pos -> PositionReading(pos, sexMissing = p.sex == null) }
                 TextButton(onClick = onLogClimbing) { Text(stringResource(R.string.trl_action_log_climbing)) }
             }
             else -> {
                 val newest = points.maxBy { it.day.toEpochDays() }
                 val label = stringResource(R.string.trl_position_you, pct(newest.pctBw), fontLabel(newest.difficulty))
-                GradePositionChart(metric, points, label,
+                GradePositionChart(metric, normSex, points, label,
                     stringResource(R.string.trl_position_cd, pct(newest.pctBw), fontLabel(newest.difficulty), points.size),
                     Modifier.fillMaxWidth().testTag("profile_position_chart"))
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Legend(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), stringResource(R.string.trl_legend_band))
                     Legend(CruxCoachDesign.colors.brandAccent, stringResource(R.string.trl_legend_you))
                 }
-                position?.let { pos -> Text(positionReading(pos), style = MaterialTheme.typography.bodyMedium) }
+                position?.let { pos -> PositionReading(pos, sexMissing = p.sex == null) }
                 if (points.any { it.estimated }) {
                     Text(stringResource(R.string.trl_position_estimated), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -248,17 +250,54 @@ private fun PositionSection(
     }
 }
 
+/**
+ * The newest value against the usual range at the athlete's own grade (band in % body weight), or without a grade
+ * the grades it is common at – never one predicted grade. Below it: how much of the grade differences this strength
+ * explains, a note where comparison values are thin, and a pointer to the sex in the profile when it is missing.
+ */
 @Composable
-private fun positionReading(pos: NormPosition): String {
-    val typical = fontLabel(pos.typicalDifficulty)
+private fun PositionReading(pos: NormPosition, sexMissing: Boolean) {
+    val finger = pos.metric == GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM
     val value = pct(pos.latestPctBw)
-    val subject = stringResource(if (pos.metric == GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM) R.string.trl_subject_finger else R.string.trl_subject_pull)
-    val working = pos.workingDifficulty ?: return stringResource(R.string.trl_reading_no_grade, subject, value, typical)
-    val climb = fontLabel(working)
-    return when (pos.position) {
-        GradeStrengthNorms.Position.BELOW -> stringResource(R.string.trl_reading_below, subject, value, typical, climb)
-        GradeStrengthNorms.Position.ABOVE -> stringResource(R.string.trl_reading_above, subject, value, typical, climb)
-        else -> stringResource(R.string.trl_reading_within, subject, value, climb)
+    val subject = stringResource(if (finger) R.string.trl_subject_finger else R.string.trl_subject_pull)
+    val working = pos.workingDifficulty
+    val band = pos.band
+    val range = pos.typicalRange
+    val atGrade = working != null && band != null
+    val reading = when {
+        working != null && band != null -> stringResource(
+            when (pos.position) {
+                GradeStrengthNorms.Position.BELOW -> R.string.trl_reading_below
+                GradeStrengthNorms.Position.ABOVE -> R.string.trl_reading_above
+                else -> R.string.trl_reading_within
+            },
+            subject, value, fontLabel(working), band.low.roundToInt().toString(), pct(band.high),
+        )
+        range != null -> {
+            val low = fontLabel(range.lowDifficulty)
+            val high = fontLabel(range.highDifficulty)
+            when {
+                range.atLowerEnd && !range.atUpperEnd -> stringResource(R.string.trl_reading_no_grade_up_to, subject, value, high)
+                range.atUpperEnd && !range.atLowerEnd -> stringResource(R.string.trl_reading_no_grade_from, subject, value, low)
+                low == high -> stringResource(R.string.trl_reading_no_grade_one, subject, value, low)
+                else -> stringResource(R.string.trl_reading_no_grade, subject, value, low, high)
+            }
+        }
+        else -> null
+    }
+    val thin = if (atGrade) band?.thinData == true else range?.thinData == true
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        reading?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("profile_position_reading")) }
+        Text(stringResource(if (finger) R.string.trl_reading_share_finger else R.string.trl_reading_share_pull),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (thin) {
+            Text(stringResource(if (atGrade) R.string.trl_reading_thin else R.string.trl_reading_thin_range),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (sexMissing) {
+            Text(stringResource(R.string.trl_reading_add_sex), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

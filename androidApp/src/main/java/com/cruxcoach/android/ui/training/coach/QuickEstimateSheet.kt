@@ -55,6 +55,8 @@ data class QuickEstimateState(
     val pickupAllowed: Boolean = true,
     /** Anchor for the plausibility hint: logbook working grade or the athlete's own grade. */
     val workingDifficulty: Double? = null,
+    /** Comparison group of the hint, from the profile's sex. */
+    val normSex: GradeStrengthNorms.NormSex = GradeStrengthNorms.NormSex.COMBINED,
     val increment: Double = 1.0,
 )
 
@@ -94,6 +96,7 @@ class QuickEstimateViewModel @Inject constructor(private val service: AthleteSer
                 pickupSide = pickup?.takeIf { it.verdict == InjuryVerdict.ONE_SIDE_ONLY }?.allowedSide,
                 pickupAllowed = pickup?.verdict != InjuryVerdict.AVOID,
                 workingDifficulty = working,
+                normSex = GradeStrengthNorms.NormSex.of(profile.sex),
                 increment = profile.smallestIncrementKg,
             )
         }
@@ -243,7 +246,7 @@ fun QuickEstimateSheet(onDismiss: () -> Unit) {
                 }
             }
             PlausibilityHint(GradeStrengthNorms.Metric.PULL_UP_1RM,
-                QuickEstimateViewModel.pullPct(pull, kg(weightedKg), weightedReps.toIntOrNull(), s.bodyweight), s.workingDifficulty)
+                QuickEstimateViewModel.pullPct(pull, kg(weightedKg), weightedReps.toIntOrNull(), s.bodyweight), s.workingDifficulty, s.normSex)
 
             // 2. Two-hand hang
             Text(stringResource(R.string.trc_estimate_hang), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
@@ -268,7 +271,7 @@ fun QuickEstimateSheet(onDismiss: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 PlausibilityHint(GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM,
-                    QuickEstimateViewModel.fingerPct(hang, kg(hangKg), s.bodyweight, s.increment), s.workingDifficulty)
+                    QuickEstimateViewModel.fingerPct(hang, kg(hangKg), s.bodyweight, s.increment), s.workingDifficulty, s.normSex)
             }
 
             // 3. One-arm pick-up, per hand
@@ -306,26 +309,33 @@ fun QuickEstimateSheet(onDismiss: () -> Unit) {
 }
 
 /**
- * Strength in % body weight, placed against the grade orientation band:
- * "typisch für etwa 7a", or "ungewöhnlich hoch – Eingabe prüfen?" — a hint,
- * never a block.
+ * Strength in % body weight with the grades it is common at – "üblich zwischen
+ * 5a und 7b", never one predicted grade (that would be off by about ± 2 V grades,
+ * see [GradeStrengthNorms]) – or, far outside the band at the athlete's grade,
+ * "ungewöhnlich hoch für 6b – Eingabe prüfen?": a hint, never a block.
  */
 @Composable
-internal fun PlausibilityHint(metric: GradeStrengthNorms.Metric, pct: Double?, difficulty: Double?) {
+internal fun PlausibilityHint(metric: GradeStrengthNorms.Metric, pct: Double?, difficulty: Double?, sex: GradeStrengthNorms.NormSex) {
     pct ?: return
+    val verdict = difficulty?.let { GradeStrengthNorms.plausibility(metric, it, pct, sex) } ?: GradeStrengthNorms.Plausibility.PLAUSIBLE
+    val grade = difficulty?.let { LogbookSummaries.fontOf(it) } ?: ""
+    val range = GradeStrengthNorms.typicalRange(metric, pct, sex)
+    val rangeText = range?.let { r ->
+        val low = LogbookSummaries.fontOf(r.lowDifficulty) ?: ""
+        val high = LogbookSummaries.fontOf(r.highDifficulty) ?: ""
+        when {
+            r.atLowerEnd && !r.atUpperEnd -> stringResource(R.string.trc_estimate_range_up_to, high)
+            r.atUpperEnd && !r.atLowerEnd -> stringResource(R.string.trc_estimate_range_from, low)
+            low == high -> stringResource(R.string.trc_estimate_range_one, low)
+            else -> stringResource(R.string.trc_estimate_range, low, high)
+        }
+    }
     val text = buildString {
         append(stringResource(R.string.trc_estimate_pct, pct.roundToInt()))
-        if (difficulty != null) {
-            val verdict = GradeStrengthNorms.plausibility(metric, difficulty, pct)
-            val grade = LogbookSummaries.fontOf(difficulty) ?: ""
-            when (verdict) {
-                GradeStrengthNorms.Plausibility.UNUSUALLY_HIGH -> append(" · " + stringResource(R.string.trc_estimate_high, grade))
-                GradeStrengthNorms.Plausibility.UNUSUALLY_LOW -> append(" · " + stringResource(R.string.trc_estimate_low, grade))
-                GradeStrengthNorms.Plausibility.PLAUSIBLE -> {
-                    val typical = LogbookSummaries.fontOf(GradeStrengthNorms.typicalDifficulty(metric, pct))
-                    if (typical != null) append(" · " + stringResource(R.string.trc_estimate_typical, typical))
-                }
-            }
+        when (verdict) {
+            GradeStrengthNorms.Plausibility.UNUSUALLY_HIGH -> append(" · " + stringResource(R.string.trc_estimate_high, grade))
+            GradeStrengthNorms.Plausibility.UNUSUALLY_LOW -> append(" · " + stringResource(R.string.trc_estimate_low, grade))
+            GradeStrengthNorms.Plausibility.PLAUSIBLE -> rangeText?.let { append(" · $it") }
         }
     }
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,

@@ -25,16 +25,24 @@
     <string name="trl_position_no_pull">Noch kein Zug-Wert. Trag Klimmzüge mit Zusatzgewicht oder deine maximalen Klimmzüge ein.</string>
     <string name="trl_position_no_grade">Es gibt einen Kraftwert, aber noch keinen Grad: Logg Boulder am Board oder trag einen Klettertag ein.</string>
     <string name="trl_position_you">du: %1$s · %2$s</string>
-    <string name="trl_position_cd">Kraft im Verhältnis zum Grad: dein neuester Wert %1$s bei %2$s, insgesamt %3$d Werte, gezeigt vor dem typischen Bereich.</string>
-    <string name="trl_legend_band">typischer Bereich</string>
+    <string name="trl_position_cd">Kraft im Verhältnis zum Grad: dein neuester Wert %1$s bei %2$s, insgesamt %3$d Werte, gezeigt vor dem üblichen Bereich.</string>
+    <string name="trl_legend_band">üblicher Bereich</string>
     <string name="trl_legend_you">du im Verlauf</string>
     <string name="trl_position_estimated">Hohle Punkte sind deine Schätzungen; gemessene Werte ersetzen sie.</string>
     <string name="trl_subject_finger">Deine Fingerkraft</string>
     <string name="trl_subject_pull">Deine Zugkraft</string>
-    <string name="trl_reading_below">%1$s (%2$s) ist typisch für etwa %3$s – du kletterst %4$s. Kraft könnte für dich ein Hebel sein.</string>
-    <string name="trl_reading_above">%1$s (%2$s) ist typisch für etwa %3$s – du kletterst %4$s. An der Kraft liegt es nicht; Technik, Schnellkraft oder Taktik bringen dir vermutlich mehr.</string>
-    <string name="trl_reading_within">%1$s (%2$s) liegt im typischen Bereich für %3$s.</string>
-    <string name="trl_reading_no_grade">%1$s (%2$s) ist typisch für Kletternde um %3$s.</string>
+    <string name="trl_reading_below">%1$s (%2$s) liegt unter dem üblichen Bereich für %3$s (%4$s–%5$s). Kraft könnte für dich ein Hebel sein.</string>
+    <string name="trl_reading_above">%1$s (%2$s) liegt über dem üblichen Bereich für %3$s (%4$s–%5$s). An der Kraft liegt es eher nicht; Technik, Schnellkraft oder Taktik bringen dir vermutlich mehr.</string>
+    <string name="trl_reading_within">%1$s (%2$s) liegt im üblichen Bereich für %3$s (%4$s–%5$s).</string>
+    <string name="trl_reading_no_grade">%1$s (%2$s) ist üblich bei Kletternden zwischen %3$s und %4$s.</string>
+    <string name="trl_reading_no_grade_one">%1$s (%2$s) ist üblich bei Kletternden um %3$s.</string>
+    <string name="trl_reading_no_grade_up_to">%1$s (%2$s) ist üblich bei Kletternden bis %3$s.</string>
+    <string name="trl_reading_no_grade_from">%1$s (%2$s) ist üblich bei Kletternden ab %3$s.</string>
+    <string name="trl_reading_share_finger">Fingerkraft erklärt etwa die Hälfte der Unterschiede im Bouldergrad – Technik, Erfahrung und anderes den Rest.</string>
+    <string name="trl_reading_share_pull">Klimmzugkraft erklärt nur etwa ein Drittel der Unterschiede im Bouldergrad.</string>
+    <string name="trl_reading_thin">Für diesen Grad gibt es nur wenige Vergleichswerte.</string>
+    <string name="trl_reading_thin_range">Für einen Teil dieses Bereichs gibt es nur wenige Vergleichswerte.</string>
+    <string name="trl_reading_add_sex">Mit deinem Geschlecht im Profil werden die Vergleichswerte genauer.</string>
 
     <string name="trl_timeline_title">Grad und Fingerkraft im Verlauf</string>
     <string name="trl_timeline_grade">Arbeitsgrad</string>
@@ -112,7 +120,7 @@
     <string name="trl_reason_no_grade">noch keine bewerteten Board-Begehungen</string>
     <string name="trl_reason_no_endurance">noch keine Repeaters eingetragen</string>
     <string name="trl_reason_no_core">noch keine Rumpf-Werte eingetragen</string>
-    <string name="trl_disclaimer">Die typischen Bereiche sind eine grobe Orientierung aus veröffentlichter Kletterforschung und Trainer-Erhebungen. Menschen unterscheiden sich stark – das ist weder Ziel noch Rangliste, und nichts hier legt ein Körpergewicht nahe.</string>
+    <string name="trl_disclaimer">Vergleichswerte: Power Company Climbing und Lattice Training, rund 1.300 Boulderinnen und Boulderer, selbst gemessen; getrennt nach Männern und Frauen. Fingerkraft: 10\u00A0s an 20\u00A0mm, beide Hände, Halbkrimp. Klimmzug: Maximum mit Zusatzgewicht. Der Bereich zeigt, wo etwa zwei Drittel von ihnen liegen. Wer sich testet, trainiert meist gezielt – für viele in der Halle liegen die Werte eher hoch. Aus der Kraft allein lässt sich kein Grad ablesen. Das ist weder Ziel noch Rangliste, und nichts hier legt ein Körpergewicht nahe.</string>
 
     <string name="trl_card_grade">Arbeitsgrad %1$s</string>
     <string name="trl_card_finger">Finger %1$s</string>

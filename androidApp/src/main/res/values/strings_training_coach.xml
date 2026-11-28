@@ -170,7 +170,10 @@
     <string name="trc_estimate_no_weight">Enter your body weight and the coach also works in percent of body weight.</string>
     <string name="trc_estimate_note">Saved as “estimated” and replaced by your first real set, up or down.</string>
     <string name="trc_estimate_pct">≈\u00A0%1$d\u00A0%% of body weight</string>
-    <string name="trc_estimate_typical">typical for about %1$s</string>
+    <string name="trc_estimate_range">common between %1$s and %2$s</string>
+    <string name="trc_estimate_range_one">common at about %1$s</string>
+    <string name="trc_estimate_range_up_to">common up to %1$s</string>
+    <string name="trc_estimate_range_from">common from %1$s up</string>
     <string name="trc_estimate_high">unusually high for %1$s – please check the entry</string>
     <string name="trc_estimate_low">unusually low for %1$s – please check the entry</string>
     <string name="trc_card_level">Suggestions: %1$s</string>

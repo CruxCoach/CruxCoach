@@ -48,12 +48,14 @@ fun fontLabel(difficulty: Double): String = LogbookSummaries.fontOf(difficulty)?
 /**
  * Where the athlete stands among climbers of a grade: x = boulder grade,
  * y = strength in % of body weight. The shaded band is the orientation from
- * [GradeStrengthNorms], the dashed line its middle; the athlete's own values
- * form a path over time, oldest faint, the newest highlighted with a label.
+ * [GradeStrengthNorms] for [sex] (centre ± one SD), the dashed line its middle;
+ * the athlete's own values form a path over time, oldest faint, the newest
+ * highlighted with a label.
  */
 @Composable
 fun GradePositionChart(
     metric: GradeStrengthNorms.Metric,
+    sex: GradeStrengthNorms.NormSex,
     points: List<PositionPoint>,
     newestLabel: String?,
     description: String,
@@ -71,14 +73,18 @@ fun GradePositionChart(
     val labelStyle = TextStyle(fontSize = 11.sp, color = labelColor)
     val calloutStyle = TextStyle(fontSize = 12.sp, color = onSurface, fontWeight = FontWeight.SemiBold)
 
-    // Grade window: around the athlete's points, at least two Font grades wide, inside the band's range.
+    // Grade window: around the athlete's points, at least two Font grades wide, inside the band's range
+    // unless a point lies outside it.
     val dMin = (points.minOfOrNull { it.difficulty } ?: 18.0)
     val dMax = (points.maxOfOrNull { it.difficulty } ?: 22.0)
-    val xMin = floor(min(dMin - 2.0, dMax - 6.0)).coerceAtLeast(13.0)
-    val xMax = ceil(max(dMax + 2.0, xMin + 6.0)).coerceAtMost(32.0)
-    val bandAt = { d: Double -> GradeStrengthNorms.band(metric, d) }
-    val bandValues = listOfNotNull(bandAt(xMin)?.low, bandAt(xMax)?.high)
-    val yValues = points.map { it.pctBw } + bandValues
+    val xMin = floor(min(dMin - 2.0, dMax - 6.0)).coerceAtLeast(min(GradeStrengthNorms.MIN_DIFFICULTY, floor(dMin)))
+    val xMax = ceil(max(dMax + 2.0, xMin + 6.0)).coerceAtMost(max(GradeStrengthNorms.MAX_DIFFICULTY, ceil(dMax)))
+    // Band: sampled across the window; it exists only where the norms speak for the grade.
+    val steps = 40
+    val bands = (0..steps).map { xMin + (xMax - xMin) * it / steps }
+        .mapNotNull { d -> GradeStrengthNorms.band(metric, d, sex)?.let { d to it } }
+    val bandValues = bands.map { it.second.low } + bands.map { it.second.high }
+    val yValues = points.map { it.pctBw } + listOfNotNull(bandValues.minOrNull(), bandValues.maxOrNull())
     val yMin = floor(((yValues.minOrNull() ?: 90.0) - 8.0) / 10.0) * 10.0
     val yMax = ceil(((yValues.maxOrNull() ?: 160.0) + 8.0) / 10.0) * 10.0
 
@@ -99,9 +105,6 @@ fun GradePositionChart(
                 (0..4).forEach { i -> drawLine(gridColor, Offset(0f, h * i / 4f), Offset(w, h * i / 4f), strokeWidth = 1f) }
 
                 // Band: upper edge left → right, lower edge back.
-                val steps = 40
-                val xs = (0..steps).map { xMin + (xMax - xMin) * it / steps }
-                val bands = xs.mapNotNull { d -> bandAt(d)?.let { d to it } }
                 if (bands.size >= 2) {
                     val area = Path()
                     bands.forEachIndexed { i, (d, b) -> if (i == 0) area.moveTo(x(d), y(b.high)) else area.lineTo(x(d), y(b.high)) }

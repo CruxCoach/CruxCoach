@@ -9,6 +9,7 @@ import com.cruxcoach.athlete.model.ExerciseSet
 import com.cruxcoach.athlete.model.Grip
 import com.cruxcoach.athlete.model.RoutineItem
 import com.cruxcoach.athlete.model.SetType
+import com.cruxcoach.athlete.model.Sex
 import com.cruxcoach.athlete.model.Side
 import kotlin.math.abs
 import kotlin.math.max
@@ -47,8 +48,8 @@ data class Capacity(
  * the suggestion"). The two-hand 10-second total on 20 mm comes from a related
  * value when there is one (two-arm pick-up, a max hang at 70 %, a one-arm
  * pick-up at 45 % of two hands), else from body weight and the climbing grade:
- * the low end of [GradeStrengthNorms]' max-hang band (6a without a grade) at
- * 70 %. The result is taken at 80 %, and the first session feels out from
+ * the low end of [GradeStrengthNorms]' max-hang band (6a without a grade; the
+ * athlete's sex when known, else everyone) at 70 %. The result is taken at 80 %, and the first session feels out from
  * 85 % of that (owner 2026-10-10: "38 kg sounds like a lot for 6b+"): the
  * sets after it move by about 10 % on the reserve answer
  * ([SetAutoregulation] feelOut), so a guess that is too high or too low is
@@ -113,21 +114,22 @@ object StartEstimate {
         return Capacity(CapacityKind.E1RM_TOTAL, lifted * (1.0 + (reps + BenchmarkMath.TARGET_RIR) / 30.0), bodyweightKg?.takeIf { it > 0 }, estimated = true)
     }
 
-    /** Two-hand 10-second pick-up total from body weight and grade alone. */
-    fun twoHandFromGrade(bodyweightKg: Double, difficulty: Double?): Double {
-        val d = (difficulty ?: DEFAULT_DIFFICULTY).coerceIn(13.0, 32.0)
-        val band = requireNotNull(GradeStrengthNorms.band(GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM, d))
+    /** Two-hand 10-second pick-up total from body weight, grade and (if known) sex alone. */
+    fun twoHandFromGrade(bodyweightKg: Double, difficulty: Double?, sex: Sex?): Double {
+        val d = (difficulty ?: DEFAULT_DIFFICULTY).coerceIn(GradeStrengthNorms.MIN_DIFFICULTY, GradeStrengthNorms.MAX_DIFFICULTY)
+        val band = requireNotNull(GradeStrengthNorms.band(GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM, d, GradeStrengthNorms.NormSex.of(sex)))
         return band.low / 100.0 * bodyweightKg * PICKUP_OF_HANG
     }
 
     /**
      * The start guess for [def], or null when it does not apply. [twoHandTotalKg]
-     * is a two-hand pick-up total derived from a related value, if any.
+     * is a two-hand pick-up total derived from a related value, if any; [sex] (from the profile) picks the
+     * comparison group of the grade-based guess.
      */
-    fun capacity(def: ExerciseDefinition, bodyweightKg: Double?, twoHandTotalKg: Double?, difficulty: Double?): Capacity? {
+    fun capacity(def: ExerciseDefinition, bodyweightKg: Double?, twoHandTotalKg: Double?, difficulty: Double?, sex: Sex? = null): Capacity? {
         if (!applies(def)) return null
         val bw = bodyweightKg?.takeIf { it > 0 } ?: return null
-        val twoHand = twoHandTotalKg?.takeIf { it > 0 } ?: twoHandFromGrade(bw, difficulty)
+        val twoHand = twoHandTotalKg?.takeIf { it > 0 } ?: twoHandFromGrade(bw, difficulty, sex)
         val own = if (def.unilateral) twoHand * ONE_ARM_SHARE else twoHand
         return Capacity(CapacityKind.TEN_SECOND_MAX, own * CAUTION * FEEL_OUT_START, bw, estimated = true)
     }
