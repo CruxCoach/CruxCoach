@@ -83,8 +83,8 @@ internal fun BoardSelectionDialog(
     /** FEAT-031: the active board's product_size_id, used to seed the Aurora
      *  size tier so re-opening shows the current size selected. */
     selectedAuroraProductSizeId: Int = 0,
-    /** FEAT-031: wire values of Aurora brands whose catalogue is already
-     *  imported. Drives whether the "we'll download …" hint is shown — once a
+    /** FEAT-031: wire values of Aurora brands (and Shiny Wall) whose catalogue is
+     *  already imported. Drives whether the "we'll download …" hint is shown — once a
      *  board is loaded the hint is misleading, so it's hidden. */
     loadedAuroraBrands: Set<String> = emptySet(),
     /** FEAT-031: picker-ready (deduped) product sizes per Aurora brand, keyed by
@@ -624,6 +624,13 @@ internal fun BoardSelectionDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    // Shiny Wall is downloaded only once chosen, like a new Aurora board.
+                    if (BoardBrand.SHINYWALL.wireValue !in loadedAuroraBrands) {
+                        Text(
+                            stringResource(R.string.board_selection_shinywall_download_hint),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                 } else if (category == BoardCategory.MOONBOARD) {
                     mbVariant?.let { variant ->
                         MoonBoardPickerHoldSets(variant, selectedHolds(variant), moonBoardHasHoldSetData) { selected ->

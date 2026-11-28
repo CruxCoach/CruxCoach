@@ -327,6 +327,12 @@ object BoardAnglePicker {
         if (chips.isEmpty() || angle in chips) angle
         else chips.minBy { kotlin.math.abs(it - angle) }
 
+    /** A catalogue-angle board on screen without chips whose catalogue is now in the database: its angles
+     *  were read before the catalogue existed (a switch to a board not downloaded yet, e.g. the opt-in
+     *  Shiny Wall), so they must be read again. False once chips are known, so no extra read follows. */
+    fun awaitsCatalogueChips(brand: BoardBrand, chips: List<Int>, brandHasCatalogue: Boolean): Boolean =
+        brand.usesCatalogueAngles && chips.isEmpty() && brandHasCatalogue
+
     fun sliderIndex(chips: List<Int>, angle: Int): Int {
         require(chips.isNotEmpty())
         val exact = chips.indexOf(angle)
@@ -581,6 +587,27 @@ internal fun BoardBrowserState.showPendingBoard(boardBrand: String, layoutId: In
     )
 }
 
+/**
+ * The catalogue angles of the board already on screen, read after its catalogue landed. Device 0.2.5: Kilter at
+ * 45° → Shiny Wall (not downloaded yet). The switch read no angles, so the angle sheet offered none until a
+ * restart; from Kilter at 70° the list stayed empty (Shiny Wall has 0–60°) with no way out. This is no board
+ * switch: only the chips and the angle (snapped to the nearest chip) change, every other filter stays. A board
+ * that changed meanwhile keeps its own state.
+ */
+internal fun BoardBrowserState.withCatalogueAngles(
+    boardBrand: String,
+    layoutId: Int,
+    angleChips: List<Int>,
+): BoardBrowserState {
+    if (filter.boardBrand != boardBrand || filter.layoutId != layoutId) return this
+    return copy(
+        filter = filter.copy(
+            angle = BoardAnglePicker.clampAngle(filter.angle, angleChips),
+            angleChips = angleChips,
+        ),
+    )
+}
+
 @HiltViewModel
 class BoardBrowserViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
@@ -642,6 +669,9 @@ class BoardBrowserViewModel @Inject constructor(
     private var refreshJob: Job? = null
     /** A board switch is on screen ([showPendingBoard]) but its catalogue angles are not read yet. */
     private var boardSwitchPending = false
+    /** Board + catalogue revision the missing angle chips were last read for, so a board whose catalogue
+     *  has no angles for its layout is not asked again on every refresh. */
+    private var catalogueAnglesReadFor: String? = null
 
     // RANDOM sort, browse mode. SQL ORDER BY RANDOM() re-shuffles per page →
     // duplicates and gaps when scrolling. Instead: page 1 is a fast SQL
@@ -1082,6 +1112,26 @@ class BoardBrowserViewModel @Inject constructor(
                             angleChips = angleChips,
                         ) }
                         boardSwitchPending = false
+                    } else if (BoardAnglePicker.awaitsCatalogueChips(
+                            prefBrand, _state.value.filter.angleChips, brandHasCatalogue,
+                        )
+                    ) {
+                        // The switch read no angles because the board's catalogue was not
+                        // downloaded yet (Shiny Wall is opt-in). Read them once it is here, so the
+                        // picker offers them without a restart and an angle the board lacks snaps
+                        // to a real one. Persisted like a picked angle, so a later prefs re-seed
+                        // and the other screens use it too. Once per board and catalogue revision.
+                        val anglesKey = "$prefBoardBrand|$prefLayoutId|${syncManager.state.value.catalogueRevision}"
+                        if (anglesKey != catalogueAnglesReadFor) {
+                            val supported = boardRepository.getSupportedAnglesForLayout(prefLayoutId, prefBoardBrand)
+                            catalogueAnglesReadFor = anglesKey
+                            val chips = BoardAnglePicker.chipsFor(prefBrand, prefLayoutId, supported)
+                            if (chips.isNotEmpty()) {
+                                val angleBefore = _state.value.filter.angle
+                                _state.update { it.withCatalogueAngles(prefBoardBrand, prefLayoutId, chips) }
+                                if (_state.value.filter.angle != angleBefore) persistFilters()
+                            }
+                        }
                     }
                     // FEAT-031: placements are namespaced by board_brand; reload
                     // them (with the active brand) on a board change, not just

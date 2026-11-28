@@ -18,7 +18,31 @@ enum class ClimbNavigationSource { BROWSER, QUEUE, LIST, LOGBOOK }
 @Singleton
 class ClimbNavigationState @Inject constructor() {
     var climbUuids: List<String> = emptyList()
+        set(value) {
+            field = value
+            // A source that does not know per-climb angles must not inherit the last one's.
+            climbAngles = emptyMap()
+        }
     var angle: Int = 40
+    /** The angle each climb of [climbUuids] opens at when they differ (logbook entries were logged at
+     *  their own angles). A climb missing here opens at [angle]. Cleared whenever [climbUuids] is set. */
+    var climbAngles: Map<String, Int> = emptyMap()
+        private set
+
+    /**
+     * Fills the pager from entries that each carry their own angle, in list order: every climb once, at
+     * the angle of its first entry, and the opened climb at the opened entry's angle. Paging used to open
+     * every neighbour at the opened entry's angle, so a quick log stored that angle too.
+     */
+    fun setClimbsWithAngles(entries: List<Pair<String, Int>>, openedUuid: String, openedAngle: Int) {
+        val angles = LinkedHashMap<String, Int>()
+        entries.forEach { (uuid, entryAngle) -> if (uuid !in angles) angles[uuid] = entryAngle }
+        val uuids = angles.keys.toList()
+        angles[openedUuid] = openedAngle
+        climbUuids = uuids
+        climbAngles = angles
+        angle = openedAngle
+    }
     var source: ClimbNavigationSource = ClimbNavigationSource.BROWSER
     /** Set by detail VM after ascent/bid insert or delete; read & reset by browser VM on refresh. */
     var statusDataChanged: Boolean = false
