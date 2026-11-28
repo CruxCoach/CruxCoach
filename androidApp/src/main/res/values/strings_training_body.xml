@@ -30,6 +30,15 @@
     <string name="trb_strength_best">Best: %1$d\u00A0%%</string>
     <string name="trb_strength_chart_description">Strength to weight over time</string>
     <string name="trb_recent">Recent entries</string>
+    <!-- All readings by month -->
+    <string name="trb_history_action">All entries</string>
+    <string name="trb_history_weight_action">All weight entries</string>
+    <string name="trb_history_title">All entries</string>
+    <string name="trb_history_all">All</string>
+    <string name="trb_history_weight">Weight</string>
+    <string name="trb_history_composition">Composition</string>
+    <string name="trb_history_circumference">Circumferences</string>
+    <string name="trb_history_empty_filter">No entries in this selection.</string>
     <string name="trb_legacy_badge">from an older version</string>
     <string name="trb_hidden_value">hidden</string>
     <string name="trb_dialog_add_title">Add measurement</string>

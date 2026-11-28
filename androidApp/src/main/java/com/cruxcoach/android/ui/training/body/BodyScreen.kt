@@ -58,6 +58,8 @@ fun BodyScreen(
     viewModel: BodyViewModel = hiltViewModel(),
     tabBar: @Composable () -> Unit = {},
     onOpenBenchmarks: () -> Unit = {},
+    /** All readings ([HistoryFilter.key] to start with, null = all). */
+    onOpenHistory: (group: String?) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -131,7 +133,7 @@ fun BodyScreen(
         ) {
             if (state.energy.signals.isNotEmpty()) item { EnergyCareCard(state.energy, state.profile, "body_reds", Modifier.padding(vertical = 8.dp)) }
             // Weight first – it is what most people come here for; the round of measurements after it.
-            item { Column { WeightSection(state, onRange = viewModel::setRange) } }
+            item { Column { WeightSection(state, onRange = viewModel::setRange, onOpenHistory = { onOpenHistory(HistoryFilter.WEIGHT.key) }) } }
             item { Box(Modifier.padding(top = 12.dp)) { RoundCard(onOpen = { roundOpen = true }) } }
             item {
                 SectionTitle(stringResource(R.string.trb_measurements)) {
@@ -162,6 +164,12 @@ fun BodyScreen(
                 items(state.recent, key = { "rec_" + it.day + it.metric }) { entry ->
                     RecentRow(entry, units, hidden = isHidden(entry.metric, hide)) {
                         dialog = entry to (BodyMetric.fromKey(entry.metric) ?: BodyMetric.WEIGHT)
+                    }
+                }
+                // The recent list stops at 30; everything else, by month, one tap away (owner 2026-11-28).
+                item(key = "history") {
+                    TextButton(onClick = { onOpenHistory(null) }, modifier = Modifier.testTag("body_history_open")) {
+                        Text(stringResource(R.string.trb_history_action))
                     }
                 }
             }
@@ -200,7 +208,7 @@ fun BodyScreen(
 }
 
 /** With "hide numbers" on, everything body-image related stays hidden; build data (height, span) does not. */
-private fun isHidden(metricKey: String, hideNumbers: Boolean): Boolean {
+internal fun isHidden(metricKey: String, hideNumbers: Boolean): Boolean {
     if (!hideNumbers) return false
     return BodyMetric.fromKey(metricKey)?.group != MetricGroup.ANTHROPOMETRY
 }
@@ -223,7 +231,7 @@ private fun formatValue(value: Double, unit: String, units: UnitSystem, signed: 
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit) {
+private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit, onOpenHistory: () -> Unit) {
     val units = state.profile.units
     val hide = state.profile.hideBodyNumbers
     val rate = state.weeklyRateKg
@@ -280,6 +288,9 @@ private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit) {
     }
     Spacer(Modifier.height(8.dp))
     TrendChart(visible, hideNumbers = hide, units = units, description = description, modifier = Modifier.fillMaxWidth())
+    TextButton(onClick = onOpenHistory, modifier = Modifier.testTag("body_weight_history")) {
+        Text(stringResource(R.string.trb_history_weight_action))
+    }
 }
 
 // ── Measurements ─────────────────────────────────────────────────────
@@ -330,7 +341,13 @@ private fun SummaryRow(summary: MetricSummary, units: UnitSystem, hidden: Boolea
 }
 
 @Composable
-private fun RecentRow(entry: BodyMeasurement, units: UnitSystem, hidden: Boolean, onClick: () -> Unit) {
+internal fun RecentRow(
+    entry: BodyMeasurement,
+    units: UnitSystem,
+    hidden: Boolean,
+    tagPrefix: String = "body_recent",
+    onClick: () -> Unit,
+) {
     ListItem(
         headlineContent = { Text(labelFor(entry.metric)) },
         supportingContent = {
@@ -355,7 +372,7 @@ private fun RecentRow(entry: BodyMeasurement, units: UnitSystem, hidden: Boolean
         trailingContent = {
             Text(if (hidden) stringResource(R.string.trb_hidden_value) else formatValue(entry.value, entry.unit, units))
         },
-        modifier = Modifier.clickable(onClick = onClick).testTag("body_recent_${entry.metric}_${entry.day}"),
+        modifier = Modifier.clickable(onClick = onClick).testTag("${tagPrefix}_${entry.metric}_${entry.day}"),
     )
 }
 
@@ -426,7 +443,7 @@ private fun LocalDate.utcMillis(): Long = java.time.LocalDate.parse(toString()).
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MeasurementDialog(
+internal fun MeasurementDialog(
     initial: BodyMeasurement?,
     defaultMetric: BodyMetric,
     units: UnitSystem,
