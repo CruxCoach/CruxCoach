@@ -5,6 +5,7 @@ import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.model.Benchmark
 import com.cruxcoach.athlete.model.BenchmarkSource
 import com.cruxcoach.athlete.model.ExerciseSet
+import com.cruxcoach.athlete.model.Sex
 import com.cruxcoach.athlete.model.Side
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
@@ -27,9 +28,13 @@ data class NormPosition(
     val metric: GradeStrengthNorms.Metric,
     val latestPctBw: Double,
     val workingDifficulty: Double?,
+    /** The comparison group the band and the range come from. */
+    val sex: GradeStrengthNorms.NormSex,
+    /** Band at [workingDifficulty]; null without a grade or outside the grades the norms speak for. */
+    val band: GradeStrengthNorms.Band?,
     val position: GradeStrengthNorms.Position?,
-    /** Grade at which this value sits in the middle of the band. */
-    val typicalDifficulty: Double,
+    /** Grades at which this value is common; null when it is common at none. Never one predicted grade. */
+    val typicalRange: GradeStrengthNorms.TypicalRange?,
 )
 
 /** Pearson r between weekly working grade and finger strength. */
@@ -80,6 +85,8 @@ data class ClimberProfileData(
     val bodyweightKg: Double? = null,
     val hasRepeaterData: Boolean = false,
     val hasCoreData: Boolean = false,
+    /** Sex from the athlete profile; null when not given, and then the norms compare with everyone. */
+    val sex: Sex? = null,
 ) {
     val isEmpty: Boolean get() = gradeTimeline.isEmpty() && finger.isEmpty() && pull.isEmpty() &&
         pickupLeft.isEmpty() && pickupRight.isEmpty() && summary.workingDifficulty == null
@@ -117,6 +124,7 @@ object PerformanceProfiles {
     /**
      * @param sets completed sets of [RELEVANT_SLUGS] with the day they belong to.
      * @param weights body-weight trend (day → kg), used when a set or value has no snapshot.
+     * @param sex from the athlete profile: picks the comparison group of [GradeStrengthNorms].
      */
     fun build(
         rows: List<ClimbRow>,
@@ -127,6 +135,7 @@ object PerformanceProfiles {
         weights: List<Pair<LocalDate, Double>>,
         today: LocalDate,
         dayOfMillis: (Long) -> LocalDate,
+        sex: Sex? = null,
     ): ClimberProfileData {
         val primary = rows.filter { it.brand == summary.primaryBrand }
         val gradeTimeline = weeklyAnchors(primary.filter { it.sent }, today, flashOnly = false)
@@ -154,8 +163,9 @@ object PerformanceProfiles {
         val pickupRight = strengthSeries(listOf(ONE_ARM_PICKUP), sets, benchmarks, catalog, ::bwAt, dayOfMillis, side = Side.RIGHT) { _, cap, _ -> cap }
 
         val working = summary.workingDifficulty
-        val fingerPosition = finger.lastOrNull()?.let { position(GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM, it.pctBw, working) }
-        val pullPosition = pull.lastOrNull()?.let { position(GradeStrengthNorms.Metric.PULL_UP_1RM, it.pctBw, working) }
+        val normSex = GradeStrengthNorms.NormSex.of(sex)
+        val fingerPosition = finger.lastOrNull()?.let { position(GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM, it.pctBw, working, normSex) }
+        val pullPosition = pull.lastOrNull()?.let { position(GradeStrengthNorms.Metric.PULL_UP_1RM, it.pctBw, working, normSex) }
 
         val flashGap = summary.workingDifficulty?.let { w -> summary.flashDifficulty?.let { f -> w - f } }
         val hasRepeaters = sets.any { it.second.exerciseSlug == REPEATERS } || benchmarks.any { it.exerciseSlug == REPEATERS }
@@ -179,15 +189,18 @@ object PerformanceProfiles {
             bodyweightKg = sortedWeights.lastOrNull()?.second,
             hasRepeaterData = hasRepeaters,
             hasCoreData = hasCore,
+            sex = sex,
         )
     }
 
-    private fun position(metric: GradeStrengthNorms.Metric, pct: Double, working: Double?) = NormPosition(
+    private fun position(metric: GradeStrengthNorms.Metric, pct: Double, working: Double?, sex: GradeStrengthNorms.NormSex) = NormPosition(
         metric = metric,
         latestPctBw = pct,
         workingDifficulty = working,
-        position = working?.let { GradeStrengthNorms.position(metric, it, pct) },
-        typicalDifficulty = GradeStrengthNorms.typicalDifficulty(metric, pct),
+        sex = sex,
+        band = working?.let { GradeStrengthNorms.band(metric, it, sex) },
+        position = working?.let { GradeStrengthNorms.position(metric, it, pct, sex) },
+        typicalRange = GradeStrengthNorms.typicalRange(metric, pct, sex),
     )
 
     /** Monday of the ISO week of [day]. */
@@ -294,8 +307,8 @@ object PerformanceProfiles {
         hasCore: Boolean,
     ): List<Bottleneck> {
         fun normScore(p: NormPosition?, area: BottleneckArea): Bottleneck {
-            val w = p?.workingDifficulty ?: return Bottleneck(area, null, BottleneckReason.NO_DATA)
-            val band = GradeStrengthNorms.band(p.metric, w) ?: return Bottleneck(area, null, BottleneckReason.NO_NORM)
+            if (p?.workingDifficulty == null) return Bottleneck(area, null, BottleneckReason.NO_DATA)
+            val band = p.band ?: return Bottleneck(area, null, BottleneckReason.NO_NORM)
             val spread = band.high - band.center
             val score = ((p.latestPctBw - band.center) / (spread * 1.5)).coerceIn(-1.0, 1.0)
             val reason = when (p.position) {

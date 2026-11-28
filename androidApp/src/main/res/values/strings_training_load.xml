@@ -25,16 +25,24 @@
     <string name="trl_position_no_pull">No pull value yet. Enter weighted pull-ups or your max pull-ups.</string>
     <string name="trl_position_no_grade">There is a strength value, but no grade yet: log boulders on the board or a climbing day.</string>
     <string name="trl_position_you">you: %1$s · %2$s</string>
-    <string name="trl_position_cd">Strength by grade: your newest value %1$s at %2$s, %3$d values in total, shown against the typical range.</string>
-    <string name="trl_legend_band">typical range</string>
+    <string name="trl_position_cd">Strength by grade: your newest value %1$s at %2$s, %3$d values in total, shown against the usual range.</string>
+    <string name="trl_legend_band">usual range</string>
     <string name="trl_legend_you">you over time</string>
     <string name="trl_position_estimated">Hollow dots are your own estimates; measured values replace them.</string>
     <string name="trl_subject_finger">Your finger strength</string>
     <string name="trl_subject_pull">Your pulling strength</string>
-    <string name="trl_reading_below">%1$s (%2$s) is typical for about %3$s – you climb %4$s. Strength could be a lever for you.</string>
-    <string name="trl_reading_above">%1$s (%2$s) is typical for about %3$s – you climb %4$s. Strength is not what holds you back; technique, power or tactics may pay off more.</string>
-    <string name="trl_reading_within">%1$s (%2$s) is in the typical range for %3$s.</string>
-    <string name="trl_reading_no_grade">%1$s (%2$s) is typical for climbers around %3$s.</string>
+    <string name="trl_reading_below">%1$s (%2$s) is below the usual range for %3$s (%4$s–%5$s). Strength could be a lever for you.</string>
+    <string name="trl_reading_above">%1$s (%2$s) is above the usual range for %3$s (%4$s–%5$s). Strength is probably not what holds you back; technique, power or tactics will likely pay off more.</string>
+    <string name="trl_reading_within">%1$s (%2$s) is in the usual range for %3$s (%4$s–%5$s).</string>
+    <string name="trl_reading_no_grade">%1$s (%2$s) is common among climbers between %3$s and %4$s.</string>
+    <string name="trl_reading_no_grade_one">%1$s (%2$s) is common among climbers around %3$s.</string>
+    <string name="trl_reading_no_grade_up_to">%1$s (%2$s) is common among climbers up to %3$s.</string>
+    <string name="trl_reading_no_grade_from">%1$s (%2$s) is common among climbers from %3$s up.</string>
+    <string name="trl_reading_share_finger">Finger strength explains about half of the differences in bouldering grade – technique, experience and more explain the rest.</string>
+    <string name="trl_reading_share_pull">Pull-up strength explains only about a third of the differences in bouldering grade.</string>
+    <string name="trl_reading_thin">There are only a few comparison values for this grade.</string>
+    <string name="trl_reading_thin_range">There are only a few comparison values for part of this range.</string>
+    <string name="trl_reading_add_sex">With your sex in the profile, the comparison values get more precise.</string>
 
     <string name="trl_timeline_title">Grade and finger strength over time</string>
     <string name="trl_timeline_grade">Working grade</string>
@@ -112,7 +120,7 @@
     <string name="trl_reason_no_grade">no graded board sends yet</string>
     <string name="trl_reason_no_endurance">no repeaters logged yet</string>
     <string name="trl_reason_no_core">no core values logged yet</string>
-    <string name="trl_disclaimer">The typical ranges are a rough orientation built from published climbing research and coaching surveys. People differ a lot – it is neither a goal nor a ranking, and nothing here suggests a body weight.</string>
+    <string name="trl_disclaimer">Comparison values: Power Company Climbing and Lattice Training, about 1,300 boulderers, self-measured; men and women separately. Finger strength: 10\u00A0s on 20\u00A0mm, both hands, half crimp. Pull-up: maximum with added weight. The range shows where about two thirds of them are. People who test themselves usually train on purpose, so for many gym climbers the values lean high. Strength alone does not tell your grade. It is neither a goal nor a ranking, and nothing here suggests a body weight.</string>
 
     <string name="trl_card_grade">Working grade %1$s</string>
     <string name="trl_card_finger">fingers %1$s</string>

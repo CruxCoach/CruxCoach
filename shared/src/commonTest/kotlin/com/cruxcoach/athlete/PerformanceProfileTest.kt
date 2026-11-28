@@ -58,9 +58,13 @@ class PerformanceProfileTest {
         assertEquals(130.0, profile.finger.first().pctBw, 1e-6)
         // 77 kg on 15 mm ≈ 86.6 kg on 20 mm → 123.75 %.
         assertEquals(123.75, profile.finger.last().pctBw, 1e-6)
-        // 123.75 % sits under the 7a band (≈ 127–151 %).
+        // 123.75 % sits in the lower half of everyone's 7a band (≈ 117–147 %).
         val position = assertNotNull(profile.fingerPosition)
-        assertEquals(GradeStrengthNorms.Position.BELOW, position.position)
+        assertEquals(GradeStrengthNorms.NormSex.COMBINED, position.sex)
+        assertEquals(GradeStrengthNorms.Position.WITHIN, position.position)
+        assertEquals(116.68, assertNotNull(position.band).low, 1e-6)
+        val range = assertNotNull(position.typicalRange)
+        assertTrue(22.0 in range.lowDifficulty..range.highDifficulty, "$range")
     }
 
     @Test
@@ -106,11 +110,40 @@ class PerformanceProfileTest {
 
     @Test
     fun normsPlaceValuesAndFlagImplausibleEstimates() {
-        assertEquals(GradeStrengthNorms.Position.WITHIN, GradeStrengthNorms.position(GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM, 22.0, 138.0))
-        assertEquals(GradeStrengthNorms.Position.BELOW, GradeStrengthNorms.position(GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM, 22.0, 110.0))
-        assertEquals(22.0, GradeStrengthNorms.typicalDifficulty(GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM, 120.0 + 5.3 * 3.5), 1e-9)
-        assertEquals(GradeStrengthNorms.Plausibility.UNUSUALLY_HIGH,
-            GradeStrengthNorms.plausibility(GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM, 18.0, 200.0))
+        val hang = GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM
+        val everyone = GradeStrengthNorms.NormSex.COMBINED
+        assertEquals(GradeStrengthNorms.Position.WITHIN, GradeStrengthNorms.position(hang, 22.0, 138.0, everyone))
+        assertEquals(GradeStrengthNorms.Position.BELOW, GradeStrengthNorms.position(hang, 22.0, 110.0, everyone))
+        assertEquals(GradeStrengthNorms.Plausibility.UNUSUALLY_HIGH, GradeStrengthNorms.plausibility(hang, 18.0, 200.0, everyone))
+    }
+
+    @Test
+    fun theProfilesSexPicksTheComparisonGroup() {
+        // 7a (V6) climber with a pull-up 1RM of 1.50 × body weight: in the men's band (131–161 %), above the women's (118–144 %).
+        val pull = ExerciseSet("p1", "w", "pull.weighted_pull_up", 0, 0, reps = 1, loadKg = 35.0, bodyweightKg = 70.0, completedAt = 1L)
+        fun profile(sex: Sex?) = PerformanceProfiles.build(emptyList(), LogbookSummary(workingDifficulty = 22.0, flashDifficulty = 19.0),
+            listOf(today to pull), emptyList(), catalog, emptyList(), today, dayOf, sex)
+        val man = profile(Sex.MALE)
+        assertEquals(150.0, man.pull.single().pctBw, 1e-6)
+        assertEquals(GradeStrengthNorms.NormSex.MALE, man.pullPosition!!.sex)
+        assertEquals(GradeStrengthNorms.Position.WITHIN, man.pullPosition!!.position)
+        assertEquals(BottleneckReason.WITHIN_TYPICAL, man.bottlenecks.single { it.area == BottleneckArea.PULL }.reason)
+        val woman = profile(Sex.FEMALE)
+        assertEquals(Sex.FEMALE, woman.sex)
+        assertEquals(GradeStrengthNorms.Position.ABOVE, woman.pullPosition!!.position)
+        assertEquals(BottleneckReason.ABOVE_TYPICAL, woman.bottlenecks.single { it.area == BottleneckArea.PULL }.reason)
+        // No sex or "other": everyone.
+        listOf(null, Sex.OTHER).forEach { sex ->
+            val p = profile(sex)
+            assertEquals(GradeStrengthNorms.NormSex.COMBINED, p.pullPosition!!.sex)
+            assertEquals(GradeStrengthNorms.band(GradeStrengthNorms.Metric.PULL_UP_1RM, 22.0, GradeStrengthNorms.NormSex.COMBINED), p.pullPosition!!.band)
+        }
+        // Without a grade there is no band, only the range of grades the value is common at.
+        val noGrade = PerformanceProfiles.build(emptyList(), LogbookSummary(), listOf(today to pull), emptyList(), catalog, emptyList(),
+            today, dayOf, Sex.MALE).pullPosition!!
+        assertNull(noGrade.band)
+        assertNull(noGrade.position)
+        assertNotNull(noGrade.typicalRange)
     }
 
     private fun LocalDate.plusDays(n: Int): LocalDate = plus(DatePeriod(days = n))
