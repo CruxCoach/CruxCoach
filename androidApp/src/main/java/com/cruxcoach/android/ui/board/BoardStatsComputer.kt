@@ -33,6 +33,15 @@ object BoardStatsComputer {
     /** The shortest period with an average of climbing days per week. */
     internal const val MIN_AVERAGE_DAYS = 14
 
+    /**
+     * What the statistics count as one problem: a climb at one angle on one
+     * board, as in the board makers' apps. The same climb at another angle is
+     * another problem, with the grade it has there. A MoonBoard climb uuid
+     * already names its angle.
+     */
+    fun problemKey(entry: AscentWithClimb): Triple<String, String, Long> =
+        Triple(entry.boardBrand, entry.climbUuid, entry.angle)
+
     fun computeStats(
         ascents: List<AscentWithClimb>,
         interval: StatsTimeInterval,
@@ -54,8 +63,8 @@ object BoardStatsComputer {
         val flashUuids = trueFlashUuids(ascents)
         val flashCount = sends.count { it.uuid in flashUuids }
         val flashRate = if (totalSends > 0) flashCount.toFloat() / totalSends * 100f else 0f
-        // A problem is a climb on one board, as in the grades chart.
-        val uniqueClimbs = filtered.map { it.boardBrand to it.climbUuid }.distinct().size
+        // A problem is a climb at one angle on one board, as in the grades chart.
+        val uniqueClimbs = filtered.map { problemKey(it) }.distinct().size
         val sessionCount = filtered.map { it.climbedAt.take(10) }.distinct().size
 
         val hardestDiff = sends.mapNotNull { it.difficultyAverage }.maxOrNull()
@@ -133,7 +142,7 @@ object BoardStatsComputer {
             sends = sends.size,
             attempts = before.sumOf { it.bidCount.coerceAtLeast(1L) }.toInt(),
             sessions = before.map { it.climbedAt.take(10) }.distinct().size,
-            problems = before.map { it.boardBrand to it.climbUuid }.distinct().size,
+            problems = before.map { problemKey(it) }.distinct().size,
             flashRate = if (sends.isNotEmpty()) sends.count { it.uuid in flashUuids } * 100f / sends.size else 0f,
             hardestDifficulty = sends.mapNotNull { it.difficultyAverage }.maxOrNull(),
         )
@@ -269,8 +278,8 @@ object BoardStatsComputer {
                     grade = grade,
                     count = list.size,
                     difficultyInt = list.minOf { Math.round(it.difficultyAverage!!).toInt() },
-                    // A problem is a climb on one board, as in the grades chart.
-                    problems = list.map { it.boardBrand to it.climbUuid }.distinct().size,
+                    // A problem is a climb at one angle on one board, as in the grades chart.
+                    problems = list.map { problemKey(it) }.distinct().size,
                 )
             }
             .sortedBy { it.difficultyInt }
@@ -295,13 +304,14 @@ object BoardStatsComputer {
 
     // --- New extended stats ---
 
-    /** One problem per board, regardless of repeat sessions or angle changes.
-     * Choose its best result within the interval; flash eligibility still uses full history. */
+    /** One problem per board, climb and angle ([problemKey]), regardless of repeat
+     * sessions; its grade is the one at that angle. Choose its best result within
+     * the interval; flash eligibility still uses full history. */
     private fun distinctProblemOutcomes(
         entries: List<AscentWithClimb>,
         flashUuids: Set<String>,
     ): List<AscentWithClimb> = entries
-        .groupBy { it.boardBrand to it.climbUuid }
+        .groupBy { problemKey(it) }
         .values.map { problem ->
             problem.minWith(
                 compareByDescending<AscentWithClimb> {
@@ -520,7 +530,7 @@ object BoardStatsComputer {
      */
     fun trueFlashUuids(allAscents: List<AscentWithClimb>): Set<String> {
         return allAscents
-            .groupBy { Triple(it.boardBrand, it.climbUuid, it.angle) }
+            .groupBy { problemKey(it) }
             .mapNotNull { (_, entries) ->
                 val first = entries.minByOrNull { it.climbedAt } ?: return@mapNotNull null
                 first.uuid.takeIf { first.isSend && first.bidCount <= 1L }

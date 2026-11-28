@@ -260,12 +260,12 @@ object StatsHighlightsComputer {
             sends = sends.size,
             flashes = sends.count { it.uuid in flashUuids },
             tries = rows.sumOf { it.bidCount.coerceAtLeast(1L) }.toInt(),
-            problems = rows.map { Triple(it.boardBrand, it.climbUuid, it.angle) }.distinct().size,
+            problems = rows.map { BoardStatsComputer.problemKey(it) }.distinct().size,
             hardest = hardestOf(sends, gradeScale),
             topClimbs = sends
                 .filter { it.difficultyAverage != null }
                 // A problem sent twice shows once, as a flash if it was one.
-                .groupBy { Triple(it.boardBrand, it.climbUuid, it.angle) }
+                .groupBy { BoardStatsComputer.problemKey(it) }
                 .values
                 .map { repeats -> repeats.minWith(compareBy<AscentWithClimb> { it.uuid !in flashUuids }.thenBy { it.climbedAt }) }
                 .sortedWith(compareByDescending<AscentWithClimb> { it.difficultyAverage!! }.thenBy { it.climbedAt })

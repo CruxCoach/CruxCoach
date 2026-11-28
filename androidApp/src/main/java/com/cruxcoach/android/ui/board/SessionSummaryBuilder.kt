@@ -35,7 +35,8 @@ object SessionSummaryBuilder {
 
         val hardestSend = sends.maxByOrNull { it.difficultyAverage ?: 0.0 }
         val flashCount = sends.count { it.uuid in trueFlashUuids }
-        val uniqueClimbs = ascents.map { it.climbUuid }.distinct().size
+        // A problem is a climb at one angle on one board, as in the stats sheet and the recap.
+        val uniqueClimbs = ascents.map { BoardStatsComputer.problemKey(it) }.distinct().size
 
         // Same displayed-grade grouping as the stats sheet — the old V-scale
         // detour merged Font grades sharing a V bucket (7b and 7b+).
