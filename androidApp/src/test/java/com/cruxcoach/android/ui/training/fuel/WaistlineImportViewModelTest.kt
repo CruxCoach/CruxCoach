@@ -132,8 +132,7 @@ class WaistlineImportViewModelTest : AthleteScreenTest() {
     @Test
     fun `a CSV without any values says that 3_11_1 writes only today`() {
         val vm = WaistlineImportViewModel(service).tracked()
-        vm.preview("content://test/diary_export.csv", csv.substringBefore(
-))
+        vm.preview("content://test/diary_export.csv", csv.substringBefore('\n'))
         compose.waitUntil(WAIT_MS) { vm.state.value.outcome != null }
         assertEquals(WaistlineImportOutcome.Empty(csv = true), vm.state.value.outcome)
     }
