@@ -21,16 +21,17 @@ import kotlinx.coroutines.flow.flowOf
  */
 class FakePersonalBoardRepository : PersonalBoardRepository {
 
-    val sentUuids = mutableSetOf<String>()
-    val attemptedUuids = mutableSetOf<String>()
+    /** Logged (climb uuid, angle) pairs: status is per climb AND angle. */
+    val sentLogs = mutableSetOf<Pair<String, Long>>()
+    val attemptedLogs = mutableSetOf<Pair<String, Long>>()
     val ignoredUuids = mutableSetOf<String>()
     val climbNotes = mutableMapOf<String, String>()
     /** Log uuids (ascent + bid PKs) recorded by inserts, so dedup-counting in
      *  the Kilter import can be exercised. */
     val insertedLogUuids = mutableSetOf<String>()
 
-    fun markSent(uuid: String) { sentUuids.add(uuid) }
-    fun markAttempted(uuid: String) { attemptedUuids.add(uuid) }
+    fun markSent(uuid: String, angle: Long = 40L) { sentLogs.add(uuid to angle) }
+    fun markAttempted(uuid: String, angle: Long = 40L) { attemptedLogs.add(uuid to angle) }
     fun markIgnored(uuid: String) { ignoredUuids.add(uuid) }
 
     // -- Ascent queries --
@@ -52,8 +53,11 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     override fun updateBid(uuid: String, bidCount: Long, comment: String?) {}
     override fun getUserAscentsAll(): List<AscentWithClimb> = emptyList()
     override fun getUserAscentsBetween(from: String, to: String): List<AscentWithClimb> = emptyList()
-    override fun getUserSentClimbUuids(): Set<String> = sentUuids
-    override fun getUserAttemptedClimbUuids(): Set<String> = attemptedUuids - sentUuids
+    override fun getUserSentClimbUuidsAtAngle(angle: Long): Set<String> =
+        sentLogs.filter { it.second == angle }.mapTo(HashSet()) { it.first }
+    override fun getUserAttemptedClimbUuidsAtAngle(angle: Long): Set<String> =
+        attemptedLogs.filter { it.second == angle }.mapTo(HashSet()) { it.first } -
+            getUserSentClimbUuidsAtAngle(angle)
     override fun getUserSendDifficulties(since: String): List<Double> = emptyList()
     override fun getUserLogbookPage(limit: Int, offset: Int): List<AscentWithClimb> = emptyList()
     override fun getUserLogbookAllLight(): List<AscentWithClimb> = emptyList()
@@ -259,7 +263,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
 
     // -- Bulk operations --
 
-    override fun deleteAllUserBoardData() { sentUuids.clear(); attemptedUuids.clear(); ignoredUuids.clear() }
+    override fun deleteAllUserBoardData() { sentLogs.clear(); attemptedLogs.clear(); ignoredUuids.clear() }
     override fun getAllListEntryClimbUuids(): Set<String> = emptySet()
     override fun deleteUserBoardDataForBrands(brands: Set<String>, listEntryClimbUuids: Collection<String>) {}
     override fun runInTransaction(block: () -> Unit) { block() }

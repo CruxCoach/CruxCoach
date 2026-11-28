@@ -63,13 +63,18 @@ The statistics have different denominators:
 |---|---|
 | Attempt volume | Sum of `bid_count`, at least one per entry, including send entries |
 | Total sends | Successful log entries; repeat sends can count again |
-| Outcome distribution / grade outcomes | One best outcome per board family and climb UUID in the selected period: flash, then redpoint, then attempted |
+| Outcome distribution / grade outcomes | One best outcome per board family + climb UUID + angle in the selected period, with the grade at that angle: flash, then redpoint, then attempted |
+| Problems (stats sheet, pyramid, session summary, recap) | Distinct board family + climb UUID + angle |
 | Flash eligibility | First recorded entry across the full history for board family + climb UUID + angle must be a send with at most one try |
 
-Unique outcome charts collapse angles for the same problem; flash detection
-is angle-specific. Do not assume all statistics use either one of these keys.
-A send in a later period does not erase the attempted outcome in an earlier
-period. Missing import history also limits what can be inferred about a flash.
+Outcomes, problem counts and flash detection share one problem key, board
+family + climb UUID + angle (`BoardStatsComputer.problemKey`), as the board
+makers' apps count: the same climb at another angle is another problem with
+its own grade. A MoonBoard climb UUID already names its angle. The hold-type
+card is the exception and counts a climb once across angles, since its holds
+are the same at every angle. A send in a later period does not erase the
+attempted outcome in an earlier period. Missing import history also limits what
+can be inferred about a flash.
 
 **History / Verlauf** is separate: it records projections sent to a board.
 Lighting a problem is not proof of attempting or completing it.
@@ -78,10 +83,12 @@ Lighting a problem is not proof of attempting or completing it.
 
 Board configuration constrains what can fit. Browser filters then narrow the
 available set by grade, origin, holds, status and other selected properties.
-Status buckets are disjoint: **new** has no send or bid, **attempted** has a bid
-but no send, **sent** has a send. Selecting several buckets combines them;
-selecting none means all statuses. These status lookups use climb UUIDs,
-so they are not a per-angle attempt history.
+Status buckets are disjoint and count per climb **and angle**, as in the board
+makers' apps: at the browsed angle, **new** has no send or bid, **attempted** has
+a bid but no send, **sent** has a send. A send at 40° leaves the climb new (or
+attempted) at 25°. Selecting several buckets combines them; selecting none means
+all statuses. A MoonBoard climb UUID already names its angle. The playlist
+generator reads status, and open projects, at the session's angle the same way.
 
 “Ungraded only” selects missing grades; it is not the same as “attempted.”
 Ignored climbs, board fit and Quantum overlap checks can further narrow the

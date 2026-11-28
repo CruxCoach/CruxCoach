@@ -825,9 +825,9 @@
     <string name="board_filter_ungraded_only_none">None on this board at this angle — every climb here has a grade.</string>
     <string name="board_filter_info_action">Explain filter terms</string>
     <string name="board_filter_info_title">Filter &amp; sort terms</string>
-    <string name="board_filter_info_status_new">Climbs with no send or attempt recorded in your CruxCoach logbook.</string>
-    <string name="board_filter_info_status_attempted">Climbs with logged attempts but no successful send in your logbook.</string>
-    <string name="board_filter_info_status_sent">Climbs with at least one successful send in your logbook. Lighting a climb on the board does not count as a send.</string>
+    <string name="board_filter_info_status_new">Climbs with no send or attempt at the selected angle in your CruxCoach logbook.</string>
+    <string name="board_filter_info_status_attempted">Climbs with logged attempts at the selected angle but no successful send there in your logbook.</string>
+    <string name="board_filter_info_status_sent">Climbs with at least one successful send at the selected angle in your logbook. A send at another angle does not count here. Lighting a climb on the board does not count as a send.</string>
     <string name="board_filter_info_benchmarks">Climbs marked as benchmarks: reference problems for comparing grades.</string>
     <string name="board_filter_info_ungraded">Climbs without a catalogue grade. This does not indicate whether you have attempted or sent them.</string>
     <string name="board_filter_info_sort_sends">Sorts by how many climbers have completed the problem according to the catalogue. Your personal logbook entries are not used.</string>
@@ -1435,6 +1435,10 @@
     <string name="board_detail_count_thousands">%1$dk</string>
     <!-- A logging button's word and how often the climber has logged it for this climb: "Top (3)" -->
     <string name="board_dock_label_count">%1$s (%2$d)</string>
+    <!-- A logging button's word, how often it is logged at the angle on screen, then at every angle: "Try (0 · 3)" -->
+    <string name="board_dock_label_count_angle_total">%1$s (%2$d · %3$d)</string>
+    <!-- Read aloud for a logging button whose two counts differ: "Try: 0 at this angle, 3 in total" -->
+    <string name="cd_board_dock_count_angle_total">%1$s: %2$d at this angle, %3$d in total</string>
     <string name="board_dock_connect">Connect</string>
     <string name="board_dock_light">Light</string>
     <string name="board_dock_queue">Queue</string>
@@ -1702,7 +1706,7 @@
     <string name="board_stats_open">Open statistics</string>
     <string name="board_stats_problems">Problems</string>
     <string name="board_stats_grades_title">Problems per grade</string>
-    <string name="board_stats_grades_help">Every problem you logged in the chosen period counts once per board, across angles, by its best result: a flash, sent later, or not sent yet.\n\nA flash needs the first recorded entry at that angle to be a send with at most one try.\n\nTap a grade to see its numbers.</string>
+    <string name="board_stats_grades_help">Every problem you logged in the chosen period counts once per board and angle, by its best result there: a flash, sent later, or not sent yet. The same climb at another angle counts separately, with the grade it has at that angle.\n\nA flash needs the first recorded entry at that angle to be a send with at most one try.\n\nTap a grade to see its numbers.</string>
     <string name="board_stats_grades_open">Not sent yet</string>
     <string name="board_logbook_filter_period">Period</string>
     <string name="board_stats_period_versus">Changes against the period of the same length before</string>
@@ -3142,7 +3146,7 @@
     <string name="ux_account_help">Account access\nYour private key works like a password. Keep it secret and store it outside this phone. It cannot be reset.\n\nYour data\nA key copy is not a data backup. Your logbook and lists need a separate backup.\n\nOptional tools\nAmber can manage your key in a separate app. Your public account ID can be shared, but cannot restore access.</string>
     <string name="ux_lists_help">Lists\nA list contains each climb once. Favourites are a built-in list.\n\nPlayback\nAn optional plan adds repeated climbs, angles and rests. Playing it does not automatically mean you climbed its steps. Record attempts and sends in the logbook.\n\nHistory\nHistory records climbs sent to the board LEDs. It is separate from your climbing logbook.</string>
     <string name="ux_logbook_help">Entries\nSends are successful log entries, including repeats. Attempts here are entries without a send. An entry can include several tries.\n\nFilters\nPeriod, outcome, board and angle narrow this list. The overview above the list always covers the whole logbook, and the statistics have their own period and board filter. Lighting a climb on the board does not log a climbing attempt.</string>
-    <string name="ux_stats_help">Filters\nThe board and the period at the top apply to every card below. The boards card and the tries card always show every board side by side.\n\nNumbers\nSends count successful entries, including repeats. Tries add up the tries recorded in all entries, including sends; each entry counts at least once. Climbing days are days with at least one entry. Problems count each climb once per board.\n\nBests\nThe hardest flash, the most sends in one day, climbing days a week over the whole period and the most weeks in a row with a climbing day, all in the chosen period. The period starts with your first entry at the earliest.\n\nFlash\nA flash needs the first recorded entry for that climb at that angle to be a send with at most one try. Earlier attempts rule it out, even outside the chosen period, so missing history limits this.\n\nActivity\nThe calendar and the weekly chart count log entries, including unsuccessful ones.</string>
+    <string name="ux_stats_help">Filters\nThe board and the period at the top apply to every card below. The boards card and the tries card always show every board side by side.\n\nNumbers\nSends count successful entries, including repeats. Tries add up the tries recorded in all entries, including sends; each entry counts at least once. Climbing days are days with at least one entry. Problems count each climb once per board and angle.\n\nBests\nThe hardest flash, the most sends in one day, climbing days a week over the whole period and the most weeks in a row with a climbing day, all in the chosen period. The period starts with your first entry at the earliest.\n\nFlash\nA flash needs the first recorded entry for that climb at that angle to be a send with at most one try. Earlier attempts rule it out, even outside the chosen period, so missing history limits this.\n\nActivity\nThe calendar and the weekly chart count log entries, including unsuccessful ones.</string>
     <string name="ux_restore_consequence">Restoring uses the previous account and enables encrypted backup. You will confirm the account change before continuing.</string>
     <string name="ux_logbook_unsent_attempts">Without a send</string>
     <string name="ux_later_send">Later send</string>

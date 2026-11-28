@@ -71,8 +71,11 @@ WHERE uuid = ?;
 
 -- ═══ UUID lookups (for browser status filter) ═══
 
-getUserSentClimbUuids:
-SELECT DISTINCT climb_uuid FROM ascents;
+-- Status is per climb AND angle, as in the board makers' own apps: a send at
+-- 40° leaves the climb new at 25°. A MoonBoard climb uuid already names its
+-- angle, so the angle changes nothing there.
+getUserSentClimbUuidsAtAngle:
+SELECT DISTINCT climb_uuid FROM ascents WHERE angle = :angle;
 
 -- ═══ Logbook queries (denormalized — no JOINs needed) ═══
 

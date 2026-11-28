@@ -65,14 +65,19 @@ können deshalb drei Versuche, aber nur ein erfolgreiches Problem sein.
 |---|---|
 | Versuchsvolumen | Summe von `bid_count`, mindestens eins je Eintrag, einschließlich erfolgreicher Einträge |
 | Begehungen insgesamt | Erfolgreiche Logeinträge; Wiederholungen können erneut zählen |
-| Ergebnisverteilung / Ergebnisse je Grad | Ein bestes Ergebnis pro Board-Familie und Problem-UUID im Zeitraum: Flash vor Rotpunkt vor versucht |
+| Ergebnisverteilung / Ergebnisse je Grad | Ein bestes Ergebnis pro Board-Familie + Problem-UUID + Winkel im Zeitraum, mit dem Grad bei diesem Winkel: Flash vor Rotpunkt vor versucht |
+| Boulder (Statistik, Pyramide, Session-Zusammenfassung, Rückblick) | Verschiedene Board-Familie + Problem-UUID + Winkel |
 | Flash-Erkennung | Erster Eintrag der gesamten Historie für Board-Familie + Problem-UUID + Winkel muss erfolgreich sein und höchstens einen Versuch enthalten |
 
-Ergebnisdiagramme fassen die Winkel eines Problems zusammen; die
-Flash-Erkennung betrachtet Winkel getrennt. Nicht alle Statistiken verwenden
-denselben Schlüssel. Ein späterer Erfolg entfernt das versuchte Ergebnis
-eines früheren Zeitraums nicht. Fehlende Importhistorie begrenzt außerdem,
-wie zuverlässig ein Flash erkannt werden kann.
+Ergebnisse, Boulderzahlen und Flash-Erkennung verwenden denselben
+Schlüssel, Board-Familie + Problem-UUID + Winkel (`BoardStatsComputer.problemKey`),
+so wie die Apps der Board-Hersteller zählen: Derselbe Boulder bei einem anderen
+Winkel ist ein eigenes Problem mit eigenem Grad. Eine MoonBoard-Problem-UUID
+enthält ihren Winkel bereits. Nur die Grifftypen-Karte zählt einen Boulder
+einmal über alle Winkel, weil seine Griffe bei jedem Winkel dieselben sind. Ein
+späterer Erfolg entfernt das versuchte Ergebnis eines früheren Zeitraums nicht.
+Fehlende Importhistorie begrenzt außerdem, wie zuverlässig ein Flash erkannt
+werden kann.
 
 **Verlauf** ist etwas anderes: Er protokolliert an ein Board gesendete
 Projektionen. Ein beleuchtetes Problem belegt weder einen Versuch noch Erfolg.
@@ -81,11 +86,14 @@ Projektionen. Ein beleuchtetes Problem belegt weder einen Versuch noch Erfolg.
 
 Die Board-Konfiguration begrenzt, was physisch passt. Browser-Filter grenzen
 weiter nach Grad, Herkunft, Griffen, Status und anderen Eigenschaften ein.
-Die Statusgruppen überschneiden sich nicht: **Neu** bedeutet ohne Bid und
-Begehung, **Versucht** bedeutet Bid ohne Begehung, **Geschafft** bedeutet
-mindestens eine Begehung. Mehrere gewählte Gruppen werden vereinigt; keine
-Auswahl bedeutet alle Status. Diese Abfragen verwenden Problem-UUIDs und
-bilden keine winkelabhängige Versuchshistorie ab.
+Die Statusgruppen überschneiden sich nicht und gelten je Problem **und
+Winkel**, wie in den Apps der Board-Hersteller: Beim angezeigten Winkel bedeutet
+**Neu** ohne Bid und Begehung, **Versucht** Bid ohne Begehung, **Geschafft**
+mindestens eine Begehung. Eine Begehung bei 40° lässt das Problem bei 25° neu
+(oder versucht). Mehrere gewählte Gruppen werden vereinigt; keine Auswahl
+bedeutet alle Status. Eine MoonBoard-Problem-UUID enthält ihren Winkel bereits.
+Der Playlist-Generator liest Status und offene Projekte genauso beim Winkel der
+Session.
 
 „Nur unbewertete“ wählt fehlende Grade aus und bedeutet nicht „versucht“.
 Ignorierte Probleme, Board-Fit und Quantum-Überlappung können die Auswahl
