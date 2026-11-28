@@ -66,10 +66,12 @@ SELECT bid_count, comment, external_id FROM bids WHERE uuid = ?;
 
 -- ═══ UUID lookups ═══
 
-getUserAttemptedClimbUuids:
-SELECT DISTINCT climb_uuid FROM bids
+-- Attempted at one angle and not sent at that angle; see
+-- ascents.getUserSentClimbUuidsAtAngle.
+getUserAttemptedClimbUuidsAtAngle:
+SELECT DISTINCT climb_uuid FROM bids WHERE angle = :angle
 EXCEPT
-SELECT DISTINCT climb_uuid FROM ascents;
+SELECT DISTINCT climb_uuid FROM ascents WHERE angle = :angle;
 
 -- ═══ Difficulty queries (for grade pyramid) ═══
 

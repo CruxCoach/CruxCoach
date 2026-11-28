@@ -81,11 +81,14 @@ Projektionen. Ein beleuchtetes Problem belegt weder einen Versuch noch Erfolg.
 
 Die Board-Konfiguration begrenzt, was physisch passt. Browser-Filter grenzen
 weiter nach Grad, Herkunft, Griffen, Status und anderen Eigenschaften ein.
-Die Statusgruppen überschneiden sich nicht: **Neu** bedeutet ohne Bid und
-Begehung, **Versucht** bedeutet Bid ohne Begehung, **Geschafft** bedeutet
-mindestens eine Begehung. Mehrere gewählte Gruppen werden vereinigt; keine
-Auswahl bedeutet alle Status. Diese Abfragen verwenden Problem-UUIDs und
-bilden keine winkelabhängige Versuchshistorie ab.
+Die Statusgruppen überschneiden sich nicht und gelten je Problem **und
+Winkel**, wie in den Apps der Board-Hersteller: Beim angezeigten Winkel bedeutet
+**Neu** ohne Bid und Begehung, **Versucht** Bid ohne Begehung, **Geschafft**
+mindestens eine Begehung. Eine Begehung bei 40° lässt das Problem bei 25° neu
+(oder versucht). Mehrere gewählte Gruppen werden vereinigt; keine Auswahl
+bedeutet alle Status. Eine MoonBoard-Problem-UUID enthält ihren Winkel bereits.
+Der Playlist-Generator liest Status und offene Projekte genauso beim Winkel der
+Session.
 
 „Nur unbewertete“ wählt fehlende Grade aus und bedeutet nicht „versucht“.
 Ignorierte Probleme, Board-Fit und Quantum-Überlappung können die Auswahl

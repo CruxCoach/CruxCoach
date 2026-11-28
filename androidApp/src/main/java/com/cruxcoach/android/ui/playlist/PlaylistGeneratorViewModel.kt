@@ -8,6 +8,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.android.util.PerfLogger
 import com.cruxcoach.android.util.safeLaunch
+import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
@@ -144,6 +145,58 @@ internal fun playlistCandidateMatchesBrowserFilters(
 }
 
 /**
+ * Climbs with a send ([sends]) or an attempt logged at [angle]: like the board browser, the
+ * generator's status is per climb AND angle, so a send at 40° leaves the climb new at 25°.
+ */
+internal fun playlistLoggedClimbsAtAngle(
+    logbook: List<AscentWithClimb>,
+    angle: Int,
+    sends: Boolean,
+): Set<String> = logbook.asSequence()
+    .filter { it.isSend == sends && it.angle.toInt() == angle }
+    .map { it.climbUuid }
+    .toSet()
+
+/**
+ * Open projects for a session at [angle], best first. A project is open per climb AND angle: a
+ * climb sent at [angle] is none there, and attempts at an angle the climb was later sent at led
+ * to that send, so they are not open either. A send at 40° therefore no longer hides the
+ * project at 25°. Ranked by open attempts at [angle] first, then accumulated open attempts (the
+ * project you keep returning to beats a one-off try), then recency.
+ */
+internal fun playlistOpenProjects(
+    logbook: List<AscentWithClimb>,
+    angle: Int,
+    minAttempts: Long,
+): List<String> {
+    val sends = logbook.filter { it.isSend }
+    val sentAt = sends.mapTo(HashSet()) { it.climbUuid to it.angle }
+    val sentAtAngle = sends.asSequence().filter { it.angle.toInt() == angle }.map { it.climbUuid }.toSet()
+    return logbook.asSequence()
+        .filter { !it.isSend }
+        .filter { it.climbUuid !in sentAtAngle && (it.climbUuid to it.angle) !in sentAt }
+        .groupBy { it.climbUuid }
+        // A project is something you went back to. One bail on a climb
+        // far above your level is not intent, and projects are allowed
+        // past the safety ceiling precisely because you chose them —
+        // so the choice has to be evident.
+        .filter { (_, tries) -> tries.sumOf { it.bidCount } >= minAttempts }
+        .map { (uuid, tries) ->
+            Triple(
+                uuid,
+                tries.any { it.angle.toInt() == angle },
+                tries.sumOf { it.bidCount } to tries.maxOf { it.climbedAt },
+            )
+        }
+        .sortedWith(
+            compareByDescending<Triple<String, Boolean, Pair<Long, String>>> { it.second }
+                .thenByDescending { it.third.first }
+                .thenByDescending { it.third.second }
+        )
+        .map { it.first }
+}
+
+/**
  * Candidates the app DISPLAYS as a grade inside the band. The training range is not applied
  * here: it binds the working slots only, and the filler enforces it per slot — applied to
  * every query it also starved the warm-up ladder, which then got filled from the work band.
@@ -244,9 +297,9 @@ class PlaylistGeneratorViewModel @Inject constructor(
      *     logbook contact per climb+angle, [BoardStatsComputer.trueFlashUuids])
      *     — a repeat send logged first-try must not inflate the volume band.
      *
-     * Open projects = attempted but never sent, ranked by target-angle
-     * match, then accumulated attempts (the project you keep returning to
-     * beats a one-off try), then recency.
+     * Open projects = attempted and not sent at the target angle, ranked
+     * by target-angle match, then accumulated attempts (the project you keep
+     * returning to beats a one-off try), then recency ([playlistOpenProjects]).
      */
     private fun loadProfile(angle: Int, boardBrand: String, layoutId: Int): LogbookProfile {
         // One light combined snapshot replaces three full-table reads. In
@@ -311,29 +364,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
         // fell back to deriving one from the max.
         val flashes = anglePool.filter { it.uuid in flashUuids }.toSends()
 
-        val sentUuids = allSends.asSequence().map { it.climbUuid }.toSet()
-        val openProjects = all.asSequence()
-            .filter { !it.isSend }
-            .filter { it.climbUuid !in sentUuids }
-            .groupBy { it.climbUuid }
-            // A project is something you went back to. One bail on a climb
-            // far above your level is not intent, and projects are allowed
-            // past the safety ceiling precisely because you chose them —
-            // so the choice has to be evident.
-            .filter { (_, tries) -> tries.sumOf { it.bidCount } >= MIN_PROJECT_ATTEMPTS }
-            .map { (uuid, tries) ->
-                Triple(
-                    uuid,
-                    tries.any { it.angle.toInt() == angle },
-                    tries.sumOf { it.bidCount } to tries.maxOf { it.climbedAt },
-                )
-            }
-            .sortedWith(
-                compareByDescending<Triple<String, Boolean, Pair<Long, String>>> { it.second }
-                    .thenByDescending { it.third.first }
-                    .thenByDescending { it.third.second }
-            )
-            .map { it.first }
+        val openProjects = playlistOpenProjects(all, angle, MIN_PROJECT_ATTEMPTS)
 
         return LogbookProfile.fromLogbook(sends, flashes, openProjects, recencyCutoffs)
     }
@@ -647,14 +678,13 @@ class PlaylistGeneratorViewModel @Inject constructor(
                         val logbook = PerfLogger.traceQuery("playlist.logbookSnapshot") {
                             personalBoardRepo.getUserLogbookAllLight()
                         }
-                        val sent = boardRepository.canonicalizeClimbUuids(logbook.asSequence()
-                            .filter { it.isSend }
-                            .map { it.climbUuid }
-                            .toSet())
-                        val attempted = boardRepository.canonicalizeClimbUuids(logbook.asSequence()
-                            .filter { !it.isSend }
-                            .map { it.climbUuid }
-                            .toSet()) - sent
+                        // Status at the session's angle, as the board browser shows it.
+                        val sent = boardRepository.canonicalizeClimbUuids(
+                            playlistLoggedClimbsAtAngle(logbook, params.angle, sends = true)
+                        )
+                        val attempted = boardRepository.canonicalizeClimbUuids(
+                            playlistLoggedClimbsAtAngle(logbook, params.angle, sends = false)
+                        ) - sent
                         // Fresh-stimulus bias: anything logged in the last ~2 weeks
                         // ranks behind untouched material of equal quality.
                         val recentCutoff = java.time.LocalDate.now()

@@ -44,8 +44,12 @@ interface PersonalBoardRepository {
 
     fun getUserAscentsAll(): List<AscentWithClimb>
     fun getUserAscentsBetween(from: String, to: String): List<AscentWithClimb>
-    fun getUserSentClimbUuids(): Set<String>
-    fun getUserAttemptedClimbUuids(): Set<String>
+    /** Climbs sent at [angle]. Status is per climb AND angle, as in the board
+     *  makers' apps: a send at 40° leaves the climb new at 25°. */
+    fun getUserSentClimbUuidsAtAngle(angle: Long): Set<String>
+    /** Climbs attempted at [angle] and not sent there, so disjoint from
+     *  [getUserSentClimbUuidsAtAngle] at the same angle. */
+    fun getUserAttemptedClimbUuidsAtAngle(angle: Long): Set<String>
     fun getUserSendDifficulties(since: String): List<Double>
     fun getUserLogbookPage(limit: Int = 50, offset: Int = 0): List<AscentWithClimb>
     fun getUserLogbookAllLight(): List<AscentWithClimb>

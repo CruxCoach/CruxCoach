@@ -825,9 +825,9 @@
     <string name="board_filter_ungraded_only_none">None on this board at this angle — every climb here has a grade.</string>
     <string name="board_filter_info_action">Explain filter terms</string>
     <string name="board_filter_info_title">Filter &amp; sort terms</string>
-    <string name="board_filter_info_status_new">Climbs with no send or attempt recorded in your CruxCoach logbook.</string>
-    <string name="board_filter_info_status_attempted">Climbs with logged attempts but no successful send in your logbook.</string>
-    <string name="board_filter_info_status_sent">Climbs with at least one successful send in your logbook. Lighting a climb on the board does not count as a send.</string>
+    <string name="board_filter_info_status_new">Climbs with no send or attempt at the selected angle in your CruxCoach logbook.</string>
+    <string name="board_filter_info_status_attempted">Climbs with logged attempts at the selected angle but no successful send there in your logbook.</string>
+    <string name="board_filter_info_status_sent">Climbs with at least one successful send at the selected angle in your logbook. A send at another angle does not count here. Lighting a climb on the board does not count as a send.</string>
     <string name="board_filter_info_benchmarks">Climbs marked as benchmarks: reference problems for comparing grades.</string>
     <string name="board_filter_info_ungraded">Climbs without a catalogue grade. This does not indicate whether you have attempted or sent them.</string>
     <string name="board_filter_info_sort_sends">Sorts by how many climbers have completed the problem according to the catalogue. Your personal logbook entries are not used.</string>

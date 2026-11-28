@@ -824,9 +824,9 @@
     <string name="board_filter_ungraded_only_none">Auf diesem Board gibt es bei diesem Winkel keine — hier hat jeder Climb einen Grad.</string>
     <string name="board_filter_info_action">Filterbegriffe erklären</string>
     <string name="board_filter_info_title">Filter- &amp; Sortierbegriffe</string>
-    <string name="board_filter_info_status_new">Boulder ohne Begehung oder Versuch in deinem CruxCoach-Logbuch.</string>
-    <string name="board_filter_info_status_attempted">Boulder mit eingetragenen Versuchen, aber noch ohne erfolgreiche Begehung in deinem Logbuch.</string>
-    <string name="board_filter_info_status_sent">Boulder mit mindestens einer erfolgreichen Begehung in deinem Logbuch. Das Aufleuchten am Board zählt nicht als Begehung.</string>
+    <string name="board_filter_info_status_new">Boulder ohne Begehung oder Versuch beim gewählten Winkel in deinem CruxCoach-Logbuch.</string>
+    <string name="board_filter_info_status_attempted">Boulder mit eingetragenen Versuchen beim gewählten Winkel, aber dort noch ohne erfolgreiche Begehung in deinem Logbuch.</string>
+    <string name="board_filter_info_status_sent">Boulder mit mindestens einer erfolgreichen Begehung beim gewählten Winkel in deinem Logbuch. Eine Begehung bei einem anderen Winkel zählt hier nicht. Das Aufleuchten am Board zählt nicht als Begehung.</string>
     <string name="board_filter_info_benchmarks">Als Benchmark gekennzeichnete Boulder: Referenzboulder zum Vergleichen von Schwierigkeitsgraden.</string>
     <string name="board_filter_info_ungraded">Boulder ohne Schwierigkeitsgrad im Katalog. Das sagt nichts darüber aus, ob du sie schon versucht oder geschafft hast.</string>
     <string name="board_filter_info_sort_sends">Sortiert danach, wie viele Kletterer den Boulder laut Katalog geschafft haben. Deine persönlichen Logbucheinträge zählen hier nicht.</string>

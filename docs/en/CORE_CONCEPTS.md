@@ -78,10 +78,12 @@ Lighting a problem is not proof of attempting or completing it.
 
 Board configuration constrains what can fit. Browser filters then narrow the
 available set by grade, origin, holds, status and other selected properties.
-Status buckets are disjoint: **new** has no send or bid, **attempted** has a bid
-but no send, **sent** has a send. Selecting several buckets combines them;
-selecting none means all statuses. These status lookups use climb UUIDs,
-so they are not a per-angle attempt history.
+Status buckets are disjoint and count per climb **and angle**, as in the board
+makers' apps: at the browsed angle, **new** has no send or bid, **attempted** has
+a bid but no send, **sent** has a send. A send at 40° leaves the climb new (or
+attempted) at 25°. Selecting several buckets combines them; selecting none means
+all statuses. A MoonBoard climb UUID already names its angle. The playlist
+generator reads status, and open projects, at the session's angle the same way.
 
 “Ungraded only” selects missing grades; it is not the same as “attempted.”
 Ignored climbs, board fit and Quantum overlap checks can further narrow the
