@@ -418,6 +418,9 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     private var currentClimbUuid: String = initialClimbUuid
     private var currentAngle: Int = savedStateHandle.get<String>("angle")?.toIntOrNull() ?: 40
+    /** The angle navigation asked for when [loadClimb] opened the current climb at another one
+     *  ([ClimbAngleFit]). The pager asks for it again whenever it resettles; that is still this climb. */
+    private var currentAngleFittedFrom: Int? = null
 
     private val _state = MutableStateFlow(ClimbDetailState(angle = currentAngle))
     val state: StateFlow<ClimbDetailState> = _state.asStateFlow()
@@ -744,7 +747,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                 Log.w(TAG, "zones collect terminated", e)
             }
         }
-        loadClimb(currentClimbUuid, currentAngle)
+        loadClimb(currentClimbUuid, currentAngle, fitAngle = true)
     }
 
     fun clearError() {
@@ -971,11 +974,12 @@ class BoardClimbDetailViewModel @Inject constructor(
     }
 
     fun switchClimb(uuid: String, angle: Int) {
-        if (uuid == currentClimbUuid && angle == currentAngle) return
+        if (uuid == currentClimbUuid && (angle == currentAngle || angle == currentAngleFittedFrom)) return
         ascentLogger.finishQuickSequence()
         Log.d(TAG, "switchClimb: $uuid angle=$angle (was: $currentClimbUuid)")
         currentClimbUuid = uuid
         currentAngle = angle
+        currentAngleFittedFrom = null
         stopWorkForPreviousVariant()
         // Reset BLE send state so a stale isSending=true from the previous climb
         // doesn't block auto-send for the new climb.
@@ -1015,7 +1019,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                 selectedBoardLayerColor = null,
             ) }
         }
-        loadClimb(uuid, angle)
+        loadClimb(uuid, angle, fitAngle = true)
     }
 
     fun onAngleSelected(angle: Int) {
@@ -1029,6 +1033,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         // whole job.
         stopWorkForPreviousVariant()
         currentAngle = angle
+        currentAngleFittedFrom = null
         _state.update { current ->
             current.copy(
                 isLoading = true,
@@ -1058,11 +1063,28 @@ class BoardClimbDetailViewModel @Inject constructor(
      *    variant is built for (e.g. Masters 2017 = 25°/40°, 2016 = 40°).
      */
     private fun buildAngleOptions(climb: ClimbWithStats, statted: List<AngleOption>): List<AngleOption> {
-        val brand = BoardBrand.fromWire(climb.boardBrand)
         // A community climb has one stats row = the angle the setter chose;
         // imported climbs are angle-agnostic, so there's no single setter angle.
-        val setterAngle = if (climb.origin == "cruxcoach") statted.firstOrNull()?.angle else null
-        val supported: Set<Int> = when {
+        val setterAngle = setterAngleOf(climb, statted)
+        val supported = supportedAnglesFor(climb)
+        val byAngle = statted.associateBy { it.angle }
+        val allAngles = (byAngle.keys + supported).toSortedSet()
+        // Defensive: if nothing resolved, fall back to the statted angles so
+        // the picker is never emptier than before.
+        val source = allAngles.ifEmpty { byAngle.keys.toSortedSet() }
+        return source.map { a ->
+            (byAngle[a] ?: AngleOption(a, null, null, null, 0.0))
+                .copy(isSetterAngle = a == setterAngle)
+        }
+    }
+
+    private fun setterAngleOf(climb: ClimbWithStats, statted: List<AngleOption>): Int? =
+        if (climb.origin == "cruxcoach") statted.firstOrNull()?.angle else null
+
+    /** The angles [climb]'s board is set up at, as [buildAngleOptions] offers them; empty when unknown. */
+    private fun supportedAnglesFor(climb: ClimbWithStats): Set<Int> {
+        val brand = BoardBrand.fromWire(climb.boardBrand)
+        return when {
             brand.usesAuroraProtocol -> {
                 // Pass the climb's own brand: layout ids collide across brands
                 // (layout 1 = Kilter Original AND Grasshopper/So iLL/Touchstone),
@@ -1083,30 +1105,47 @@ class BoardClimbDetailViewModel @Inject constructor(
                 MoonBoardVariant.fromLayoutId(climb.layoutId)?.angles?.toSet() ?: emptySet()
             else -> emptySet()
         }
-        val byAngle = statted.associateBy { it.angle }
-        val allAngles = (byAngle.keys + supported).toSortedSet()
-        // Defensive: if nothing resolved, fall back to the statted angles so
-        // the picker is never emptier than before.
-        val source = allAngles.ifEmpty { byAngle.keys.toSortedSet() }
-        return source.map { a ->
-            (byAngle[a] ?: AngleOption(a, null, null, null, 0.0))
-                .copy(isSetterAngle = a == setterAngle)
-        }
     }
 
-    private fun loadClimb(uuid: String, angle: Int) {
+    /** A climb as navigation opens it: at [angle], or with [fitAngle] at the angle [ClimbAngleFit] picks
+     *  when the climb or its board does not have [angle]. Null when the climb is not in the board DB. */
+    private class OpenedClimb(val climb: ClimbWithStats, val angle: Int, val statted: List<AngleOption>)
+
+    private fun openClimb(uuid: String, angle: Int, fitAngle: Boolean): OpenedClimb? {
+        val climb = boardRepository.getClimbByUuidAnySpelling(uuid, angle)
+            ?.takeIf { matchesLinkAuthor(uuid, it.createdByPubkey) } ?: return null
+        val statted = boardRepository.getAnglesForClimb(uuid)
+        if (!fitAngle) return OpenedClimb(climb, angle, statted)
+        val fitted = ClimbAngleFit.fit(
+            requested = angle,
+            brand = climb.brand,
+            climbAngles = statted.map { it.angle },
+            boardAngles = supportedAnglesFor(climb),
+            setterAngle = setterAngleOf(climb, statted),
+        )
+        if (fitted == angle) return OpenedClimb(climb, angle, statted)
+        // The row carries the grade and stats of one angle, so read it again at the fitted one.
+        val atFitted = boardRepository.getClimbByUuidAnySpelling(uuid, fitted)
+            ?.takeIf { matchesLinkAuthor(uuid, it.createdByPubkey) }
+            ?: return OpenedClimb(climb, angle, statted)
+        Log.d(TAG, "openClimb: $uuid has no $angle°, opened at $fitted°")
+        return OpenedClimb(atFitted, fitted, statted)
+    }
+
+    private fun loadClimb(uuid: String, angle: Int, fitAngle: Boolean = false) {
         // A cached/preloaded page must never display media from its neighbour.
         _state.update { it.copy(betaLinks = emptyList()) }
         loadJob = viewModelScope.launch {
             try {
                 PerfLogger.navMilestone("loadClimb start ($uuid)")
+                var shownAngle = angle
                 withContext(Dispatchers.IO) {
                     // Indexed spellings first, normalized scan only on a miss.
-                    val climb = PerfLogger.trace("loadClimb.getClimbByUuid") {
-                        boardRepository.getClimbByUuidAnySpelling(uuid, angle)
-                    }?.takeIf {
-                        matchesLinkAuthor(uuid, it.createdByPubkey)
+                    val opened = PerfLogger.trace("loadClimb.getClimbByUuid") {
+                        openClimb(uuid, angle, fitAngle)
                     }
+                    val climb = opened?.climb
+                    if (opened != null) shownAngle = opened.angle
                     if (climb != null) {
                         // FEAT-027: a MoonBoard climb has no Aurora
                         // product_size / board_images / placement-LED rows —
@@ -1159,9 +1198,9 @@ class BoardClimbDetailViewModel @Inject constructor(
                         val betaLinks = boardRepository.getClimbBetaLinks(
                             climb.brand.wireValue,
                             climb.uuid,
-                            angle,
+                            shownAngle,
                         )
-                        val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
+                        val angles = buildAngleOptions(climb, opened?.statted.orEmpty())
                         val isMirrorable = BoardConstants.isLayoutMirrorable(
                             climb.brand, climb.layoutId.toInt()
                         )
@@ -1202,7 +1241,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                                 boardSize = boardSize,
                                 boardImages = boardImages,
                                 userAscents = userAscents,
-                                angle = angle,
+                                angle = shownAngle,
                                 isFavorited = isFavorited,
                                 isIgnored = isIgnored,
                                 personalNote = personalNote,
@@ -1267,6 +1306,12 @@ class BoardClimbDetailViewModel @Inject constructor(
                             }
                         }
                     }
+                }
+                // Back on the main thread, where switchClimb and onAngleSelected change the climb:
+                // keep the angle the climb opened at, unless the user has moved on meanwhile.
+                if (shownAngle != angle && currentClimbUuid == uuid && currentAngle == angle) {
+                    currentAngle = shownAngle
+                    currentAngleFittedFrom = angle
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -1335,8 +1380,8 @@ class BoardClimbDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val climb = boardRepository.getClimbByUuidAnySpelling(uuid, angle)
-                        ?.takeIf { matchesLinkAuthor(uuid, it.createdByPubkey) } ?: return@withContext
+                    val opened = openClimb(uuid, angle, fitAngle = true) ?: return@withContext
+                    val climb = opened.climb
                     // FEAT-027: skip Kilter-only board geometry for MoonBoard climbs.
                     val isMoonBoard = !climb.brand.usesAuroraPlacements
                     val allFrames = BoardClimbParser.parseMultiFrames(climb.frames)
@@ -1367,14 +1412,14 @@ class BoardClimbDetailViewModel @Inject constructor(
                     val isIgnored = identityUuids.any(personalBoardRepo::isClimbIgnored)
                     val personalNote = identityUuids.asSequence()
                         .mapNotNull(personalBoardRepo::getClimbNote).firstOrNull().orEmpty()
-                    val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
+                    val angles = buildAngleOptions(climb, opened.statted)
                     val isMirrorable = BoardConstants.isLayoutMirrorable(
                         climb.brand, climb.layoutId.toInt()
                     )
                     val betaLinks = boardRepository.getClimbBetaLinks(
                         climb.brand.wireValue,
                         climb.uuid,
-                        angle,
+                        opened.angle,
                     )
 
                     val pageState = _state.value.copy(
@@ -1386,7 +1431,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         boardSize = boardSize,
                         boardImages = boardImages,
                         userAscents = userAscents,
-                        angle = angle,
+                        angle = opened.angle,
                         isFavorited = isFavorited,
                         isIgnored = isIgnored,
                         personalNote = personalNote,
