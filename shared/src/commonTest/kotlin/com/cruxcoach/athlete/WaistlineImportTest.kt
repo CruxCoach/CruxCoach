@@ -446,4 +446,54 @@ class WaistlineImportTest {
         assertEquals(100.0, total.proteinG)
         assertEquals(listOf(total.id), WaistlineImport.parse(csv).food.entries.map { it.id })
     }
+
+    // ── Real exports of Waistline 3.11.1 (F-Droid), German UI, from the test phone 2026-11-28 ──
+
+    /** "Datenbanksicherung": 3384 bytes as written; portion and quantity are strings, version 34. */
+    private val real3111Backup = """{"meals":[],"recipes":[],"foodList":[{"portion":"100","name":"Haferflocken","brand":"Testmarke","unit":"g","nutrition":{"calories":372,"fat":7,"carbohydrates":59,"proteins":13.5},"archived":false,"dateTime":"2026-11-28T12:26:19.196Z","id":1}],"diary":[{"dateTime":"2026-11-28T00:00:00.000Z","items":[{"id":1,"portion":"100","quantity":"1","type":"food","dateTime":"2026-11-28T12:26:19.214Z","category":0}],"stats":{"weight":72.4},"id":1},{"dateTime":"2026-11-27T00:00:00.000Z","items":[],"stats":{"weight":72.9},"id":2}],"version":34,"settings":{"appearance":{"mode":"system","theme":"color-theme-red","animations":false,"locale":"auto","start-page":"/settings/"},"statistics":{"y-zero":false,"average-line":true,"goal-line":true,"trend-line":false,"moving-average":false,"moving-average-period":7},"diary":{"meal-names":["Breakfast","Lunch","Dinner","Snacks","","",""],"timestamps":false,"show-brands":true,"show-thumbnails":false,"wifi-thumbnails":true,"show-all-nutriments":false,"show-macro-nutriments-summary":false,"show-nutrition-units":false,"prompt-add-items":false,"show-total-portion-size":false},"foodlist":{"labels":["🌳","🏪"],"categories":{"🌳":"","🏪":""},"sort":"alpha","show-category-labels":false,"show-thumbnails":false,"wifi-thumbnails":true,"show-images":true,"wifi-images":true,"show-notes":false,"add-leftovers":false},"goals":{"migrated":true,"first-day-of-week":"0","average-goal-base":"week","kilojoules":{"show-in-diary":true,"show-in-stats":true,"goal-list":[{"shared-goal":true,"goal":["8400","","","","","",""]}]},"calories":{"show-in-diary":true,"show-in-stats":true,"goal-list":[{"shared-goal":true,"goal":["2000","","","","","",""]}]},"fat":{"show-in-diary":true,"show-in-stats":true,"goal-list":[{"shared-goal":true,"goal":["70","","","","","",""]}]},"carbohydrates":{"show-in-diary":true,"show-in-stats":true,"goal-list":[{"shared-goal":true,"goal":["260","","","","","",""]}]},"proteins":{"show-in-diary":true,"show-in-stats":true,"goal-list":[{"shared-goal":true,"goal":["50","","","","","",""]}]}},"units":{"energy":"kcal","weight":"kg","length":"cm"},"nutriments":{"order":["kilojoules","calories","fat","saturated-fat","carbohydrates","sugars","fiber","proteins","salt","sodium","cholesterol","trans-fat","monounsaturated-fat","polyunsaturated-fat","omega-3-fat","omega-6-fat","omega-9-fat","vitamin-a","vitamin-b1","vitamin-b2","vitamin-pp","pantothenic-acid","vitamin-b6","biotin","vitamin-b9","vitamin-b12","vitamin-c","vitamin-d","vitamin-e","vitamin-k","potassium","chloride","calcium","phosphorus","iron","magnesium","zinc","copper","manganese","fluoride","selenium","iodine","caffeine","alcohol","sucrose","glucose","fructose","lactose"],"units":{}},"bodyStats":{"order":["weight","neck","waist","hips","body fat"],"units":{}},"nutrimentVisibility":{"fat":true,"saturated-fat":true,"carbohydrates":true,"sugars":true,"proteins":true,"salt":true},"bodyStatsVisibility":{"weight":true},"integration":{"barcode-flashlight":false,"barcode-sound":false,"edit-images":false,"search-language":"Default","search-country":"All","upload-country":"Auto","usda":false,"icu":false},"tts":{"speed":1,"pitch":1,"voice":"","locale":""},"import-export":{"auto-backup":true},"developer":{"data-sharing-active":false,"data-sharing-wifi-only":true,"data-sharing-address":"","data-sharing-authorization":""},"firstTimeSetup":true,"schemaVersion":9}}"""
+
+    /** "Tagebuch als CSV exportieren": 154 bytes; only today's row although 27.11 has a weight too (issue #980). */
+    private val real3111Csv = "Datum;Kalorien (kcal);Fett (g);Gesättigte Fettsäuren (g);Kohlenhydrate (g);Zucker (g);Eiweiß (g);Salz (g);Gewicht (kg)" +
+        "\n28.11.2026;372;7;;59;;13,5;;72,4"
+
+    @Test
+    fun realBackupOfWaistline3111() {
+        assertEquals(3384, real3111Backup.encodeToByteArray().size)
+        val r = WaistlineImport.parse(real3111Backup)
+        assertEquals(Format.JSON, r.format)
+        val entry = r.food.entries.single()
+        assertEquals("waistline:2026-11-28:0", entry.id)
+        assertEquals("2026-11-28", entry.day)
+        assertEquals("Haferflocken (Testmarke)", entry.name)
+        assertEquals(Meal.BREAKFAST, entry.meal)
+        assertEquals(100.0, entry.amountG)
+        assertEquals(372.0, entry.kcal)
+        assertEquals(13.5, entry.proteinG)
+        assertEquals(59.0, entry.carbsG)
+        assertEquals(7.0, entry.fatG)
+        assertEquals("waistline:1", entry.foodItemId)
+        assertEquals(372.0, r.food.foods.single().kcalPer100)
+        assertEquals(0, r.food.skipped)
+        assertEquals(2, r.measurements.size)
+        assertEquals(72.4, r.value("2026-11-28", "weight"))
+        assertEquals(72.9, r.value("2026-11-27", "weight"))
+    }
+
+    @Test
+    fun realDiaryCsvOfWaistline3111() {
+        assertEquals(154, real3111Csv.encodeToByteArray().size)
+        val r = WaistlineImport.parse(real3111Csv)
+        assertEquals(Format.CSV, r.format)
+        assertEquals(listOf("weight"), r.measurements.map { it.metric })
+        assertEquals(72.4, r.value("2026-11-28", "weight"))
+        assertEquals(0, r.skipped)
+        // Only one day in the file: what the preview's "3.11.1 writes only today" hint keys on.
+        assertEquals(1, r.csvDays)
+        val total = r.food.entries.single()
+        assertEquals("waistline-csv:2026-11-28", total.id)
+        assertEquals(372.0, total.kcal)
+        assertEquals(13.5, total.proteinG)
+        assertEquals(59.0, total.carbsG)
+        assertEquals(7.0, total.fatG)
+    }
 }
