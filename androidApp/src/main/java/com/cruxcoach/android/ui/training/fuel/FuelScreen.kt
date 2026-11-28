@@ -35,6 +35,8 @@ import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.android.ui.training.body.shortLabel
+import com.cruxcoach.android.ui.training.common.WaistlineImportHost
+import com.cruxcoach.android.ui.training.common.rememberWaistlineImport
 import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.MacroTotals
 import com.cruxcoach.athlete.logic.MicroWatch
@@ -65,6 +67,8 @@ fun FuelScreen(
     var photoExplain by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    // Food diary and body values from a Waistline backup (owner 2026-11-28: the import was not to be found here).
+    val waistline = rememberWaistlineImport()
     var quickAdd by remember { mutableStateOf(false) }
     var foodsOpen by remember { mutableStateOf(false) }
     var amountFor by remember { mutableStateOf<FoodItem?>(null) }
@@ -156,6 +160,21 @@ fun FuelScreen(
             IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("fuel_settings")) {
                 Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.tr_action_settings))
             }
+            // Actions that need their words: behind "more", the import from Waistline.
+            Box {
+                var moreOpen by remember { mutableStateOf(false) }
+                IconButton(onClick = { moreOpen = true }, modifier = Modifier.testTag("fuel_more")) {
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more_options))
+                }
+                DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.trb_import_action)) },
+                        leadingIcon = { Icon(Icons.Default.FileOpen, null) },
+                        onClick = { moreOpen = false; waistline.launch() },
+                        modifier = Modifier.testTag("fuel_import_waistline"),
+                    )
+                }
+            }
         },
         snackbarHost = { TrainingSnackbarHost(snackbar) },
         // One way in for every kind of food: search, scan, describe, photo or plain values.
@@ -233,6 +252,7 @@ fun FuelScreen(
         }
     }
 
+    WaistlineImportHost(waistline, snackbar)
     if (energyOpen) {
         com.cruxcoach.android.ui.training.common.EnergySheet(
             profile = state.profile, need = state.need, weightKg = state.bodyweightKg, heightCm = state.heightCm,

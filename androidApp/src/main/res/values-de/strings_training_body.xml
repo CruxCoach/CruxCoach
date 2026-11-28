@@ -42,13 +42,25 @@
     <string name="trb_undo">Rückgängig</string>
     <string name="trb_settings_hint">Einheiten und das Ausblenden von Zahlen findest du in den Trainingseinstellungen.</string>
 
-    <!-- Waistline-Import -->
+    <!-- Waistline-Import: Ernährungstagebuch und Körperwerte (in Ernährung, Körper und den Trainingseinstellungen) -->
     <string name="trb_import_action">Aus Waistline importieren</string>
+    <string name="trb_import_summary">Ernährungstagebuch und Körperwerte aus einem Waistline-Backup</string>
     <string name="trb_import_title">Aus Waistline importieren</string>
     <string name="trb_import_format_json">Waistline-Datenbank-Backup (JSON)</string>
     <string name="trb_import_format_csv">Waistline-Tagebuch-Export (CSV)</string>
     <string name="trb_import_range">%1$s – %2$s</string>
-    <string name="trb_import_found">Gefundene Werte</string>
+    <string name="trb_import_found">Körperwerte</string>
+    <string name="trb_import_food_found">Ernährungstagebuch</string>
+    <string name="trb_import_food_entries">Einträge</string>
+    <string name="trb_import_food_days">Tage</string>
+    <string name="trb_import_food_foods">Lebensmittel für die Suche</string>
+    <string name="trb_import_food_recipes">Davon Rezepte</string>
+    <plurals name="trb_import_food_skipped">
+        <item quantity="one">%d Eintrag übersprungen (Lebensmittel fehlt, keine Menge oder verbrannte Energie)</item>
+        <item quantity="other">%d Einträge übersprungen (Lebensmittel fehlt, keine Menge oder verbrannte Energie)</item>
+    </plurals>
+    <string name="trb_import_csv_food_hint">Die CSV enthält Essen nur als Tagessummen. Fürs Ernährungstagebuch nimm das Datenbank-Backup (JSON).</string>
+    <string name="trb_import_quick_add">Schnelleintrag</string>
     <plurals name="trb_import_skipped">
         <item quantity="one">%d Wert übersprungen (unlesbar oder unplausibel)</item>
         <item quantity="other">%d Werte übersprungen (unlesbar oder unplausibel)</item>
@@ -62,6 +74,12 @@
         <item quantity="other">%d Werte fallen auf Tage, an denen hier schon ein Eintrag steht.</item>
     </plurals>
     <string name="trb_import_overwrite">Vorhandene Werte überschreiben</string>
+    <plurals name="trb_import_food_conflicts">
+        <item quantity="one">An %d Tag gibt es hier schon Essenseinträge.</item>
+        <item quantity="other">An %d Tagen gibt es hier schon Essenseinträge.</item>
+    </plurals>
+    <string name="trb_import_food_replace">Diese Tage durch Waistline ersetzen</string>
+    <string name="trb_import_food_replace_hint">Die Einträge dieser Tage hier werden vorher gelöscht.</string>
     <string name="trb_import_confirm">Importieren</string>
     <plurals name="trb_import_done">
         <item quantity="one">%d Wert importiert</item>
@@ -71,7 +89,16 @@
         <item quantity="one">%d vorhandener Wert behalten</item>
         <item quantity="other">%d vorhandene Werte behalten</item>
     </plurals>
-    <string name="trb_import_empty">In dieser Datei wurden keine Körperdaten gefunden. Exportiere in Waistline unter Einstellungen → Import/Export: „Datenbank exportieren“ (JSON) oder „Tagebuch exportieren“ (CSV).</string>
+    <plurals name="trb_import_food_done">
+        <item quantity="one">%d Essenseintrag importiert</item>
+        <item quantity="other">%d Essenseinträge importiert</item>
+    </plurals>
+    <plurals name="trb_import_food_days_kept">
+        <item quantity="one">%d Tag mit Einträgen behalten</item>
+        <item quantity="other">%d Tage mit Einträgen behalten</item>
+    </plurals>
+    <string name="trb_import_empty">In dieser Datei steht nichts zum Importieren. In Waistline unter Einstellungen → Importieren/Exportieren: „Datenbanksicherung“ bringt Ernährungstagebuch und Körperwerte (JSON), „Tagebuch als CSV exportieren“ nur Körperwerte.</string>
+    <string name="trb_import_csv_totals_only">Diese CSV hat keine Körperwerte und Essen nur als Tagessummen. Fürs Ernährungstagebuch nimm in Waistline die „Datenbanksicherung“ (JSON).</string>
     <string name="trb_import_failed">Die Datei konnte nicht gelesen werden.</string>
     <string name="trb_import_too_large">Die Datei ist zu groß (max. 20 MB).</string>
     <string name="trb_waistline_badge">Waistline</string>

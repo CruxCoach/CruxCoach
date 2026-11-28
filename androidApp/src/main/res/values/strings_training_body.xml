@@ -42,13 +42,25 @@
     <string name="trb_undo">Undo</string>
     <string name="trb_settings_hint">Units and hiding numbers are in the training settings.</string>
 
-    <!-- Waistline import -->
+    <!-- Waistline import: food diary and body values (offered in nutrition, body and the training settings) -->
     <string name="trb_import_action">Import from Waistline</string>
+    <string name="trb_import_summary">Food diary and body values from a Waistline backup</string>
     <string name="trb_import_title">Import from Waistline</string>
     <string name="trb_import_format_json">Waistline database backup (JSON)</string>
     <string name="trb_import_format_csv">Waistline diary export (CSV)</string>
     <string name="trb_import_range">%1$s – %2$s</string>
-    <string name="trb_import_found">Values found</string>
+    <string name="trb_import_found">Body values</string>
+    <string name="trb_import_food_found">Food diary</string>
+    <string name="trb_import_food_entries">Entries</string>
+    <string name="trb_import_food_days">Days</string>
+    <string name="trb_import_food_foods">Foods for the search</string>
+    <string name="trb_import_food_recipes">Of these, recipes</string>
+    <plurals name="trb_import_food_skipped">
+        <item quantity="one">%d entry skipped (food missing, no amount or burned energy)</item>
+        <item quantity="other">%d entries skipped (food missing, no amount or burned energy)</item>
+    </plurals>
+    <string name="trb_import_csv_food_hint">The CSV has food only as daily totals. For the food diary, use the database backup (JSON).</string>
+    <string name="trb_import_quick_add">Quick entry</string>
     <plurals name="trb_import_skipped">
         <item quantity="one">%d value skipped (unreadable or implausible)</item>
         <item quantity="other">%d values skipped (unreadable or implausible)</item>
@@ -62,6 +74,12 @@
         <item quantity="other">%d values fall on days that already have an entry here.</item>
     </plurals>
     <string name="trb_import_overwrite">Overwrite existing values</string>
+    <plurals name="trb_import_food_conflicts">
+        <item quantity="one">%d day already has food entries here.</item>
+        <item quantity="other">%d days already have food entries here.</item>
+    </plurals>
+    <string name="trb_import_food_replace">Replace these days with Waistline</string>
+    <string name="trb_import_food_replace_hint">The entries of these days here are removed first.</string>
     <string name="trb_import_confirm">Import</string>
     <plurals name="trb_import_done">
         <item quantity="one">%d value imported</item>
@@ -71,7 +89,16 @@
         <item quantity="one">%d existing value kept</item>
         <item quantity="other">%d existing values kept</item>
     </plurals>
-    <string name="trb_import_empty">No body data found in this file. In Waistline, export under Settings → Import/Export: “Export database” (JSON) or “Export diary” (CSV).</string>
+    <plurals name="trb_import_food_done">
+        <item quantity="one">%d food entry imported</item>
+        <item quantity="other">%d food entries imported</item>
+    </plurals>
+    <plurals name="trb_import_food_days_kept">
+        <item quantity="one">%d day with entries kept</item>
+        <item quantity="other">%d days with entries kept</item>
+    </plurals>
+    <string name="trb_import_empty">Nothing to import in this file. In Waistline, go to Settings → Import/Export: “Backup Database” gives the food diary and body values (JSON), “Export Diary to CSV” body values only.</string>
+    <string name="trb_import_csv_totals_only">This CSV has no body values and food only as daily totals. For the food diary, use “Backup Database” in Waistline (JSON).</string>
     <string name="trb_import_failed">The file could not be read.</string>
     <string name="trb_import_too_large">The file is too large (max. 20 MB).</string>
     <string name="trb_waistline_badge">Waistline</string>
