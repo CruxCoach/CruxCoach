@@ -189,11 +189,13 @@ fun BoardClimbDetailScreen(
         else listOf(viewModel.initialClimbUuid)
     }
     val fallbackNavAngle = remember { viewModel.climbNavState.angle }
+    // Per-climb angles of the source list (logbook entries); empty for sources with one angle.
+    val navClimbAngles = remember { viewModel.climbNavState.climbAngles }
     val navAngleFor: (String) -> Int = { uuid ->
         if (navigatedFromQueue && detailQueueState.isActive) {
             if (uuid == viewModel.initialClimbUuid) fallbackNavAngle
             else detailQueueState.queue.firstOrNull { it.climbUuid == uuid }?.angle ?: fallbackNavAngle
-        } else fallbackNavAngle
+        } else navClimbAngles[uuid] ?: fallbackNavAngle
     }
     val initialIndex = remember(navUuids) {
         val idx = navUuids.indexOf(viewModel.initialClimbUuid)
