@@ -2944,6 +2944,7 @@
     <string name="board_selection_quantum_schematic_hint">The original board image for the selected Quantum model is included.</string>
     <string name="board_selection_shinywall_variant_label">Shiny Wall variant</string>
     <string name="board_selection_shinywall_variant_hint">Pick the variant your wall is set up as. Full walls add the small holds between the rows.</string>
+    <string name="board_selection_shinywall_download_hint">We\'ll download the Shiny Wall catalogue and set it up as your board.</string>
     <string name="quantum_sync_failed_generic">The Quantum catalogue could not be refreshed. Cached data remains available.</string>
     <string name="board_layers_title">Board layers</string>
     <string name="board_layers_occupied">%1$d of %2$d active</string>
@@ -3229,6 +3230,7 @@
     <string name="onboarding_download_selection_failed">Could not save the download selection. Please try again.</string>
     <string name="board_picker_download_title">Download %1$s?</string>
     <string name="board_picker_download_description">This board is not available offline and its downloads are disabled. Download it now and keep it selected for future catalogue and extra-data updates?</string>
+    <string name="board_picker_download_description_not_selected">This board is not available offline and not selected for downloads yet. Download it now and keep it selected for future catalogue and extra-data updates?</string>
     <string name="board_picker_download_confirm">Download and enable updates</string>
     <string name="kilter_upload_counts">Uploaded: %1$d · Still pending: %2$d</string>
     <string name="kilter_upload_status_title">Last logbook upload attempt</string>

@@ -2941,6 +2941,7 @@
     <string name="board_selection_quantum_schematic_hint">Das Originalbild des ausgewählten Quantum-Modells ist enthalten.</string>
     <string name="board_selection_shinywall_variant_label">Shiny-Wall-Variante</string>
     <string name="board_selection_shinywall_variant_hint">Wähle die Variante, als die deine Wand eingerichtet ist. Full-Wände haben zusätzlich die kleinen Griffe zwischen den Reihen.</string>
+    <string name="board_selection_shinywall_download_hint">Wir laden den Shiny-Wall-Katalog herunter und richten ihn als dein Board ein.</string>
     <string name="quantum_sync_failed_generic">Der Quantum-Katalog konnte nicht aktualisiert werden. Vorhandene Offline-Daten bleiben verfügbar.</string>
     <string name="board_layers_title">Board-Layer</string>
     <string name="board_layers_occupied">%1$d von %2$d aktiv</string>
@@ -3226,6 +3227,7 @@
     <string name="onboarding_download_selection_failed">Die Download-Auswahl konnte nicht gespeichert werden. Bitte versuche es erneut.</string>
     <string name="board_picker_download_title">%1$s herunterladen?</string>
     <string name="board_picker_download_description">Dieses Board ist nicht offline verfügbar und für Downloads abgewählt. Jetzt herunterladen und dauerhaft für künftige Katalog- und Zusatzdaten-Updates auswählen?</string>
+    <string name="board_picker_download_description_not_selected">Dieses Board ist nicht offline verfügbar und noch nicht für Downloads ausgewählt. Jetzt herunterladen und dauerhaft für künftige Katalog- und Zusatzdaten-Updates auswählen?</string>
     <string name="board_picker_download_confirm">Herunterladen und Updates aktivieren</string>
     <string name="kilter_upload_counts">Übertragen: %1$d · Noch ausstehend: %2$d</string>
     <string name="kilter_upload_status_title">Letzter Übertragungsversuch des Logbuchs</string>
